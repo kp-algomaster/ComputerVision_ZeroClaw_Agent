@@ -19,6 +19,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from zeroclaw_tools import tool
 
 logger = logging.getLogger(__name__)
@@ -191,8 +193,114 @@ def probe_hardware_summary() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# ZeroClaw tool (callable by the agent)
+# Ollama model management
 # ---------------------------------------------------------------------------
+
+def list_ollama_models(host: str = "http://localhost:11434") -> list[str]:
+    """Return a list of model tags currently pulled into Ollama."""
+    try:
+        resp = httpx.get(f"{host}/api/tags", timeout=5)
+        resp.raise_for_status()
+        return [m["name"] for m in resp.json().get("models", [])]
+    except Exception as exc:
+        logger.warning("Could not reach Ollama at %s: %s", host, exc)
+        return []
+
+
+def is_model_pulled(model: str, host: str = "http://localhost:11434") -> bool:
+    """Return True if *model* (exact tag or name prefix) is already in Ollama."""
+    pulled = list_ollama_models(host)
+    # Allow partial match: "qwen2.5-vl:7b" matches "qwen2.5-vl:7b-q4_k_m" etc.
+    name = model.split(":")[0].lower()
+    tag  = model.split(":")[1].lower() if ":" in model else ""
+    for p in pulled:
+        p_name = p.split(":")[0].lower()
+        p_tag  = p.split(":")[1].lower() if ":" in p else ""
+        if p_name == name and (not tag or p_tag.startswith(tag) or tag.startswith(p_tag)):
+            return True
+        if p.lower() == model.lower():
+            return True
+    return False
+
+
+def ensure_ollama_model(
+    model: str,
+    host: str = "http://localhost:11434",
+    stream_log: bool = True,
+) -> tuple[bool, str]:
+    """Pull *model* from Ollama if it is not already downloaded.
+
+    Returns:
+        (already_present, message) — already_present=True means no download needed.
+    """
+    if is_model_pulled(model, host):
+        return True, f"Model '{model}' is already available in Ollama."
+
+    logger.info("Pulling Ollama model '%s' …", model)
+    try:
+        resp = httpx.post(
+            f"{host}/api/pull",
+            json={"name": model, "stream": False},
+            timeout=600,          # pulling large models can take minutes
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        status = data.get("status", "unknown")
+        if "success" in status.lower() or status == "":
+            return False, f"Successfully pulled '{model}'."
+        return False, f"Pull completed with status: {status}"
+    except httpx.HTTPStatusError as exc:
+        msg = f"Failed to pull '{model}': HTTP {exc.response.status_code}"
+        logger.error(msg)
+        return False, msg
+    except Exception as exc:
+        msg = f"Failed to pull '{model}': {exc}"
+        logger.error(msg)
+        return False, msg
+
+
+# ---------------------------------------------------------------------------
+# ZeroClaw tools (callable by the agent)
+# ---------------------------------------------------------------------------
+
+@tool
+def pull_vision_model(model: str = "") -> str:
+    """Download a VLM / LLM from Ollama if it is not already present.
+
+    If no model is specified, uses llmfit to identify the best vision model for
+    this hardware and pulls that automatically.
+
+    Args:
+        model: Ollama model tag to pull, e.g. "qwen2.5-vl:7b".
+               Leave empty to auto-select via llmfit.
+
+    Returns:
+        Status message describing what was pulled or why it was skipped.
+    """
+    if not model:
+        # Auto-select via llmfit
+        vision_models = get_runnable_models(use_case="multimodal", min_fit="good", limit=3)
+        model = select_best_ollama_model(vision_models) or "qwen2.5-vl:7b"
+
+    already, msg = ensure_ollama_model(model)
+    if already:
+        return msg
+    return f"Pulled model '{model}' from Ollama. Ready to use.\n{msg}"
+
+
+@tool
+def list_available_models() -> str:
+    """List all VLMs / LLMs currently downloaded in Ollama.
+
+    Returns:
+        Newline-separated list of pulled model tags, or a message if Ollama
+        is unreachable.
+    """
+    models = list_ollama_models()
+    if not models:
+        return "No models found or Ollama is not running at http://localhost:11434."
+    return "Pulled Ollama models:\n" + "\n".join(f"  - {m}" for m in sorted(models))
+
 
 @tool
 def check_runnable_models(use_case: str = "multimodal") -> str:

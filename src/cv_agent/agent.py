@@ -18,6 +18,9 @@ from cv_agent.tools.knowledge_graph import add_paper_to_graph, query_graph, expo
 from cv_agent.tools.spec_generator import generate_spec, generate_spec_from_url
 from cv_agent.tools.hardware_probe import (
     check_runnable_models,
+    list_available_models,
+    pull_vision_model,
+    ensure_ollama_model,
     select_best_ollama_model,
     get_runnable_models,
 )
@@ -27,11 +30,13 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """\
 You are an expert Computer Vision research agent. Your capabilities:
 
-0. **Hardware-Aware Model Selection**: Use the `check_runnable_models` tool to probe \
-local hardware (RAM, VRAM, CPU, acceleration backend) via llmfit and determine which \
-LLM/vision models can run on this machine. Always prefer locally-runnable models to \
-reduce latency and avoid API costs. If a task requires a model not yet pulled into \
-Ollama, suggest the exact `ollama pull <model>` command.
+0. **Hardware-Aware Model Selection & Auto-Download**:
+   - Use `check_runnable_models` to find which VLMs fit this hardware.
+   - Use `list_available_models` to see what is already pulled in Ollama.
+   - Use `pull_vision_model` to download the appropriate VLM automatically before \
+running any vision task. Always ensure the right model is available BEFORE calling \
+vision tools. Call `pull_vision_model` with no arguments to let the system choose \
+the best model for the hardware, or pass a specific tag e.g. "qwen2.5-vl:7b".
 
 
 1. **Vision Analysis**: Analyze images using state-of-the-art vision models (Qwen2.5-VL, LLaVA) \
@@ -78,8 +83,10 @@ def build_tools(config: AgentConfig) -> list:
         file_write,
         web_search,
         http_request,
-        # Hardware probe — llmfit model selection
+        # Hardware probe + Ollama model management
         check_runnable_models,
+        list_available_models,
+        pull_vision_model,
         # CV-specific tools
         analyze_image,
         describe_image,
@@ -136,9 +143,13 @@ def apply_hardware_probe(config: AgentConfig) -> AgentConfig:
             updates["vision"] = config.vision.model_copy(
                 update={"ollama": config.vision.ollama.model_copy(update={"default_model": best_vision})}
             )
+            _, pull_msg = ensure_ollama_model(best_vision, config.vision.ollama.host)
+            logger.info(pull_msg)
         if best_general:
             logger.info("llmfit recommends LLM model: %s", best_general)
             updates["llm"] = config.llm.model_copy(update={"model": best_general})
+            _, pull_msg = ensure_ollama_model(best_general, config.vision.ollama.host)
+            logger.info(pull_msg)
 
         if updates:
             return config.model_copy(update=updates)
