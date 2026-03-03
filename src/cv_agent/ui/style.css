@@ -728,6 +728,74 @@ body {
     margin-bottom: 12px;
 }
 
+/* ── ZeroClaw Status ── */
+
+.zc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.zc-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.zc-card.highlight { border-color: #388bfd44; background: #1a2a3a; }
+.zc-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.zc-value { font-size: 13px; color: var(--text-primary); font-weight: 600; }
+.zc-value.shim  { color: var(--warning); }
+.zc-value.pkg   { color: #3fb950; }
+.zc-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 12px;
+}
+.zc-tool-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+.zc-update-banner {
+    font-size: 12px;
+    color: #e3b341;
+    background: #2e2200;
+    border: 1px solid #4a3800;
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-bottom: 10px;
+}
+.zc-not-on-pypi {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-bottom: 10px;
+}
+.zc-install-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.zc-install-hint code {
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {

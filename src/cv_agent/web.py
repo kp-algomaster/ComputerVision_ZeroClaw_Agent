@@ -274,6 +274,46 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
+    @app.get("/api/zeroclaw")
+    async def zeroclaw_status():
+        """ZeroClaw integration status — shim vs package, version, and PyPI update check."""
+        import importlib.metadata as _meta
+
+        # Check if the real zeroclaw-tools package is installed
+        real_pkg: str | None = None
+        try:
+            real_pkg = _meta.version("zeroclaw-tools")
+        except _meta.PackageNotFoundError:
+            pass
+
+        using_shim = real_pkg is None
+        current_version = real_pkg if real_pkg else "shim-0.1.0"
+
+        # Non-blocking PyPI version check
+        pypi_version: str | None = None
+        update_available = False
+        try:
+            import httpx as _httpx
+            resp = _httpx.get("https://pypi.org/pypi/zeroclaw-tools/json", timeout=4)
+            if resp.status_code == 200:
+                pypi_version = resp.json()["info"]["version"]
+                if real_pkg and real_pkg != pypi_version:
+                    update_available = True
+        except Exception:
+            pass
+
+        return JSONResponse({
+            "mode": "shim" if using_shim else "package",
+            "current_version": current_version,
+            "pypi_version": pypi_version,
+            "update_available": update_available,
+            "package_on_pypi": pypi_version is not None,
+            "agent_framework": "LangChain + LangGraph",
+            "tool_call_mode": "text-based ReAct (balanced-brace extractor)",
+            "builtin_tools": ["shell", "file_read", "file_write", "web_search", "http_request"],
+            "shim_path": "src/zeroclaw_tools/__init__.py" if using_shim else None,
+        })
+
     @app.get("/api/models/recommended")
     async def recommended_models():
         """Return llmfit hardware probe + recommended VLMs."""

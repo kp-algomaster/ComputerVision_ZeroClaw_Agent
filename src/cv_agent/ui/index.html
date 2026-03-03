@@ -167,9 +167,17 @@
                     </div>
                 </div>
 
-                <!-- Right: Pull Form + Recommendations -->
+                <!-- Right: ZeroClaw Status + Pull Form + Recommendations -->
                 <div class="panel-right">
                     <div class="panel-header">
+                        <h2>ZeroClaw Status</h2>
+                        <button class="btn-sm" onclick="loadZeroClawStatus()">↻ Refresh</button>
+                    </div>
+                    <div id="zeroClawStatus" class="config-section">
+                        <p class="placeholder">Loading…</p>
+                    </div>
+
+                    <div class="panel-header" style="border-top:1px solid var(--border)">
                         <h2>Pull a Model</h2>
                     </div>
                     <div class="config-section">

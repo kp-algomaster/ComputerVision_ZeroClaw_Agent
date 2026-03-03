@@ -490,7 +490,62 @@ async function loadDigest(filename) {
 // ── Config / Model Management ──
 
 async function loadConfig() {
-    await Promise.all([loadHardwareAndRecommended(), loadPulledModels()]);
+    await Promise.all([loadZeroClawStatus(), loadHardwareAndRecommended(), loadPulledModels()]);
+}
+
+async function loadZeroClawStatus() {
+    const el = document.getElementById('zeroClawStatus');
+    try {
+        const resp = await fetch('/api/zeroclaw');
+        const d = await resp.json();
+
+        const modeLabel = d.mode === 'shim'
+            ? '<span class="zc-value shim">Local Shim</span>'
+            : '<span class="zc-value pkg">Real Package</span>';
+
+        let updateHtml = '';
+        if (d.update_available) {
+            updateHtml = `<div class="zc-update-banner">
+                ⬆ Update available: <strong>${d.pypi_version}</strong> (current: ${d.current_version})
+                — run <code>pip install -U zeroclaw-tools</code>
+            </div>`;
+        } else if (!d.package_on_pypi && d.mode === 'shim') {
+            updateHtml = `<div class="zc-not-on-pypi">
+                zeroclaw-tools not yet on PyPI — using local compatibility shim.
+                <div class="zc-install-hint">When published: <code>pip install zeroclaw-tools</code> then delete <code>src/zeroclaw_tools/</code></div>
+            </div>`;
+        }
+
+        const toolsHtml = (d.builtin_tools || [])
+            .map(t => `<span class="zc-tool-chip">${t}</span>`)
+            .join('');
+
+        el.innerHTML = `
+            ${updateHtml}
+            <div class="zc-grid">
+                <div class="zc-card highlight">
+                    <div class="zc-label">Mode</div>
+                    ${modeLabel}
+                </div>
+                <div class="zc-card">
+                    <div class="zc-label">Version</div>
+                    <div class="zc-value">${d.current_version}</div>
+                </div>
+                <div class="zc-card">
+                    <div class="zc-label">Agent Framework</div>
+                    <div class="zc-value" style="font-size:11px">${d.agent_framework}</div>
+                </div>
+                <div class="zc-card">
+                    <div class="zc-label">Tool Call Mode</div>
+                    <div class="zc-value" style="font-size:10px;line-height:1.4">${d.tool_call_mode}</div>
+                </div>
+            </div>
+            <div class="zc-label" style="margin-bottom:6px">Built-in Tools</div>
+            <div class="zc-tools">${toolsHtml}</div>
+        `;
+    } catch (e) {
+        el.innerHTML = '<p class="placeholder">Failed to load ZeroClaw status.</p>';
+    }
 }
 
 async function loadHardwareAndRecommended() {
