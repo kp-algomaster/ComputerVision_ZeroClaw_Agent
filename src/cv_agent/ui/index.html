@@ -34,6 +34,10 @@
             <li class="nav-item" data-view="digests">
                 <span class="nav-icon">📰</span> Digests
             </li>
+            <li class="nav-section-label">Configuration</li>
+            <li class="nav-item" data-view="config">
+                <span class="nav-icon">🤖</span> Model Management
+            </li>
         </ul>
         <div class="sidebar-footer">
             <div id="agentInfo">Loading...</div>
@@ -138,6 +142,54 @@
                         <p class="placeholder">Click a digest to read it.</p>
                     </div>
                 </div>
+            </div>
+        </section>
+        <!-- Configuration / Model Management View -->
+        <section id="view-config" class="view">
+            <div class="split-view">
+
+                <!-- Left: Hardware + Pulled Models -->
+                <div class="panel-left config-panel-left">
+                    <div class="panel-header">
+                        <h2>Hardware</h2>
+                        <button class="btn-sm" onclick="loadConfig()">↻ Refresh</button>
+                    </div>
+                    <div id="hardwareInfo" class="config-section">
+                        <p class="placeholder">Loading…</p>
+                    </div>
+
+                    <div class="panel-header" style="border-top:1px solid var(--border)">
+                        <h2>Pulled Models</h2>
+                        <span id="pulledCount" class="badge-count"></span>
+                    </div>
+                    <div id="pulledModelsList" class="config-section model-list">
+                        <p class="placeholder">Loading…</p>
+                    </div>
+                </div>
+
+                <!-- Right: Pull Form + Recommendations -->
+                <div class="panel-right">
+                    <div class="panel-header">
+                        <h2>Pull a Model</h2>
+                    </div>
+                    <div class="config-section">
+                        <p class="config-hint">Enter an Ollama model tag (e.g. <code>qwen2.5-vl:7b</code>) or leave blank to auto-select the best fit for your hardware.</p>
+                        <div class="pull-form">
+                            <input id="pullModelInput" type="text" placeholder="e.g. qwen2.5-vl:7b  (blank = auto)" />
+                            <button id="pullModelBtn" class="btn-pull" onclick="pullModel()">⬇ Pull</button>
+                        </div>
+                        <div id="pullStatus" class="pull-status" hidden></div>
+                    </div>
+
+                    <div class="panel-header" style="border-top:1px solid var(--border)">
+                        <h2>llmfit Recommendations</h2>
+                        <span id="llmfitBadge" class="badge-count"></span>
+                    </div>
+                    <div id="recommendedList" class="config-section model-list">
+                        <p class="placeholder">Loading…</p>
+                    </div>
+                </div>
+
             </div>
         </section>
     </main>

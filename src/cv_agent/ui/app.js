@@ -33,10 +33,11 @@ function switchView(view) {
     document.getElementById(`view-${view}`).classList.add('active');
 
     // Load data for the view
-    if (view === 'vault') loadVaultTree();
-    if (view === 'graph') loadGraph();
-    if (view === 'specs') loadSpecs();
+    if (view === 'vault')   loadVaultTree();
+    if (view === 'graph')   loadGraph();
+    if (view === 'specs')   loadSpecs();
     if (view === 'digests') loadDigests();
+    if (view === 'config')  loadConfig();
 }
 
 // ── Status Check ──
@@ -483,6 +484,188 @@ async function loadDigest(filename) {
         renderMathInElement(container);
     } catch (e) {
         console.error('Failed to load digest:', e);
+    }
+}
+
+// ── Config / Model Management ──
+
+async function loadConfig() {
+    await Promise.all([loadHardwareAndRecommended(), loadPulledModels()]);
+}
+
+async function loadHardwareAndRecommended() {
+    try {
+        const resp = await fetch('/api/models/recommended');
+        const data = await resp.json();
+
+        // Hardware panel
+        const hw = data.hardware;
+        const hwEl = document.getElementById('hardwareInfo');
+        if (hw) {
+            hwEl.innerHTML = `
+                <div class="hw-grid">
+                    <div class="hw-card">
+                        <div class="hw-value">${hw.ram_gb.toFixed(0)} GB</div>
+                        <div class="hw-label">System RAM</div>
+                    </div>
+                    <div class="hw-card">
+                        <div class="hw-value">${hw.gpu_vram_gb.toFixed(0)} GB</div>
+                        <div class="hw-label">GPU VRAM</div>
+                    </div>
+                    <div class="hw-card">
+                        <div class="hw-value">${hw.cpu_cores}</div>
+                        <div class="hw-label">CPU Cores</div>
+                    </div>
+                    <div class="hw-card">
+                        <div class="hw-value">${hw.gpu_vram_gb > 0 ? 'GPU' : 'CPU'}</div>
+                        <div class="hw-label">Inference Mode</div>
+                    </div>
+                    <div class="hw-accel">
+                        <span>Acceleration</span>
+                        <span class="accel-badge">${hw.acceleration.toUpperCase()}</span>
+                    </div>
+                </div>`;
+        } else if (!data.llmfit_available) {
+            hwEl.innerHTML = `<div class="llmfit-notice">
+                ⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.<br>
+                Install: <code>brew install llmfit</code>
+            </div>`;
+        } else {
+            hwEl.innerHTML = '<p class="placeholder">Hardware info unavailable.</p>';
+        }
+
+        // Recommended models panel
+        const recEl = document.getElementById('recommendedList');
+        const badge = document.getElementById('llmfitBadge');
+        if (!data.llmfit_available) {
+            recEl.innerHTML = `<div class="llmfit-notice">Install llmfit to get hardware-matched recommendations.</div>`;
+            badge.textContent = 'llmfit required';
+            return;
+        }
+        const recs = data.recommended || [];
+        badge.textContent = recs.length + ' models';
+        if (recs.length === 0) {
+            recEl.innerHTML = '<p class="placeholder">No recommendations found.</p>';
+            return;
+        }
+        recEl.innerHTML = '';
+        for (const m of recs) {
+            const row = document.createElement('div');
+            row.className = 'model-row';
+            const fitCls = { perfect: 'fit-perfect', good: 'fit-good', marginal: 'fit-marginal' }[m.fit] || 'fit-unknown';
+            row.innerHTML = `
+                <span class="fit-badge ${fitCls}">${m.fit}</span>
+                <span class="model-name" title="${m.name}:${m.quantization}">${m.name}:${m.quantization}</span>
+                <span class="model-meta">${m.vram_gb}GB</span>
+                <button class="btn-pull-sm" onclick="quickPull('${m.name}:${m.quantization}', this)">⬇</button>`;
+            recEl.appendChild(row);
+        }
+    } catch (e) {
+        document.getElementById('hardwareInfo').innerHTML = '<p class="placeholder">Failed to load.</p>';
+        console.error(e);
+    }
+}
+
+async function loadPulledModels() {
+    try {
+        const resp = await fetch('/api/models');
+        const data = await resp.json();
+        const container = document.getElementById('pulledModelsList');
+        const badge = document.getElementById('pulledCount');
+        const models = data.models || [];
+        badge.textContent = models.length;
+
+        if (models.length === 0) {
+            container.innerHTML = '<p class="placeholder">No models pulled yet.</p>';
+            return;
+        }
+        container.innerHTML = '';
+        for (const name of models.sort()) {
+            const row = document.createElement('div');
+            row.className = 'model-row';
+            row.innerHTML = `
+                <span class="model-name" title="${name}">${name}</span>
+                <button class="btn-delete" onclick="deleteModel('${name}', this)" title="Delete">✕</button>`;
+            container.appendChild(row);
+        }
+    } catch (e) {
+        document.getElementById('pulledModelsList').innerHTML = '<p class="placeholder">Failed to load.</p>';
+    }
+}
+
+async function pullModel() {
+    const input = document.getElementById('pullModelInput');
+    const btn = document.getElementById('pullModelBtn');
+    const status = document.getElementById('pullStatus');
+    const model = input.value.trim();
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Pulling…';
+    status.hidden = false;
+    status.className = 'pull-status';
+    status.textContent = model ? `Pulling '${model}'…` : 'Auto-selecting and pulling best model…';
+
+    try {
+        const resp = await fetch('/api/models/pull', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        status.className = 'pull-status success';
+        status.textContent = data.message;
+        input.value = '';
+        await loadPulledModels();
+    } catch (e) {
+        status.className = 'pull-status error';
+        status.textContent = 'Error: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ Pull';
+    }
+}
+
+async function quickPull(modelTag, btn) {
+    const status = document.getElementById('pullStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    status.hidden = false;
+    status.className = 'pull-status';
+    status.textContent = `Pulling '${modelTag}'…`;
+
+    try {
+        const resp = await fetch('/api/models/pull', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelTag }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        status.className = 'pull-status success';
+        status.textContent = data.message;
+        await loadPulledModels();
+    } catch (e) {
+        status.className = 'pull-status error';
+        status.textContent = 'Error: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇';
+    }
+}
+
+async function deleteModel(name, btn) {
+    if (!confirm(`Delete model '${name}'? This cannot be undone.`)) return;
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        await loadPulledModels();
+    } catch (e) {
+        alert('Delete failed: ' + e.message);
+        btn.disabled = false;
     }
 }
 

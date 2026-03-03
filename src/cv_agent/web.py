@@ -240,6 +240,69 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "vault_path": config.knowledge.vault_path,
         })
 
+    # ── Model Management ───────────────────────────────────────────────────
+
+    @app.get("/api/models")
+    async def list_models():
+        """List all models currently pulled in Ollama."""
+        from cv_agent.tools.hardware_probe import list_ollama_models
+        return JSONResponse({"models": list_ollama_models(config.vision.ollama.host)})
+
+    @app.post("/api/models/pull")
+    async def pull_model(body: dict):
+        """Pull a model from Ollama registry. Body: {"model": "<tag>"}"""
+        from cv_agent.tools.hardware_probe import ensure_ollama_model
+        model = (body.get("model") or "").strip()
+        if not model:
+            return JSONResponse({"error": "model tag is required"}, status_code=400)
+        already, msg = ensure_ollama_model(model, config.vision.ollama.host)
+        return JSONResponse({"already_present": already, "message": msg, "model": model})
+
+    @app.delete("/api/models/{name:path}")
+    async def delete_model(name: str):
+        """Delete a pulled model from Ollama."""
+        import httpx as _httpx
+        host = config.vision.ollama.host.rstrip("/")
+        try:
+            resp = _httpx.delete(
+                f"{host}/api/delete",
+                json={"name": name},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return JSONResponse({"message": f"Deleted '{name}'"})
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+
+    @app.get("/api/models/recommended")
+    async def recommended_models():
+        """Return llmfit hardware probe + recommended VLMs."""
+        from cv_agent.tools.hardware_probe import (
+            get_hardware_info, get_runnable_models, is_llmfit_available,
+        )
+        hw = get_hardware_info()
+        recs = get_runnable_models(use_case="multimodal", min_fit="marginal", limit=10)
+        return JSONResponse({
+            "llmfit_available": is_llmfit_available(),
+            "hardware": {
+                "ram_gb": hw.ram_gb,
+                "cpu_cores": hw.cpu_cores,
+                "gpu_vram_gb": hw.gpu_vram_gb,
+                "acceleration": hw.acceleration,
+            } if hw else None,
+            "recommended": [
+                {
+                    "name": m.name,
+                    "provider": m.provider,
+                    "fit": m.fit,
+                    "quantization": m.quantization,
+                    "score": round(m.composite_score, 1),
+                    "vram_gb": round(m.vram_gb, 1),
+                }
+                for m in recs
+            ],
+        })
+
     return app
 
 
