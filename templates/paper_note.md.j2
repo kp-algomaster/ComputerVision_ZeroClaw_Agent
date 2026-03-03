@@ -1,0 +1,50 @@
+---
+type: paper
+arxiv_id: "{{ arxiv_id }}"
+title: "{{ title }}"
+authors: {{ authors | tojson }}
+published: "{{ published }}"
+tags: [cv/paper{% for cat in categories %}, cv/{{ cat }}{% endfor %}]
+created: "{{ date }}"
+---
+
+# {{ title }}
+
+**ArXiv:** [{{ arxiv_id }}](https://arxiv.org/abs/{{ arxiv_id }})
+**PDF:** [Download](https://arxiv.org/pdf/{{ arxiv_id }}.pdf)
+**Authors:** {{ authors | join(", ") }}
+**Published:** {{ published }}
+
+## Abstract
+
+{{ abstract }}
+
+## Key Contributions
+
+{{ contributions }}
+
+## Methods
+
+{% for method in methods %}
+- [[{{ method }}]]
+{% endfor %}
+
+## Datasets
+
+{% for dataset in datasets %}
+- [[{{ dataset }}]]
+{% endfor %}
+
+## Related Papers
+
+{% for related in related_papers %}
+- [[{{ related }}]]
+{% endfor %}
+
+## Notes
+
+*Add your reading notes here*
+
+## Equations
+
+{{ equations }}

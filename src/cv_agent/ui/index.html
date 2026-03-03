@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV Zero Claw Agent</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav id="sidebar">
+        <div class="sidebar-header">
+            <h1>🦀👁️ CV Agent</h1>
+            <span class="status-dot" id="statusDot"></span>
+        </div>
+        <ul class="nav-list">
+            <li class="nav-item active" data-view="chat">
+                <span class="nav-icon">💬</span> Chat
+            </li>
+            <li class="nav-item" data-view="vault">
+                <span class="nav-icon">🗂️</span> Knowledge Vault
+            </li>
+            <li class="nav-item" data-view="graph">
+                <span class="nav-icon">🕸️</span> Knowledge Graph
+            </li>
+            <li class="nav-item" data-view="specs">
+                <span class="nav-icon">📋</span> Specs
+            </li>
+            <li class="nav-item" data-view="digests">
+                <span class="nav-icon">📰</span> Digests
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div id="agentInfo">Loading...</div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="mainContent">
+        <!-- Chat View -->
+        <section id="view-chat" class="view active">
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message system">
+                        <div class="message-content">
+                            <p><strong>CV Zero Claw Agent</strong> — ready to assist with computer vision research.</p>
+                            <p>Try: <em>"Search for recent papers on vision transformers"</em> or <em>"Generate a spec from arxiv.org/abs/2312.00785"</em></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="typing-indicator" id="typingIndicator" hidden>
+                    <span></span><span></span><span></span>
+                </div>
+                <form class="chat-input" id="chatForm">
+                    <textarea id="chatInput" placeholder="Ask about CV research, analyze papers, generate specs..." rows="1"></textarea>
+                    <button type="submit" id="sendBtn">Send</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Vault View -->
+        <section id="view-vault" class="view">
+            <div class="split-view">
+                <div class="panel-left">
+                    <div class="panel-header">
+                        <h2>Knowledge Vault</h2>
+                        <button class="btn-sm" onclick="loadVaultTree()">↻ Refresh</button>
+                    </div>
+                    <div id="vaultTree" class="file-tree"></div>
+                </div>
+                <div class="panel-right">
+                    <div class="panel-header">
+                        <h2 id="noteTitle">Select a note</h2>
+                    </div>
+                    <div id="noteContent" class="rendered-content">
+                        <p class="placeholder">Click a file in the vault tree to view it.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Graph View -->
+        <section id="view-graph" class="view">
+            <div class="panel-header">
+                <h2>Knowledge Graph</h2>
+                <div>
+                    <span id="graphStats"></span>
+                    <button class="btn-sm" onclick="loadGraph()">↻ Refresh</button>
+                </div>
+            </div>
+            <div id="graphContainer" class="graph-container">
+                <canvas id="graphCanvas"></canvas>
+            </div>
+        </section>
+
+        <!-- Specs View -->
+        <section id="view-specs" class="view">
+            <div class="split-view">
+                <div class="panel-left">
+                    <div class="panel-header">
+                        <h2>Generated Specs</h2>
+                        <button class="btn-sm" onclick="loadSpecs()">↻ Refresh</button>
+                    </div>
+                    <div id="specsList" class="file-list"></div>
+                </div>
+                <div class="panel-right">
+                    <div class="panel-header">
+                        <h2 id="specTitle">Select a spec</h2>
+                        <button class="btn-sm" id="specRawToggle" hidden onclick="toggleSpecRaw()">Raw</button>
+                    </div>
+                    <div id="specContent" class="rendered-content">
+                        <p class="placeholder">Click a spec file to view it.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Digests View -->
+        <section id="view-digests" class="view">
+            <div class="split-view">
+                <div class="panel-left">
+                    <div class="panel-header">
+                        <h2>Weekly Digests</h2>
+                        <button class="btn-sm" onclick="loadDigests()">↻ Refresh</button>
+                    </div>
+                    <div id="digestsList" class="file-list"></div>
+                </div>
+                <div class="panel-right">
+                    <div class="panel-header">
+                        <h2 id="digestTitle">Select a digest</h2>
+                    </div>
+                    <div id="digestContent" class="rendered-content">
+                        <p class="placeholder">Click a digest to read it.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>

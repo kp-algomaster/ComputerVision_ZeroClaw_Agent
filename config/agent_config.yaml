@@ -1,0 +1,123 @@
+# CV Zero Claw Agent Configuration
+
+agent:
+  name: "CV Research Agent"
+  description: "Autonomous computer vision research agent"
+  log_level: INFO
+
+# Vision model configuration
+vision:
+  # Primary: Ollama
+  ollama:
+    host: "${OLLAMA_HOST:-http://localhost:11434}"
+    default_model: "${OLLAMA_VISION_MODEL:-qwen2.5-vl:7b}"
+    models:
+      - qwen2.5-vl:7b
+      - qwen2.5-vl:72b
+      - llava:13b
+      - llava-next:latest
+    timeout: 120
+    max_tokens: 4096
+
+  # Secondary: MLX (Apple Silicon)
+  mlx:
+    enabled: true
+    models:
+      - mlx-community/Qwen2.5-VL-7B-Instruct-4bit
+      - mlx-community/llava-1.5-7b-4bit
+    cache_dir: ~/.cache/mlx-cv-agent
+
+# LLM for text generation (summaries, digests)
+llm:
+  provider: "${LLM_PROVIDER:-ollama}"
+  model: "${LLM_MODEL:-qwen2.5:7b}"
+  api_key: "${LLM_API_KEY:-}"
+  base_url: "${LLM_BASE_URL:-http://localhost:11434/v1}"
+  temperature: 0.3
+  max_tokens: 8192
+
+# Research monitoring
+research:
+  sources:
+    arxiv:
+      enabled: true
+      categories:
+        - cs.CV
+        - cs.AI
+        - cs.LG
+        - cs.RO
+      max_results_per_query: 50
+      queries:
+        - "object detection"
+        - "image segmentation"
+        - "visual foundation model"
+        - "3D reconstruction"
+        - "neural radiance field"
+        - "diffusion model vision"
+        - "vision language model"
+        - "video understanding"
+        - "depth estimation"
+        - "visual SLAM"
+        - "point cloud"
+        - "optical flow"
+
+    papers_with_code:
+      enabled: true
+      areas:
+        - computer-vision
+        - image-classification
+        - object-detection
+        - semantic-segmentation
+
+    semantic_scholar:
+      enabled: true
+      api_key: "${SEMANTIC_SCHOLAR_API_KEY:-}"
+      fields_of_study:
+        - Computer Science
+      min_citation_count: 5
+
+  # Monitoring schedule
+  check_interval_hours: 12
+  digest_day: "Monday"  # Day of week for weekly digest
+
+# Knowledge graph
+knowledge:
+  vault_path: "${VAULT_PATH:-./vault}"
+  vault_name: "${OBSIDIAN_VAULT_NAME:-CV_Research}"
+  entity_types:
+    - paper
+    - method
+    - dataset
+    - architecture
+    - loss_function
+    - metric
+    - task
+    - author
+    - institution
+  link_types:
+    - proposes
+    - uses
+    - extends
+    - evaluates_on
+    - outperforms
+    - cites
+    - authored_by
+
+# Spec generation
+spec:
+  output_dir: "${OUTPUT_DIR:-./output}/specs"
+  template: "templates/spec.md.j2"
+  extract:
+    equations: true
+    architectures: true
+    loss_functions: true
+    training_details: true
+    datasets: true
+    metrics: true
+    ablation_results: true
+
+# Output
+output:
+  base_dir: "${OUTPUT_DIR:-./output}"
+  digests_dir: "${OUTPUT_DIR:-./output}/digests"
+  format: markdown
