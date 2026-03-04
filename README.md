@@ -1,162 +1,309 @@
 # CV Zero Claw Agent 🦀👁️
 
-An autonomous Computer Vision research agent that monitors arXiv, processes papers, builds knowledge graphs, and generates spec-driven development files. Powered by [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
+An autonomous Computer Vision research agent — monitors arXiv, processes papers, builds knowledge graphs, generates specs, and runs vision tasks locally via Ollama and MLX. Powered by [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
-## Features
+---
 
-- **Vision Model Integration** — Run Ollama models (Qwen2.5-VL, LLaVA, etc.) and MLX-accelerated models for CV tasks
-- **Hardware-Aware Model Selection** — Uses [llmfit](https://github.com/AlexsJones/llmfit) at startup to pick the best locally-runnable model for your hardware
-- **Research Monitor** — Auto-tracks ArXiv, Papers With Code, and Semantic Scholar for latest CV research
-- **Weekly Magazine** — Generates curated weekly digest/blog of new CV breakthroughs
-- **Knowledge Graphs** — Builds Obsidian-compatible knowledge vaults linking papers, methods, datasets, and concepts
-- **Paper → Spec Pipeline** — Extracts equations, architectures, and key findings from papers into `spec.md` files for spec-driven development
-- **Web UI** — FastAPI + WebSocket chat interface at `http://localhost:8420`
+## Architecture
 
-## How ZeroClaw is Used
+```mermaid
+graph TD
+    UI["🌐 Web UI\n(FastAPI · port 8420)"]
+    CLI["⌨️ CLI\ncv-agent"]
+    WS["WebSocket\n/ws/chat"]
 
-ZeroClaw is the **tool execution layer** between the agent orchestrator and the CV tools. It provides:
+    ORCH["🧠 Agent Orchestrator\nagent.py · LangGraph ReAct"]
+    ZC["⚙️ ZeroClaw\ncreate_agent · @tool"]
 
-| ZeroClaw API | What it does in this project |
-|---|---|
-| `@tool` decorator | Marks Python functions as agent-callable tools (`pull_vision_model`, `search_arxiv`, `generate_spec`, etc.) |
-| `create_agent(tools, model)` | Builds the LangGraph ReAct loop that drives the agent's reasoning and tool dispatch |
-| Built-in tools | `shell`, `file_read`, `file_write`, `web_search`, `http_request` — used by the agent during research tasks |
+    subgraph Tools["🔧 Tools"]
+        T1["search_arxiv\nfetch_paper"]
+        T2["analyze_image\ndescribe_image"]
+        T3["extract_equations\ngenerate_spec"]
+        T4["add_to_graph\nquery_graph"]
+        T5["shell · file_read\nfile_write · web_search"]
+        T6["pull_vision_model\nprobe_hardware"]
+    end
 
-**Current status:** The `zeroclaw-tools` Rust package is not yet on PyPI. A local compatibility shim at `src/zeroclaw_tools/__init__.py` provides the identical API surface using LangChain + LangGraph. When the real package ships:
+    subgraph Backends["⚡ Backends"]
+        OL["Ollama\nlocalhost:11434"]
+        MLX["MLX\nApple Silicon"]
+        AX["ArXiv API"]
+        SS["Semantic Scholar"]
+        FS["Local Filesystem\n& Obsidian Vault"]
+    end
 
-```bash
-pip install zeroclaw-tools
-rm -rf src/zeroclaw_tools/   # shim no longer needed — zero other changes required
+    UI --> WS --> ORCH
+    CLI --> ORCH
+    ORCH --> ZC --> Tools
+    T1 --> AX & SS
+    T2 --> OL & MLX
+    T3 & T4 --> FS
+    T5 --> FS
+    T6 --> OL
 ```
 
-The shim also includes a **text-based ReAct fallback**: models like `qwen2.5-coder` that don't emit native `tool_calls` output JSON as plain text. The shim's balanced-brace scanner extracts and executes those calls transparently.
-
-![ZeroClaw Integration](docs/diagrams/zeroclaw_integration.svg)
-
-## System Architecture
-
-ZeroClaw sits between the agent orchestrator and all tool-decorated functions:
-
-![System Architecture](docs/diagrams/architecture.svg)
+---
 
 ## Research → Knowledge Pipeline
 
-![Research Pipeline](docs/diagrams/research_pipeline.svg)
+```mermaid
+flowchart LR
+    A["📡 Sources\nArXiv · PWC\nSemantic Scholar"]
+    B["📄 Paper Fetch\nAbstract + PDF"]
+    C["∑ Extract\nEquations · Arch\nDatasets · Metrics"]
+    D["📋 Spec File\nspec.md"]
+    E["🕸️ Knowledge Graph\nObsidian Vault"]
+    F["📰 Weekly Digest\nMarkdown Blog"]
+
+    A -->|monitor| B
+    B -->|parse| C
+    C -->|generate| D
+    C -->|index| E
+    E -->|summarise| F
+```
+
+---
 
 ## Hardware-Aware Model Selection
 
-At startup, llmfit probes your hardware and ZeroClaw's `create_agent()` is called with the optimal model:
+```mermaid
+flowchart LR
+    HW["🖥️ Hardware Probe\nllmfit system"]
+    INFO["M4 Max\n36 GB RAM · 36 GB VRAM\n14 cores · Metal"]
+    RANK["📊 llmfit rank\nmodels by fit score"]
+    SEL["✅ Selected Model\nminimax-m2.5:cloud"]
+    AG["🧠 Agent\ncreate_agent(model)"]
 
-![Model Selection](docs/diagrams/model_selection.svg)
+    HW --> INFO --> RANK --> SEL --> AG
+```
 
-> Diagrams rendered with [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) (catppuccin-mocha theme).
-> Regenerate: `node scripts/generate_diagrams.mjs`
+---
+
+## Web UI
+
+Single-page app at `http://localhost:8420` using a sidebar layout inspired by OpenClaw.
+
+```
+┌─────────────────────┬────────────────────────────────────────┐
+│  SIDEBAR            │  MAIN CONTENT AREA                     │
+│                     │                                        │
+│  💬 Chat            │  Active view rendered here.            │
+│                     │  WebSocket-powered live chat with      │
+│  ── Control ──      │  full markdown, code highlighting,     │
+│  📊 Overview        │  LaTeX equations (KaTeX), and          │
+│  🔗 Channels        │  Mermaid diagrams.                     │
+│  🤖 Models          │                                        │
+│  📋 Sessions        │                                        │
+│  ⏰ Jobs            │                                        │
+│                     │                                        │
+│  ── Agent ──        │                                        │
+│  ⚡ Skills          │                                        │
+│  🔌 Powers          │                                        │
+│                     │                                        │
+│  ── Research ──     │                                        │
+│  🗂️ Knowledge Vault │                                        │
+│  🕸️ Knowledge Graph │                                        │
+│  📝 Specs           │                                        │
+│  📰 Digests         │                                        │
+│                     │                                        │
+│  ── Settings ──     │                                        │
+│  ⚙️ Config          │                                        │
+│  🔧 Debug           │                                        │
+│  📄 Logs            │                                        │
+└─────────────────────┴────────────────────────────────────────┘
+```
+
+---
+
+## Skills
+
+Skills are specialised capabilities the agent can perform. A skill is **Ready** when all required powers and packages are available.
+
+| Icon | Skill | Category | Status |
+|------|-------|----------|--------|
+| ✍️ | Write Research Blog | Content | ✅ Ready |
+| 📰 | Weekly Digest | Content | ✅ Ready |
+| 📧 | Email Reports | Content | ⚡ Needs Power (Email) |
+| 🖼️ | 2D Image Processing | Vision | ✅ Ready |
+| 🧊 | 3D Image Processing | Vision | 📦 Needs Install (`open3d`) |
+| 🎥 | Video Understanding | Vision | 📦 Needs Install (`opencv-python`) |
+| 📋 | Paper → Spec | Research | ✅ Ready |
+| 🕸️ | Knowledge Graph | Research | ✅ Ready |
+| ∑ | Equation Extraction | Research | ✅ Ready |
+| 🏆 | Kaggle Competition | ML | ⚡ Needs Power (Kaggle) |
+| 🎯 | Model Fine-Tuning | ML | ⚡ Needs Power (HuggingFace / Azure ML) |
+| 📊 | Dataset Analysis | ML | ✅ Ready |
+
+**7 / 12 skills ready** out of the box. Unlock the rest by configuring the relevant Powers.
+
+---
+
+## Powers
+
+Powers are external resources and integrations. Active powers unlock additional skills and expand what the agent can do.
+
+### 🔌 Built-in (always available)
+
+| Icon | Power | Status | Notes |
+|------|-------|--------|-------|
+| 🔍 | Internet Search | ✅ Active | DuckDuckGo by default; set `BRAVE_API_KEY` for higher quality |
+| 📁 | Local File System | ✅ Active | `file_read`, `file_write`, `shell` via ZeroClaw |
+| 📚 | ArXiv | ✅ Active | Free public API — no key required |
+| 🔬 | Semantic Scholar | ⚠️ Limited | Rate-limited; set `SEMANTIC_SCHOLAR_API_KEY` for full access |
+
+### 🔗 Integrations (configure in Powers view)
+
+| Icon | Power | Status | Env Var |
+|------|-------|--------|---------|
+| 📧 | Email (SMTP) | Inactive | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` |
+| 🤗 | HuggingFace Hub | Inactive | `HF_TOKEN` |
+| 🏆 | Kaggle | Inactive | `KAGGLE_USERNAME`, `KAGGLE_KEY` |
+| 🐙 | GitHub | Inactive | `GITHUB_TOKEN` |
+
+### ☁️ Cloud Compute
+
+| Icon | Power | Status | Env Var |
+|------|-------|--------|---------|
+| ☁️ | Azure ML | Inactive | `AZURE_SUBSCRIPTION_ID`, `AZURE_ML_WORKSPACE` |
+| 🚀 | RunPod | Inactive | `RUNPOD_API_KEY` |
+
+All powers are configurable directly from the **Powers** view in the UI — no manual `.env` editing required.
+
+---
+
+## ZeroClaw Integration
+
+ZeroClaw is the **tool execution layer** between the agent orchestrator and CV tools.
+
+```mermaid
+graph LR
+    A["🧠 Agent\nLangGraph ReAct"] --> B["⚙️ ZeroClaw\ncreate_agent"]
+    B --> C["@tool functions\n(Python decorators)"]
+    C --> D["Ollama · MLX\nArXiv · Filesystem\nWeb Search"]
+
+    style A fill:#1a3a5c,stroke:#58a6ff,color:#e6edf3
+    style B fill:#2a1f4a,stroke:#bf8fff,color:#e6edf3
+    style C fill:#1c2128,stroke:#30363d,color:#e6edf3
+    style D fill:#0d1117,stroke:#30363d,color:#8b949e
+```
+
+**Current status:** `zeroclaw-tools` is not yet on PyPI. A local shim at `src/zeroclaw_tools/__init__.py` provides the identical API surface via LangChain + LangGraph. When the package ships:
+
+```bash
+pip install zeroclaw-tools
+rm -rf src/zeroclaw_tools/   # zero other changes required
+```
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- [Ollama](https://ollama.ai) running locally with a vision model
-- macOS with Apple Silicon (for MLX acceleration, optional)
-- [llmfit](https://github.com/AlexsJones/llmfit) for hardware-aware model selection (optional): `brew install llmfit`
+- [Ollama](https://ollama.ai) running locally
+- macOS Apple Silicon recommended (Metal acceleration via MLX)
+- [llmfit](https://github.com/AlexsJones/llmfit) for hardware detection: `brew install llmfit`
 
 ### Setup
 
 ```bash
-# Clone and install
+git clone https://github.com/kp-algomaster/ComputerVision_ZeroClaw_Agent
 cd CV_Zero_Claw_Agent
-./scripts/setup.sh
 
-# Or manual install
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Pull a vision model
-ollama pull qwen2.5-vl:7b
-
-# Configure
-cp .env.example .env
-# Edit .env with your API keys
+cp .env.example .env   # add API keys
 ```
 
-### Usage
+### Launch
 
 ```bash
-# Activate environment
+# Web UI — chat + model management + skills/powers dashboard
 source .venv/bin/activate
-
-# Launch the Web UI (chat + content viewer + model management)
 cv-agent ui
-# Opens at http://127.0.0.1:8420
+# → http://127.0.0.1:8420
 
-# Or start terminal interactive mode
-cv-agent start
-
-# Process a specific paper
-cv-agent paper https://arxiv.org/abs/2312.00785 --spec
-
-# Generate weekly digest
-cv-agent digest --week
-
-# Analyze an image with vision model
-cv-agent vision analyze path/to/image.png
-
-# Build/update knowledge graph
-cv-agent knowledge sync
-
-# Interactive mode
-cv-agent chat
+# Or start directly with uvicorn
+uvicorn cv_agent.web:create_app --factory --host 127.0.0.1 --port 8420 --app-dir src
 ```
+
+### CLI Commands
+
+```bash
+cv-agent start                                     # interactive terminal agent
+cv-agent paper https://arxiv.org/abs/2312.00785 --spec  # process a paper
+cv-agent digest --week                             # generate weekly digest
+cv-agent vision analyze path/to/image.png          # analyse an image
+cv-agent knowledge sync                            # sync knowledge graph
+```
+
+---
 
 ## Project Structure
 
 ```
-├── src/cv_agent/
-│   ├── agent.py              # Main agent orchestrator
-│   ├── cli.py                # Click CLI entry point
-│   ├── web.py                # FastAPI web server
-│   ├── config.py             # Pydantic config loader
-│   ├── ui/                   # Web UI frontend
-│   │   ├── index.html        # Single-page app shell
-│   │   ├── style.css         # Dark-theme styles
-│   │   └── app.js            # Frontend logic (chat, viewers, model management)
-│   ├── tools/                # ZeroClaw @tool-decorated functions
-│   │   ├── vision.py         # Ollama vision model tools
-│   │   ├── mlx_vision.py     # MLX-accelerated vision
-│   │   ├── paper_fetch.py    # ArXiv/paper fetching
-│   │   ├── equation_extract.py  # Equation extraction
-│   │   ├── knowledge_graph.py   # Knowledge graph builder
-│   │   ├── spec_generator.py    # spec.md generation
-│   │   └── hardware_probe.py    # llmfit hardware detection + Ollama model management
-│   ├── research/             # Research monitoring
-│   │   ├── monitor.py        # Source monitoring
-│   │   ├── digest.py         # Weekly digest generator
-│   │   └── sources.py        # Research sources config
-│   └── knowledge/            # Knowledge management
-│       ├── graph.py          # Graph core logic
-│       └── obsidian.py       # Obsidian vault integration
-├── src/zeroclaw_tools/       # ZeroClaw compatibility shim (delete when pkg ships on PyPI)
-│   └── __init__.py           # @tool, create_agent(), shell, file_read, web_search, http_request
-├── docs/diagrams/            # Generated SVG diagrams
-├── templates/                # Jinja2 templates
-├── vault/                    # Obsidian knowledge vault
-├── output/                   # Generated outputs
-├── config/                   # Configuration files
-└── scripts/                  # Utility scripts
+CV_Zero_Claw_Agent/
+├── src/
+│   ├── cv_agent/
+│   │   ├── agent.py              # Agent orchestrator + LangGraph ReAct loop
+│   │   ├── cli.py                # Click CLI entry point
+│   │   ├── web.py                # FastAPI server + all API endpoints
+│   │   ├── config.py             # Pydantic config (AgentConfig, LlmfitConfig)
+│   │   ├── ui/
+│   │   │   ├── index.html        # 15-view SPA shell
+│   │   │   ├── style.css         # Dark theme (GitHub-inspired)
+│   │   │   └── app.js            # View routing, chat WS, all loaders
+│   │   ├── tools/
+│   │   │   ├── vision.py         # Ollama vision tools
+│   │   │   ├── mlx_vision.py     # MLX-accelerated vision (Apple Silicon)
+│   │   │   ├── paper_fetch.py    # ArXiv / paper fetching
+│   │   │   ├── equation_extract.py   # LaTeX equation extraction
+│   │   │   ├── knowledge_graph.py    # Obsidian knowledge graph
+│   │   │   ├── spec_generator.py     # Paper → spec.md pipeline
+│   │   │   ├── hardware_probe.py     # llmfit integration + Ollama management
+│   │   │   └── remote.py             # Telegram / Discord / messaging
+│   │   ├── research/
+│   │   │   ├── monitor.py        # Source monitoring scheduler
+│   │   │   ├── digest.py         # Weekly digest generator
+│   │   │   └── sources.py        # ArXiv / PWC / Semantic Scholar config
+│   │   └── knowledge/
+│   │       ├── graph.py          # Graph core logic
+│   │       └── obsidian.py       # Obsidian vault writer
+│   └── zeroclaw_tools/
+│       └── __init__.py           # ZeroClaw shim (delete when PyPI pkg ships)
+├── config/
+│   └── agent_config.yaml         # Full agent configuration
+├── vault/                        # Obsidian knowledge vault output
+├── output/                       # Generated specs and digests
+└── .env                          # Secrets (gitignored)
 ```
+
+---
 
 ## Configuration
 
-See [config/agent_config.yaml](config/agent_config.yaml) for full configuration options.
+### Environment Variables (`.env`)
 
-Key environment variables in `.env`:
-- `OLLAMA_HOST` — Ollama server URL (default: `http://localhost:11434`)
-- `LLM_MODEL` — LLM model tag (default: `qwen2.5:7b`)
-- `OLLAMA_VISION_MODEL` — Vision model tag (default: `qwen2.5-vl:7b`)
-- `ARXIV_CATEGORIES` — ArXiv categories to monitor (default: `cs.CV,cs.AI,cs.LG`)
-- `SEMANTIC_SCHOLAR_API_KEY` — Optional Semantic Scholar API key
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `LLM_MODEL` | `minimax-m2.5:cloud` | LLM model tag |
+| `OLLAMA_VISION_MODEL` | `minimax-m2.5:cloud` | Vision model tag |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible base URL |
+| `BRAVE_API_KEY` | — | Brave Search (upgrades web search quality) |
+| `SEMANTIC_SCHOLAR_API_KEY` | — | Removes rate limits on paper search |
+| `HF_TOKEN` | — | HuggingFace Hub access |
+| `KAGGLE_USERNAME` / `KAGGLE_KEY` | — | Kaggle competition tools |
+| `GITHUB_TOKEN` | — | GitHub repo access |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | — | Email power |
+| `VAULT_PATH` | `./vault` | Obsidian vault output path |
+
+Full configuration reference: [`config/agent_config.yaml`](config/agent_config.yaml)
+
+---
 
 ## License
 
