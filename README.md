@@ -317,7 +317,7 @@ Full configuration reference: [`config/agent_config.yaml`](config/agent_config.y
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for full terms.
 
 ```
-MIT License  Copyright (c) 2025 kp-algomaster
+MIT License  Copyright (c) 2026 kp-algomaster
 ```
 
 You are free to use, modify, and distribute this software for any purpose, including commercial use, with no warranty. Attribution appreciated but not required.
