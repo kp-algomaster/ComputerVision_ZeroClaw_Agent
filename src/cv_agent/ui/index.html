@@ -145,8 +145,8 @@
             </div>
         </section>
         <!-- Configuration / Model Management View -->
-        <section id="view-config" class="view">
-            <div class="split-view">
+        <section id="view-config" class="view config-view">
+            <div class="split-view config-split">
 
                 <!-- Left: Hardware + Pulled Models -->
                 <div class="panel-left config-panel-left">
@@ -199,6 +199,21 @@
                 </div>
 
             </div>
+
+            <!-- Remote Connections — full-width row below the split panels -->
+            <div class="remote-section">
+                <div class="remote-section-header">
+                    <div>
+                        <h2>Remote Connections</h2>
+                        <p class="remote-section-hint">Connect the agent to messaging platforms. The agent can push research updates, digest summaries, and alerts directly to your preferred channel.</p>
+                    </div>
+                    <button class="btn-sm" onclick="loadIntegrations()">↻ Refresh</button>
+                </div>
+                <div id="integrationCards" class="integration-grid">
+                    <p class="placeholder">Loading…</p>
+                </div>
+            </div>
+
         </section>
     </main>
 

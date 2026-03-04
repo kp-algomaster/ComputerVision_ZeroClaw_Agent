@@ -109,6 +109,37 @@ class OutputConfig(BaseModel):
     format: str = "markdown"
 
 
+class TelegramConfig(BaseModel):
+    enabled: bool = Field(default_factory=lambda: os.environ.get("TELEGRAM_ENABLED", "false").lower() == "true")
+    bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
+    chat_id: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_CHAT_ID", ""))
+
+
+class WhatsAppConfig(BaseModel):
+    enabled: bool = Field(default_factory=lambda: os.environ.get("WHATSAPP_ENABLED", "false").lower() == "true")
+    access_token: str = Field(default_factory=lambda: os.environ.get("WHATSAPP_ACCESS_TOKEN", ""))
+    phone_number_id: str = Field(default_factory=lambda: os.environ.get("WHATSAPP_PHONE_NUMBER_ID", ""))
+
+
+class SignalConfig(BaseModel):
+    enabled: bool = Field(default_factory=lambda: os.environ.get("SIGNAL_ENABLED", "false").lower() == "true")
+    cli_path: str = Field(default_factory=lambda: os.environ.get("SIGNAL_CLI_PATH", "signal-cli"))
+    phone_number: str = Field(default_factory=lambda: os.environ.get("SIGNAL_PHONE_NUMBER", ""))
+    recipient: str = Field(default_factory=lambda: os.environ.get("SIGNAL_RECIPIENT", ""))
+
+
+class DiscordConfig(BaseModel):
+    enabled: bool = Field(default_factory=lambda: os.environ.get("DISCORD_ENABLED", "false").lower() == "true")
+    webhook_url: str = Field(default_factory=lambda: os.environ.get("DISCORD_WEBHOOK_URL", ""))
+
+
+class RemoteConnectionsConfig(BaseModel):
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
+    signal: SignalConfig = Field(default_factory=SignalConfig)
+    discord: DiscordConfig = Field(default_factory=DiscordConfig)
+
+
 class AgentConfig(BaseModel):
     name: str = "CV Research Agent"
     description: str = "Autonomous computer vision research agent"
@@ -120,6 +151,7 @@ class AgentConfig(BaseModel):
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     spec: SpecConfig = Field(default_factory=SpecConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    remote: RemoteConnectionsConfig = Field(default_factory=RemoteConnectionsConfig)
 
 
 def _resolve_env_vars(data: dict | list | str) -> dict | list | str:

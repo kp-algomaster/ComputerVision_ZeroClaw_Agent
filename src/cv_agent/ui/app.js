@@ -490,7 +490,7 @@ async function loadDigest(filename) {
 // ── Config / Model Management ──
 
 async function loadConfig() {
-    await Promise.all([loadZeroClawStatus(), loadHardwareAndRecommended(), loadPulledModels()]);
+    await Promise.all([loadZeroClawStatus(), loadHardwareAndRecommended(), loadPulledModels(), loadIntegrations()]);
 }
 
 async function loadZeroClawStatus() {
@@ -720,6 +720,149 @@ async function deleteModel(name, btn) {
         await loadPulledModels();
     } catch (e) {
         alert('Delete failed: ' + e.message);
+        btn.disabled = false;
+    }
+}
+
+// ── Remote Integrations ──
+
+async function loadIntegrations() {
+    const grid = document.getElementById('integrationCards');
+    try {
+        const resp = await fetch('/api/integrations');
+        const data = await resp.json();
+        grid.innerHTML = '';
+        for (const [id, info] of Object.entries(data)) {
+            grid.appendChild(buildIntegrationCard(id, info));
+        }
+    } catch (e) {
+        grid.innerHTML = '<p class="placeholder">Failed to load integrations.</p>';
+    }
+}
+
+function buildIntegrationCard(id, info) {
+    const card = document.createElement('div');
+    const statusClass = info.enabled ? 'enabled' : (info.configured ? 'connected' : '');
+    card.className = `int-card ${statusClass}`;
+    card.id = `int-card-${id}`;
+
+    const dotClass = info.enabled ? 'ok' : (info.configured ? 'warn' : '');
+    const statusLabel = info.enabled ? 'Enabled' : (info.configured ? 'Configured' : 'Not configured');
+
+    // Build credential fields HTML
+    const fieldsHtml = info.fields.map(f => `
+        <div class="int-field">
+            <label>${f.label}</label>
+            <input type="${f.secret ? 'password' : 'text'}"
+                   id="int-${id}-${f.key}"
+                   placeholder="${escapeHtml(f.placeholder || '')}"
+                   value="${escapeHtml(info.field_values[f.key] || '')}" />
+        </div>`).join('');
+
+    card.innerHTML = `
+        <div class="int-card-head">
+            <span class="int-icon">${info.icon}</span>
+            <div class="int-info">
+                <div class="int-title">
+                    ${info.label}
+                    <span class="int-status-dot ${dotClass}" title="${statusLabel}"></span>
+                </div>
+                <div class="int-desc">${info.description}</div>
+            </div>
+            <label class="int-toggle" title="${info.enabled ? 'Disable' : 'Enable'}">
+                <input type="checkbox" id="int-toggle-${id}" ${info.enabled ? 'checked' : ''}
+                       onchange="toggleIntegration('${id}', this.checked)">
+                <span class="int-slider"></span>
+            </label>
+        </div>
+        <div class="int-actions">
+            <button class="int-btn" onclick="toggleIntegrationForm('${id}')">⚙ Configure</button>
+            <button class="int-btn primary" id="int-test-${id}" onclick="testIntegration('${id}')">▷ Test</button>
+        </div>
+        <div class="int-form" id="int-form-${id}">
+            ${fieldsHtml}
+            <div class="int-docs">${escapeHtml(info.docs)}</div>
+            <div class="int-save-row">
+                <button class="int-btn primary" onclick="saveIntegration('${id}')">Save</button>
+                <span class="int-save-status" id="int-save-status-${id}"></span>
+            </div>
+        </div>`;
+    return card;
+}
+
+function toggleIntegrationForm(id) {
+    const form = document.getElementById(`int-form-${id}`);
+    form.classList.toggle('open');
+}
+
+async function toggleIntegration(id, enabled) {
+    try {
+        await fetch(`/api/integrations/${id}/configure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        await loadIntegrations();
+    } catch (e) {
+        console.error('Toggle failed:', e);
+    }
+}
+
+async function saveIntegration(id) {
+    const statusEl = document.getElementById(`int-save-status-${id}`);
+    statusEl.className = 'int-save-status';
+    statusEl.textContent = 'Saving…';
+
+    // Collect field values from inputs
+    const fields = {};
+    document.querySelectorAll(`#int-form-${id} input[id^="int-${id}-"]`).forEach(input => {
+        const key = input.id.replace(`int-${id}-`, '');
+        // Only send non-masked values (user has typed something real)
+        if (input.value && !input.value.match(/^•+/)) {
+            fields[key] = input.value;
+        }
+    });
+
+    try {
+        const resp = await fetch(`/api/integrations/${id}/configure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields }),
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || 'Unknown error');
+        statusEl.className = 'int-save-status ok';
+        statusEl.textContent = `Saved (${data.updated.length} key${data.updated.length !== 1 ? 's' : ''})`;
+        await loadIntegrations();
+    } catch (e) {
+        statusEl.className = 'int-save-status error';
+        statusEl.textContent = e.message;
+    }
+}
+
+async function testIntegration(id) {
+    const btn = document.getElementById(`int-test-${id}`);
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+        const resp = await fetch(`/api/integrations/${id}/test`, { method: 'POST' });
+        const data = await resp.json();
+        btn.textContent = data.ok ? '✓' : '✗';
+        btn.title = data.message;
+        // Show result in save-status if form is open, else alert
+        const statusEl = document.getElementById(`int-save-status-${id}`);
+        if (statusEl) {
+            statusEl.className = `int-save-status ${data.ok ? 'ok' : 'error'}`;
+            statusEl.textContent = data.message;
+            // Open form to show result
+            document.getElementById(`int-form-${id}`).classList.add('open');
+        }
+        setTimeout(() => { btn.textContent = '▷ Test'; btn.title = ''; }, 3000);
+    } catch (e) {
+        btn.textContent = '✗';
+        btn.title = e.message;
+        setTimeout(() => { btn.textContent = '▷ Test'; btn.title = ''; }, 3000);
+    } finally {
         btn.disabled = false;
     }
 }

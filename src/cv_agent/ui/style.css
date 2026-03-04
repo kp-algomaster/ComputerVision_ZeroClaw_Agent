@@ -796,6 +796,197 @@ body {
     font-family: monospace;
 }
 
+/* ── Remote Connections ── */
+
+/* Override split-view height inside config so Remote section can appear below */
+.config-view { overflow-y: auto; }
+.config-split { height: auto; min-height: 460px; flex-shrink: 0; overflow: visible; }
+.config-split .panel-left,
+.config-split .panel-right { overflow-y: auto; max-height: 520px; }
+
+.remote-section {
+    border-top: 2px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-primary);
+}
+.remote-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 16px 20px 10px;
+    gap: 12px;
+}
+.remote-section-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.remote-section-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 600px;
+    line-height: 1.5;
+}
+
+.integration-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    padding: 4px 20px 20px;
+}
+
+/* Integration card */
+.int-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+.int-card.connected   { border-color: #2a5a3a; }
+.int-card.enabled     { border-color: #388bfd66; }
+
+.int-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 10px;
+}
+.int-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+.int-info { flex: 1; min-width: 0; }
+.int-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.int-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.int-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+}
+.int-status-dot.ok   { background: var(--success); }
+.int-status-dot.warn { background: var(--warning); }
+
+.int-actions {
+    display: flex;
+    gap: 6px;
+    padding: 0 14px 12px;
+}
+.int-btn {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 11px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    transition: all 0.15s;
+}
+.int-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.int-btn.primary {
+    background: var(--accent-bg);
+    border-color: #388bfd55;
+    color: var(--accent);
+}
+.int-btn.primary:hover { background: #1e4a80; }
+.int-btn.danger { border-color: #5a2a2a; color: var(--danger); }
+.int-btn.danger:hover { background: #3a1a1a; }
+.int-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Expandable credential form */
+.int-form {
+    border-top: 1px solid var(--border);
+    padding: 12px 14px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+}
+.int-form.open { display: flex; }
+.int-field { display: flex; flex-direction: column; gap: 3px; }
+.int-field label { font-size: 11px; color: var(--text-muted); }
+.int-field input {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 5px 8px;
+    font-family: var(--font-mono);
+    width: 100%;
+}
+.int-field input:focus { outline: none; border-color: var(--accent); }
+.int-docs {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    padding: 4px 0 2px;
+    border-top: 1px solid var(--border);
+}
+.int-save-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.int-save-status {
+    font-size: 11px;
+    flex: 1;
+    color: var(--text-muted);
+}
+.int-save-status.ok    { color: var(--success); }
+.int-save-status.error { color: var(--danger); }
+
+/* toggle switch */
+.int-toggle {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    flex-shrink: 0;
+}
+.int-toggle input { display: none; }
+.int-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.int-slider::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 3px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+}
+.int-toggle input:checked + .int-slider { background: var(--accent-bg); }
+.int-toggle input:checked + .int-slider::before {
+    transform: translateX(14px);
+    background: var(--accent);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -239,6 +240,204 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "vision_model": config.vision.ollama.default_model,
             "vault_path": config.knowledge.vault_path,
         })
+
+    # ── Remote Integrations ────────────────────────────────────────────────
+
+    _PLATFORMS: dict = {
+        "telegram": {
+            "label": "Telegram", "icon": "✈️",
+            "description": "Send messages via a Telegram Bot.",
+            "docs": "Create a bot at t.me/BotFather, then use /getUpdates to find your Chat ID.",
+            "fields": [
+                {"key": "TELEGRAM_BOT_TOKEN", "label": "Bot Token", "secret": True,
+                 "placeholder": "123456789:AAABB..."},
+                {"key": "TELEGRAM_CHAT_ID", "label": "Chat ID", "secret": False,
+                 "placeholder": "-1001234567890"},
+            ],
+            "enabled_key": "TELEGRAM_ENABLED",
+        },
+        "discord": {
+            "label": "Discord", "icon": "🎮",
+            "description": "Post to a Discord channel via an Incoming Webhook.",
+            "docs": "Channel Settings → Integrations → Webhooks → New Webhook.",
+            "fields": [
+                {"key": "DISCORD_WEBHOOK_URL", "label": "Webhook URL", "secret": True,
+                 "placeholder": "https://discord.com/api/webhooks/..."},
+            ],
+            "enabled_key": "DISCORD_ENABLED",
+        },
+        "whatsapp": {
+            "label": "WhatsApp", "icon": "💬",
+            "description": "Send via Meta Cloud API (WhatsApp Business).",
+            "docs": "Requires a Meta Business account. Get credentials at developers.facebook.com.",
+            "fields": [
+                {"key": "WHATSAPP_ACCESS_TOKEN", "label": "Access Token", "secret": True,
+                 "placeholder": "EAABxxx..."},
+                {"key": "WHATSAPP_PHONE_NUMBER_ID", "label": "Phone Number ID", "secret": False,
+                 "placeholder": "123456789012345"},
+                {"key": "WHATSAPP_RECIPIENT", "label": "Default Recipient", "secret": False,
+                 "placeholder": "+14155552671"},
+            ],
+            "enabled_key": "WHATSAPP_ENABLED",
+        },
+        "signal": {
+            "label": "Signal", "icon": "🔒",
+            "description": "Encrypted messages via signal-cli (self-hosted).",
+            "docs": "Install signal-cli from github.com/AsamK/signal-cli and register your number.",
+            "fields": [
+                {"key": "SIGNAL_CLI_PATH", "label": "signal-cli path", "secret": False,
+                 "placeholder": "signal-cli"},
+                {"key": "SIGNAL_PHONE_NUMBER", "label": "Sender Number", "secret": False,
+                 "placeholder": "+14155550000"},
+                {"key": "SIGNAL_RECIPIENT", "label": "Default Recipient", "secret": False,
+                 "placeholder": "+14155551111"},
+            ],
+            "enabled_key": "SIGNAL_ENABLED",
+        },
+    }
+
+    def _mask(value: str) -> str:
+        if not value:
+            return ""
+        return "•" * max(0, len(value) - 4) + value[-4:]
+
+    @app.get("/api/integrations")
+    async def list_integrations():
+        """Return status and masked field values for all remote platforms."""
+        result = {}
+        for pid, meta in _PLATFORMS.items():
+            field_values: dict[str, str] = {}
+            configured = True
+            for f in meta["fields"]:
+                val = os.environ.get(f["key"], "")
+                field_values[f["key"]] = _mask(val) if f["secret"] else val
+                if not val:
+                    configured = False
+            result[pid] = {
+                "label": meta["label"],
+                "icon": meta["icon"],
+                "description": meta["description"],
+                "docs": meta["docs"],
+                "configured": configured,
+                "enabled": os.environ.get(meta["enabled_key"], "false").lower() == "true",
+                "fields": meta["fields"],
+                "field_values": field_values,
+            }
+        return JSONResponse(result)
+
+    @app.post("/api/integrations/{platform}/configure")
+    async def configure_integration(platform: str, body: dict):
+        """Update credentials for a platform. Persists to .env and updates os.environ.
+
+        Body: {"fields": {"ENV_KEY": "value", ...}, "enabled": bool}
+        """
+        if platform not in _PLATFORMS:
+            return JSONResponse({"error": f"Unknown platform: {platform}"}, status_code=404)
+        meta = _PLATFORMS[platform]
+        allowed_keys = {f["key"] for f in meta["fields"]} | {meta["enabled_key"]}
+        updates: dict[str, str] = {}
+        for key, value in (body.get("fields") or {}).items():
+            if key in allowed_keys and value is not None:
+                os.environ[key] = str(value)
+                updates[key] = str(value)
+        enabled = body.get("enabled")
+        if enabled is not None:
+            os.environ[meta["enabled_key"]] = "true" if enabled else "false"
+            updates[meta["enabled_key"]] = "true" if enabled else "false"
+        # Persist to .env
+        env_path = _PROJECT_ROOT / ".env"
+        if env_path.exists() and updates:
+            lines = env_path.read_text().splitlines()
+            written: set[str] = set()
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#") and "=" in stripped:
+                    k = stripped.split("=", 1)[0].strip()
+                    if k in updates:
+                        new_lines.append(f"{k}={updates[k]}")
+                        written.add(k)
+                        continue
+                new_lines.append(line)
+            for k, v in updates.items():
+                if k not in written:
+                    new_lines.append(f"{k}={v}")
+            env_path.write_text("\n".join(new_lines) + "\n")
+        return JSONResponse({"ok": True, "updated": list(updates.keys())})
+
+    @app.post("/api/integrations/{platform}/test")
+    async def test_integration(platform: str):
+        """Test the connection for a remote platform."""
+        if platform not in _PLATFORMS:
+            return JSONResponse({"error": f"Unknown platform: {platform}"}, status_code=404)
+        import httpx as _hx
+        import subprocess as _sp
+
+        if platform == "telegram":
+            token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+            if not token:
+                return JSONResponse({"ok": False, "message": "Bot token not set."})
+            try:
+                r = _hx.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+                if r.status_code != 200:
+                    return JSONResponse({"ok": False, "message": f"API error {r.status_code}: {r.text[:100]}"})
+                name = r.json().get("result", {}).get("username", "unknown")
+                msg = f"Bot @{name} reachable."
+                if chat_id:
+                    _hx.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        json={"chat_id": chat_id, "text": "CV Agent: connection test ✓"},
+                        timeout=5,
+                    )
+                    msg += f" Test message sent to {chat_id}."
+                return JSONResponse({"ok": True, "message": msg})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "message": str(exc)})
+
+        elif platform == "discord":
+            webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+            if not webhook:
+                return JSONResponse({"ok": False, "message": "Webhook URL not set."})
+            try:
+                r = _hx.post(webhook, json={"content": "CV Agent: connection test ✓"}, timeout=5)
+                if r.status_code in (200, 204):
+                    return JSONResponse({"ok": True, "message": "Test message delivered to Discord."})
+                return JSONResponse({"ok": False, "message": f"Error {r.status_code}: {r.text[:100]}"})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "message": str(exc)})
+
+        elif platform == "whatsapp":
+            token = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
+            phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+            if not token or not phone_id:
+                return JSONResponse({"ok": False, "message": "Access token or phone number ID not set."})
+            try:
+                r = _hx.get(
+                    f"https://graph.facebook.com/v19.0/{phone_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=5,
+                )
+                if r.status_code == 200:
+                    display = r.json().get("display_phone_number", phone_id)
+                    return JSONResponse({"ok": True, "message": f"WhatsApp number {display} verified."})
+                return JSONResponse({"ok": False, "message": f"Meta API error {r.status_code}: {r.text[:100]}"})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "message": str(exc)})
+
+        elif platform == "signal":
+            cli = os.environ.get("SIGNAL_CLI_PATH", "signal-cli").strip()
+            try:
+                r = _sp.run([cli, "--version"], capture_output=True, text=True, timeout=5)
+                if r.returncode == 0:
+                    return JSONResponse({"ok": True, "message": f"{r.stdout.strip()} — signal-cli found."})
+                return JSONResponse({"ok": False, "message": r.stderr.strip() or "non-zero exit."})
+            except FileNotFoundError:
+                return JSONResponse({"ok": False, "message": f"signal-cli not found at '{cli}'."})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "message": str(exc)})
+
+        return JSONResponse({"ok": False, "message": "Test not implemented."})
 
     # ── Model Management ───────────────────────────────────────────────────
 
