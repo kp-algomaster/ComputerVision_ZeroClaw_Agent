@@ -1,0 +1,18 @@
+{
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "80"
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '⚠️  Context window at 80% — compacting conversation to free space. Start a new session (/new) if you want a clean slate.' >&2"
+          }
+        ]
+      }
+    ]
+  }
+}
