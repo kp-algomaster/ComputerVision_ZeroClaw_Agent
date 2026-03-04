@@ -14,6 +14,7 @@ let _t2dJobId = null;
 let _t2dPollTimer = null;
 let _t2dReady = false;
 let _t2dProviderDefaults = { profiles: {}, vlm_providers: {}, image_providers: {} };
+let _t2dVlmChoices = [];
 let _skillsById = {};
 let _draggedPinnedSkillId = null;
 
@@ -25,6 +26,7 @@ function _localDefaultT2DVlmModel(vlmProvider) {
 }
 
 function _localDefaultT2DImageModel(imageProvider) {
+    if (imageProvider === 'mermaid_local') return 'beautiful-mermaid';
     if (imageProvider === 'matplotlib') return 'matplotlib';
     if (imageProvider === 'google_imagen') return 'gemini-3-pro-image-preview';
     if (imageProvider === 'openai_imagen') return 'gpt-image-1';
@@ -37,7 +39,7 @@ function _localT2DProfileMap(profile) {
     if (profile === 'gemini') return { vlm_provider: 'gemini', image_provider: 'google_imagen' };
     if (profile === 'openai') return { vlm_provider: 'openai', image_provider: 'openai_imagen' };
     if (profile === 'openrouter') return { vlm_provider: 'openrouter', image_provider: 'openrouter_imagen' };
-    return { vlm_provider: 'ollama', image_provider: 'matplotlib' };
+    return { vlm_provider: 'ollama', image_provider: 'mermaid_local' };
 }
 
 // ── Init ──
@@ -1306,30 +1308,125 @@ function _syncT2DProfileFromProviders() {
     if (matched) profileSel.value = matched;
 }
 
+function _populateT2DSelectOptions(selectEl, optionsMap, preferredValue) {
+    if (!selectEl) return;
+
+    const entries = Object.entries(optionsMap || {});
+    if (!entries.length) return;
+
+    const previousValue = selectEl.value;
+    selectEl.innerHTML = '';
+
+    for (const [id, meta] of entries) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = meta?.label || id;
+        selectEl.appendChild(opt);
+    }
+
+    const pick = [preferredValue, previousValue, entries[0][0]].find(v =>
+        typeof v === 'string' && entries.some(([id]) => id === v)
+    );
+    selectEl.value = pick || entries[0][0];
+}
+
+function _refreshT2DProviderSelectors(preferredProfile, preferredVlmProvider, preferredImageProvider) {
+    _populateT2DSelectOptions(
+        document.getElementById('t2dProvider'),
+        _t2dProviderDefaults.profiles,
+        preferredProfile
+    );
+    _populateT2DSelectOptions(
+        document.getElementById('t2dVlmProvider'),
+        _t2dProviderDefaults.vlm_providers,
+        preferredVlmProvider
+    );
+    _populateT2DSelectOptions(
+        document.getElementById('t2dImageProvider'),
+        _t2dProviderDefaults.image_providers,
+        preferredImageProvider
+    );
+}
+
+function _ensureT2DModelSelect(id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    if (el.tagName === 'SELECT') return el;
+
+    // Backward compatibility: older UI shipped these as <input> elements.
+    const sel = document.createElement('select');
+    sel.id = el.id;
+    sel.className = el.className;
+    sel.style.cssText = el.style.cssText;
+    if (el.disabled) sel.disabled = true;
+    el.replaceWith(sel);
+    return sel;
+}
+
+function _populateT2DModelSelectOptions(selectEl, choices, preferredValue) {
+    if (!selectEl) return;
+    const values = Array.from(new Set((choices || []).filter(v => typeof v === 'string' && v.trim())));
+    if (!values.length) return;
+
+    const previousValue = selectEl.value;
+    selectEl.innerHTML = '';
+
+    for (const value of values) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        selectEl.appendChild(opt);
+    }
+
+    const pick = [preferredValue, previousValue, values[0]].find(v => values.includes(v));
+    selectEl.value = pick || values[0];
+}
+
 function _setT2DModelInputState() {
+    const vlmInput = _ensureT2DModelSelect('t2dVlmModel');
     const imageProvider = document.getElementById('t2dImageProvider')?.value || 'matplotlib';
-    const imageInput = document.getElementById('t2dImageModel');
-    if (!imageInput) return;
-    const locked = imageProvider === 'matplotlib';
-    imageInput.disabled = locked;
-    if (locked) imageInput.value = 'matplotlib';
+    const imageInput = _ensureT2DModelSelect('t2dImageModel');
+    if (!imageInput || !vlmInput) return;
+
+    vlmInput.disabled = false;
+    vlmInput.title = '';
+
+    const locked = imageProvider === 'matplotlib' || imageProvider === 'mermaid_local';
+    const hasSingleImageChoice = (imageInput.options?.length || 0) <= 1;
+    imageInput.disabled = locked || hasSingleImageChoice;
 }
 
 function _applyT2DProviderDefaults(vlmProvider, imageProvider, force = false) {
     const vlmDefaults = (_t2dProviderDefaults.vlm_providers || {})[vlmProvider] || {};
     const imageDefaults = (_t2dProviderDefaults.image_providers || {})[imageProvider] || {};
-    const vlmInput = document.getElementById('t2dVlmModel');
-    const imageInput = document.getElementById('t2dImageModel');
+    const vlmInput = _ensureT2DModelSelect('t2dVlmModel');
+    const imageInput = _ensureT2DModelSelect('t2dImageModel');
     if (!vlmInput || !imageInput) return;
 
     const fallbackVlm = _localDefaultT2DVlmModel(vlmProvider);
     const fallbackImage = _localDefaultT2DImageModel(imageProvider);
+    const defaultVlm = vlmDefaults.default_vlm_model || fallbackVlm;
+    const defaultImage = imageDefaults.default_image_model || fallbackImage;
+
+    const vlmChoices =
+        vlmProvider === 'ollama' && _t2dVlmChoices.length
+            ? _t2dVlmChoices
+            : [defaultVlm];
+    const imageChoices = [defaultImage];
+    const lockedImageProvider = imageProvider === 'matplotlib' || imageProvider === 'mermaid_local';
+
+    _populateT2DModelSelectOptions(vlmInput, vlmChoices, force ? defaultVlm : vlmInput.value);
+    _populateT2DModelSelectOptions(
+        imageInput,
+        imageChoices,
+        force || lockedImageProvider ? defaultImage : imageInput.value
+    );
 
     if (force || !vlmInput.value.trim()) {
-        vlmInput.value = vlmDefaults.default_vlm_model || fallbackVlm;
+        vlmInput.value = vlmChoices.includes(defaultVlm) ? defaultVlm : vlmChoices[0];
     }
-    if (force || !imageInput.value.trim()) {
-        imageInput.value = imageDefaults.default_image_model || fallbackImage;
+    if (force || lockedImageProvider || !imageInput.value.trim()) {
+        imageInput.value = imageChoices.includes(defaultImage) ? defaultImage : imageChoices[0];
     }
     _setT2DModelInputState();
 }
@@ -1378,6 +1475,8 @@ async function loadTextToDiagramView() {
     const readiness = document.getElementById('t2dReadiness');
     const generateBtn = document.getElementById('t2dGenerateBtn');
     const { provider, vlmProvider, imageProvider, vlmModel, imageModel } = _getT2DSelections();
+    _ensureT2DModelSelect('t2dVlmModel');
+    _ensureT2DModelSelect('t2dImageModel');
     _applyT2DProviderDefaults(vlmProvider, imageProvider);
     if (status && !_t2dJobId) {
         status.className = 'status-badge inactive';
@@ -1399,15 +1498,21 @@ async function loadTextToDiagramView() {
 
         // Support both new hybrid details schema and legacy single-provider schema.
         const details = data?.details || {};
+        _t2dVlmChoices = Array.isArray(details.pulled_models) ? details.pulled_models : [];
         const legacyProviders = details.providers || {};
         const legacyVlmProviders = {};
         const legacyImageProviders = {};
         for (const [key, meta] of Object.entries(legacyProviders)) {
+            const legacyImageProvider = meta.image_provider || _localT2DProfileMap(key).image_provider;
             legacyVlmProviders[key] = {
+                label: meta.label || key,
                 default_vlm_model: meta.default_vlm_model || _localDefaultT2DVlmModel(key),
             };
-            legacyImageProviders[key] = {
-                default_image_model: meta.default_image_model || _localDefaultT2DImageModel(meta.image_provider || key),
+            legacyImageProviders[legacyImageProvider] = {
+                label: legacyImageProvider,
+                effective_provider: legacyImageProvider,
+                default_image_model:
+                    meta.default_image_model || _localDefaultT2DImageModel(legacyImageProvider),
             };
         }
 
@@ -1417,36 +1522,44 @@ async function loadTextToDiagramView() {
             image_providers: details.image_providers || legacyImageProviders,
         };
 
+        _refreshT2DProviderSelectors(provider, vlmProvider, imageProvider);
+        const currentSelections = _getT2DSelections();
+
         const resolvedVlmModel = details.selected_vlm_model || '';
         const resolvedImageModel = details.selected_image_model || '';
         const resolvedVlmProvider = details.selected_vlm_provider || '';
         const resolvedImageProvider = details.selected_image_provider || '';
         const resolvedImageProviderEffective = details.selected_image_provider_effective || resolvedImageProvider;
-        const vlmInput = document.getElementById('t2dVlmModel');
-        const imageInput = document.getElementById('t2dImageModel');
-        const effectiveSelectedImageProvider = imageProvider === 'stability' ? 'openrouter_imagen' : imageProvider;
+        const vlmInput = _ensureT2DModelSelect('t2dVlmModel');
+        const imageInput = _ensureT2DModelSelect('t2dImageModel');
+        const effectiveSelectedImageProvider =
+            currentSelections.imageProvider === 'stability'
+                ? 'openrouter_imagen'
+                : currentSelections.imageProvider;
 
-        const canApplyResolvedVlm = resolvedVlmProvider === vlmProvider;
+        const canApplyResolvedVlm = resolvedVlmProvider === currentSelections.vlmProvider;
         const canApplyResolvedImage =
-            resolvedImageProvider === imageProvider ||
+            resolvedImageProvider === currentSelections.imageProvider ||
             resolvedImageProviderEffective === effectiveSelectedImageProvider;
 
         if (
             vlmInput &&
             canApplyResolvedVlm &&
-            (!vlmInput.value.trim() || vlmInput.value.trim() === _localDefaultT2DVlmModel(vlmProvider))
+            (!vlmInput.value.trim() ||
+                vlmInput.value.trim() === _localDefaultT2DVlmModel(currentSelections.vlmProvider))
         ) {
             vlmInput.value = resolvedVlmModel || vlmInput.value;
         }
         if (
             imageInput &&
             canApplyResolvedImage &&
-            (!imageInput.value.trim() || imageInput.value.trim() === _localDefaultT2DImageModel(imageProvider))
+            (!imageInput.value.trim() ||
+                imageInput.value.trim() === _localDefaultT2DImageModel(currentSelections.imageProvider))
         ) {
             imageInput.value = resolvedImageModel || imageInput.value;
         }
 
-        _applyT2DProviderDefaults(vlmProvider, imageProvider);
+        _applyT2DProviderDefaults(currentSelections.vlmProvider, currentSelections.imageProvider);
         _syncT2DProfileFromProviders();
 
         const activeProfile = document.getElementById('t2dProvider')?.value || provider;
@@ -1566,7 +1679,25 @@ async function pollTextToDiagramJob() {
             : '<p class="placeholder">No iterations yet.</p>';
 
         const finalEl = document.getElementById('t2dFinal');
-        if (data.final_image_url) {
+        if (data.final_mermaid) {
+            const mermaidId = `t2d-mermaid-${data.id || _t2dJobId || 'final'}`;
+            const mmdDataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(data.final_mermaid)}`;
+            finalEl.innerHTML = `
+                <div id="${mermaidId}" class="mermaid">${escapeHtml(data.final_mermaid)}</div>
+                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <a class="btn-sm" href="${mmdDataUrl}" download="final_output.mmd">Download Mermaid Source</a>
+                </div>
+                <div class="t2d-iter-note">${escapeHtml(data.result_description || '')}</div>
+            `;
+
+            if (window.mermaid && typeof window.mermaid.initialize === 'function') {
+                window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+                const node = document.getElementById(mermaidId);
+                if (node && typeof window.mermaid.run === 'function') {
+                    window.mermaid.run({ nodes: [node] }).catch(() => {});
+                }
+            }
+        } else if (data.final_image_url) {
             finalEl.innerHTML = `
                 <img src="${data.final_image_url}" alt="Final output" class="t2d-img" />
                 <div style="margin-top:8px;">

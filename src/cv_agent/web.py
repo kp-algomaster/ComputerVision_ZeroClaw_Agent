@@ -373,7 +373,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     _T2D_PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "ollama": {
             "vlm_provider": "ollama",
-            "image_provider": "matplotlib",
+            "image_provider": "mermaid_local",
             "api_key_env": "",
             "label": "Ollama Local",
         },
@@ -421,6 +421,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     }
 
     _T2D_IMAGE_PROVIDER_OPTIONS: dict[str, dict[str, str]] = {
+        "mermaid_local": {
+            "provider": "mermaid_local",
+            "label": "Mermaid Local (SVG)",
+            "required_env": "",
+        },
         "matplotlib": {
             "provider": "matplotlib",
             "label": "Matplotlib (local)",
@@ -484,6 +489,33 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     def _effective_t2d_image_provider(image_provider: str) -> str:
         return _T2D_IMAGE_PROVIDER_OPTIONS[image_provider]["provider"]
 
+    def _slug_words(text: str, max_words: int = 3) -> str:
+        words = re.findall(r"[A-Za-z0-9]+", text.lower())
+        if not words:
+            return "step"
+        return "_".join(words[:max_words])
+
+    def _build_mermaid_from_text(caption: str, source_text: str, diagram_type: str) -> str:
+        sentences = [s.strip() for s in re.split(r"[\n\.]+", source_text) if s.strip()]
+        top = sentences[:4] if sentences else ["Input", "Processing", "Output"]
+        title = (caption or "Method Diagram").strip()
+        direction = "TD" if str(diagram_type).lower() == "methodology" else "LR"
+
+        lines = [f"flowchart {direction}"]
+        prev_node = None
+        for idx, sentence in enumerate(top, start=1):
+            label = re.sub(r"\s+", " ", sentence)[:64]
+            node = f"S{idx}_{_slug_words(label)}"
+            lines.append(f"    {node}[\"{label}\"]")
+            if prev_node is not None:
+                lines.append(f"    {prev_node} --> {node}")
+            prev_node = node
+
+        if prev_node:
+            lines.append(f"    {prev_node} --> OUT[\"{title[:64]}\"]")
+
+        return "\n".join(lines)
+
     def _default_t2d_vlm_model(vlm_provider: str, cfg_now: AgentConfig) -> str:
         if vlm_provider == "ollama":
             return cfg_now.text_to_diagram.ollama_vlm_model
@@ -494,6 +526,8 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         return os.environ.get("PAPERBANANA_OPENROUTER_VLM_MODEL") or "openai/gpt-4o-mini"
 
     def _default_t2d_image_model(image_provider: str) -> str:
+        if image_provider == "mermaid_local":
+            return "beautiful-mermaid"
         if image_provider == "matplotlib":
             return "matplotlib"
         if image_provider == "google_imagen":
@@ -516,6 +550,8 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         selected_vlm_model = (vlm_model or _default_t2d_vlm_model(vlm_provider, cfg_now)).strip()
         if image_provider == "matplotlib":
             return selected_vlm_model, "matplotlib"
+        if image_provider == "mermaid_local":
+            return selected_vlm_model, "beautiful-mermaid"
         selected_image_model = (image_model or _default_t2d_image_model(image_provider)).strip()
         return selected_vlm_model, selected_image_model
 
@@ -669,15 +705,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 issues.append(f"paperbanana missing ollama provider module: {exc}")
                 fixes.append("Install/pin patched paperbanana with ollama provider support")
 
-            try:
-                import importlib
+            if selected_image_provider == "matplotlib":
+                try:
+                    import importlib
 
-                importlib.import_module("paperbanana.providers.image_gen.matplotlib_gen")
-                details["matplotlib_provider_module"] = True
-            except Exception as exc:
-                details["matplotlib_provider_module"] = False
-                issues.append(f"paperbanana missing matplotlib provider module: {exc}")
-                fixes.append("Install/pin patched paperbanana with matplotlib image provider support")
+                    importlib.import_module("paperbanana.providers.image_gen.matplotlib_gen")
+                    details["matplotlib_provider_module"] = True
+                except Exception as exc:
+                    details["matplotlib_provider_module"] = False
+                    issues.append(f"paperbanana missing matplotlib provider module: {exc}")
+                    fixes.append("Install/pin patched paperbanana with matplotlib image provider support")
 
         # Check provider-level credentials and model availability.
         vlm_required_key = _T2D_VLM_PROVIDER_OPTIONS[selected_vlm_provider]["required_env"]
@@ -774,6 +811,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "image_model": image_model,
             "output_format_requested": output_format,
             "output_format_effective": None,
+            "final_mermaid": None,
             "events": [],
             "iterations": [],
             "seen_iterations": set(),
@@ -858,6 +896,23 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                             f"Configured VLM model '{t2d.ollama_vlm_model}' not found. Using '{selected_vlm_model}'.",
                             kind="warn",
                         )
+
+                if selected_image_provider == "mermaid_local":
+                    run_id = f"run_mermaid_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job_id[:6]}"
+                    run_dir = Path(t2d.output_dir).expanduser().resolve() / run_id
+                    run_dir.mkdir(parents=True, exist_ok=True)
+
+                    mermaid_code = _build_mermaid_from_text(caption=caption, source_text=source_text, diagram_type=diagram_type)
+                    (run_dir / "final_output.mmd").write_text(mermaid_code)
+
+                    job["run_id"] = run_id
+                    job["run_dir"] = str(run_dir)
+                    job["final_mermaid"] = mermaid_code
+                    job["output_format_effective"] = "svg"
+                    job["result_description"] = "Generated local Mermaid diagram source (rendered as SVG in UI)."
+                    job["status"] = "completed"
+                    _add_diag_event(job, "Mermaid local generation complete.", kind="success")
+                    return
 
                 settings = Settings(
                     **_build_t2d_settings_kwargs(
@@ -990,6 +1045,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "output_format_effective": job.get("output_format_effective"),
                 "run_id": job["run_id"],
                 "final_image_url": job["final_image_url"],
+                "final_mermaid": job.get("final_mermaid"),
                 "result_description": job["result_description"],
                 "error": job["error"],
                 "events": job["events"],

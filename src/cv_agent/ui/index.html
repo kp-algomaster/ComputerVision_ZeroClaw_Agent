@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV Assistant 👁️</title>
-    <link rel="stylesheet" href="/style.css?v=20260304b">
+    <link rel="stylesheet" href="/style.css?v=20260304g">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -265,6 +265,10 @@
                 <div class="t2d-layout">
                     <div id="t2dReadiness" class="t2d-panel t2d-readiness"><p class="placeholder">Checking readiness…</p></div>
                     <div class="t2d-panel">
+                        <div class="config-row" style="margin-bottom:10px;">
+                            <label>Source Text</label>
+                            <textarea id="t2dSourceText" rows="10" placeholder="Paste paper/method text here..."></textarea>
+                        </div>
                         <div class="config-grid">
                             <div class="config-row">
                                 <label>Caption / Intent</label>
@@ -280,7 +284,7 @@
                             <div class="config-row">
                                 <label>Provider Profile</label>
                                 <select id="t2dProvider" onchange="onT2DProfileChange()">
-                                    <option value="ollama">ollama (local + matplotlib)</option>
+                                    <option value="ollama">ollama (local + mermaid)</option>
                                     <option value="gemini">gemini (google)</option>
                                     <option value="openai">openai</option>
                                     <option value="openrouter">openrouter</option>
@@ -298,6 +302,7 @@
                             <div class="config-row">
                                 <label>Image Provider</label>
                                 <select id="t2dImageProvider" onchange="onT2DImageProviderChange()">
+                                    <option value="mermaid_local">mermaid_local (local svg)</option>
                                     <option value="matplotlib">matplotlib (local)</option>
                                     <option value="google_imagen">google_imagen</option>
                                     <option value="openai_imagen">openai_imagen</option>
@@ -307,11 +312,11 @@
                             </div>
                             <div class="config-row">
                                 <label>VLM Model</label>
-                                <input id="t2dVlmModel" type="text" placeholder="Auto by provider" />
+                                <select id="t2dVlmModel"></select>
                             </div>
                             <div class="config-row">
                                 <label>Image Model</label>
-                                <input id="t2dImageModel" type="text" placeholder="Auto by provider" />
+                                <select id="t2dImageModel"></select>
                             </div>
                             <div class="config-row">
                                 <label>Iterations</label>
@@ -324,10 +329,6 @@
                                     <option value="svg">svg</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="config-row" style="margin-top:10px;">
-                            <label>Source Text</label>
-                            <textarea id="t2dSourceText" rows="10" placeholder="Paste paper/method text here..."></textarea>
                         </div>
                         <div class="config-actions" style="margin-top:10px;">
                             <button id="t2dGenerateBtn" class="btn-sm" onclick="startTextToDiagramJob()">Generate Diagram</button>
@@ -509,6 +510,6 @@
         </section>
 
     </main>
-    <script src="/app.js?v=20260304b"></script>
+    <script src="/app.js?v=20260304g"></script>
 </body>
 </html>
