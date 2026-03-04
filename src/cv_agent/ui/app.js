@@ -1,4 +1,4 @@
-/* ── CV Zero Claw Agent — Frontend App ── */
+/* ── CV Assistant 👁️ — Frontend App ── */
 
 // ── State ──
 let ws = null;
@@ -6,11 +6,14 @@ let currentView = 'chat';
 let specRawMode = false;
 let currentSpecRaw = '';
 let logWs = null;
+let agentWs = null;
+let currentAgentId = null;
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', () => {
     initNav();
     initChat();
+    initAgentChat();
     checkStatus();
 });
 
@@ -61,8 +64,10 @@ function switchView(view) {
         specs: loadSpecs,
         digests: loadDigests,
         config: loadConfig,
+        cache: loadCacheStats,
         debug: loadDebug,
         logs: loadLogs,
+        agents: loadAgents,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -151,7 +156,7 @@ function addMessage(role, content, html) {
 
     const label = document.createElement('div');
     label.className = 'message-label';
-    label.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'CV Agent' : '';
+    label.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'CV Assistant' : '';
 
     const body = document.createElement('div');
     body.className = 'message-content';
@@ -187,15 +192,24 @@ function renderMathInElement(el) {
 async function loadOverview() {
     const el = document.getElementById('overviewContent');
     try {
-        const resp = await fetch('/api/overview');
-        const d = await resp.json();
+        const [ovResp, agentsResp, cacheResp] = await Promise.all([
+            fetch('/api/overview'),
+            fetch('/api/agents'),
+            fetch('/api/cache/stats'),
+        ]);
+        const d = await ovResp.json();
+        const agentsData = await agentsResp.json().catch(() => ({ agents: [] }));
+        const cacheData = await cacheResp.json().catch(() => ({}));
+        const agentsEnabled = (agentsData.agents || []).filter(a => a.enabled).length;
+        const agentsTotal = (agentsData.agents || []).length;
+        const hitPct = cacheData.hit_rate !== undefined ? (cacheData.hit_rate * 100).toFixed(0) + '%' : '—';
         el.innerHTML = `
             <div class="overview-grid">
                 <div class="ov-card accent">
-                    <div class="ov-icon">🦀</div>
+                    <div class="ov-icon">👁️</div>
                     <div class="ov-info">
                         <div class="ov-value">${d.agent_name}</div>
-                        <div class="ov-label">Agent</div>
+                        <div class="ov-label">CV Assistant</div>
                     </div>
                     <span class="status-dot-lg ${d.status === 'ok' ? 'online' : ''}"></span>
                 </div>
@@ -248,6 +262,20 @@ async function loadOverview() {
                         <div class="ov-label">Weekly Digests</div>
                     </div>
                 </div>
+                <div class="ov-card">
+                    <div class="ov-icon">🤖</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${agentsEnabled} / ${agentsTotal}</div>
+                        <div class="ov-label">Agents Active</div>
+                    </div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">💾</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${hitPct}</div>
+                        <div class="ov-label">Cache Hit Rate</div>
+                    </div>
+                </div>
             </div>
             <div class="ov-section">
                 <h3>System</h3>
@@ -261,6 +289,209 @@ async function loadOverview() {
     } catch (e) {
         el.innerHTML = '<p class="placeholder">Failed to load overview.</p>';
         console.error(e);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Agents
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadAgents() {
+    const grid = document.getElementById('agentsGrid');
+    try {
+        const resp = await fetch('/api/agents');
+        const data = await resp.json();
+        const agents = data.agents || [];
+        if (agents.length === 0) {
+            grid.innerHTML = '<p class="placeholder">No sub-agents configured.</p>';
+            return;
+        }
+        grid.innerHTML = '';
+        for (const agent of agents) {
+            grid.appendChild(buildAgentCard(agent));
+        }
+    } catch {
+        grid.innerHTML = '<p class="placeholder">Failed to load agents.</p>';
+    }
+}
+
+function buildAgentCard(agent) {
+    const card = document.createElement('div');
+    card.className = `agent-card ${agent.enabled ? 'enabled' : 'disabled'}`;
+    const statusLabel = agent.enabled ? 'enabled' : 'disabled';
+    card.innerHTML = `
+        <div class="agent-card-head">
+            <span class="agent-icon">${agent.icon || '🤖'}</span>
+            <div class="agent-info">
+                <div class="agent-name">${agent.name}
+                    <span class="status-badge ${agent.enabled ? 'active' : 'inactive'}">${statusLabel}</span>
+                </div>
+                <div class="agent-desc">${agent.description}</div>
+            </div>
+        </div>
+        <div class="agent-model"><span class="config-key">Model:</span> <code>${agent.model}</code></div>
+        <div class="agent-actions">
+            <button class="int-btn primary" ${!agent.enabled ? 'disabled' : ''} onclick="openAgentChat('${agent.id}', '${agent.name}', '${agent.icon || '🤖'}', '${agent.model}')">
+                💬 Chat
+            </button>
+        </div>`;
+    return card;
+}
+
+function openAgentChat(id, name, icon, model) {
+    currentAgentId = id;
+    document.getElementById('agentChatIcon').textContent = icon;
+    document.getElementById('agentChatName').textContent = name;
+    document.getElementById('agentChatModel').textContent = model;
+    document.getElementById('agentChatLabel').textContent = name;
+    document.getElementById('nav-agent-chat').style.display = '';
+    // Clear previous messages
+    const msgs = document.getElementById('agentChatMessages');
+    msgs.innerHTML = `<div class="message system"><div class="message-content">
+        <p><strong>${icon} ${name}</strong> — ready.</p>
+        <p>Ask this agent a task directly.</p>
+    </div></div>`;
+    // Connect WebSocket
+    if (agentWs) { agentWs.close(); agentWs = null; }
+    connectAgentWebSocket(id);
+    switchView('agent-chat');
+}
+
+function connectAgentWebSocket(agentId) {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    agentWs = new WebSocket(`${protocol}//${location.host}/ws/agent/${agentId}`);
+    agentWs.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'typing') {
+            document.getElementById('agentTypingIndicator').hidden = !data.status;
+            scrollAgentChat();
+        } else if (data.type === 'message') {
+            addAgentMessage('assistant', data.content, data.html);
+        } else if (data.type === 'error') {
+            addAgentMessage('system', `Error: ${data.content}`);
+        }
+    };
+    agentWs.onclose = () => {};
+    agentWs.onerror = () => addAgentMessage('system', 'WebSocket error.');
+}
+
+function initAgentChat() {
+    const form = document.getElementById('agentChatForm');
+    const input = document.getElementById('agentChatInput');
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.dispatchEvent(new Event('submit')); }
+    });
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text || !agentWs || agentWs.readyState !== WebSocket.OPEN) return;
+        addAgentMessage('user', text);
+        agentWs.send(JSON.stringify({ message: text }));
+        document.getElementById('agentSendBtn').disabled = true;
+        setTimeout(() => { document.getElementById('agentSendBtn').disabled = false; }, 1000);
+        input.value = '';
+        input.style.height = 'auto';
+    });
+}
+
+function addAgentMessage(role, content, html) {
+    const container = document.getElementById('agentChatMessages');
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    const agentIcon = document.getElementById('agentChatIcon').textContent;
+    const agentName = document.getElementById('agentChatName').textContent;
+    label.textContent = role === 'user' ? 'You' : role === 'assistant' ? `${agentIcon} ${agentName}` : '';
+    const body = document.createElement('div');
+    body.className = 'message-content';
+    if (html) { body.innerHTML = html; } else { body.textContent = content; }
+    if (label.textContent) msg.appendChild(label);
+    msg.appendChild(body);
+    container.appendChild(msg);
+    msg.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+    renderMathInElement(msg);
+    scrollAgentChat();
+}
+
+function scrollAgentChat() {
+    const c = document.getElementById('agentChatMessages');
+    c.scrollTop = c.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Cache
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadCacheStats() {
+    const el = document.getElementById('cacheContent');
+    try {
+        const resp = await fetch('/api/cache/stats');
+        const d = await resp.json();
+        if (d.enabled === false) {
+            el.innerHTML = '<p class="placeholder">Cache is disabled (CACHE_ENABLED=false).</p>';
+            return;
+        }
+        const hitPct = d.hit_rate !== undefined ? (d.hit_rate * 100).toFixed(1) : '0.0';
+        el.innerHTML = `
+            <div class="overview-grid">
+                <div class="ov-card">
+                    <div class="ov-icon">✅</div>
+                    <div class="ov-info"><div class="ov-value">${d.hits}</div><div class="ov-label">Cache Hits</div></div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">❌</div>
+                    <div class="ov-info"><div class="ov-value">${d.misses}</div><div class="ov-label">Cache Misses</div></div>
+                </div>
+                <div class="ov-card accent">
+                    <div class="ov-icon">📈</div>
+                    <div class="ov-info"><div class="ov-value">${hitPct}%</div><div class="ov-label">Hit Rate</div></div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">📄</div>
+                    <div class="ov-info"><div class="ov-value">${d.total_entries}</div><div class="ov-label">Total Entries</div></div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">⏳</div>
+                    <div class="ov-info"><div class="ov-value">${d.expired_entries}</div><div class="ov-label">Expired</div></div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">💽</div>
+                    <div class="ov-info"><div class="ov-value">${d.size_mb} MB</div><div class="ov-label">Disk Usage</div></div>
+                </div>
+            </div>
+            <div class="ov-section">
+                <h3>Details</h3>
+                <div class="ov-system-grid">
+                    <div class="ov-sys-item"><span class="ov-sys-label">Cache Directory</span><span class="ov-sys-val mono">${d.cache_dir}</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">LLM TTL</span><span class="ov-sys-val">24h</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">Tool TTL</span><span class="ov-sys-val">7 days</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">Search TTL</span><span class="ov-sys-val">1h</span></div>
+                </div>
+            </div>`;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load cache stats.</p>';
+    }
+}
+
+async function clearCache() {
+    const el = document.getElementById('cacheContent');
+    try {
+        const resp = await fetch('/api/cache/clear', { method: 'POST' });
+        const d = await resp.json();
+        const banner = document.createElement('div');
+        banner.className = 'zc-update-banner';
+        banner.style.marginBottom = '12px';
+        banner.textContent = `Cleared ${d.deleted} expired cache entries.`;
+        el.prepend(banner);
+        setTimeout(() => banner.remove(), 4000);
+        await loadCacheStats();
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to clear cache.</p>';
     }
 }
 

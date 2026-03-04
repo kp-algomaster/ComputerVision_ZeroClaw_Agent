@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CV Zero Claw Agent</title>
+    <title>CV Assistant 👁️</title>
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -15,7 +15,7 @@
     <!-- Sidebar -->
     <nav id="sidebar">
         <div class="sidebar-header">
-            <h1>🦀 CV Agent</h1>
+            <h1>👁️ CV Assistant</h1>
             <span class="status-dot" id="statusDot"></span>
         </div>
         <div class="nav-sections">
@@ -23,7 +23,15 @@
             <div class="nav-group">
                 <div class="nav-group-title" data-toggle="grp-chat">Chat <span class="toggle-icon">−</span></div>
                 <ul class="nav-list" id="grp-chat">
-                    <li class="nav-item active" data-view="chat"><span class="nav-icon">💬</span>Chat</li>
+                    <li class="nav-item active" data-view="chat"><span class="nav-icon">💬</span>Main Chat</li>
+                </ul>
+            </div>
+            <!-- Agents -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-agents">Agents <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-agents">
+                    <li class="nav-item" data-view="agents"><span class="nav-icon">🤖</span>All Agents</li>
+                    <li class="nav-item" data-view="agent-chat" id="nav-agent-chat" style="display:none"><span class="nav-icon">💬</span><span id="agentChatLabel">Agent Chat</span></li>
                 </ul>
             </div>
             <!-- Control -->
@@ -32,7 +40,7 @@
                 <ul class="nav-list" id="grp-control">
                     <li class="nav-item" data-view="overview"><span class="nav-icon">📊</span>Overview</li>
                     <li class="nav-item" data-view="channels"><span class="nav-icon">🔗</span>Channels</li>
-                    <li class="nav-item" data-view="instances"><span class="nav-icon">🤖</span>Models</li>
+                    <li class="nav-item" data-view="instances"><span class="nav-icon">🧠</span>Models</li>
                     <li class="nav-item" data-view="sessions"><span class="nav-icon">📋</span>Sessions</li>
                     <li class="nav-item" data-view="cron"><span class="nav-icon">⏰</span>Jobs</li>
                 </ul>
@@ -60,6 +68,7 @@
                 <div class="nav-group-title" data-toggle="grp-settings">Settings <span class="toggle-icon">−</span></div>
                 <ul class="nav-list" id="grp-settings">
                     <li class="nav-item" data-view="config"><span class="nav-icon">⚙️</span>Config</li>
+                    <li class="nav-item" data-view="cache"><span class="nav-icon">💾</span>Cache</li>
                     <li class="nav-item" data-view="debug"><span class="nav-icon">🔧</span>Debug</li>
                     <li class="nav-item" data-view="logs"><span class="nav-icon">📄</span>Logs</li>
                 </ul>
@@ -73,13 +82,13 @@
     <!-- Main Content -->
     <main id="mainContent">
 
-        <!-- ═══ Chat ═══ -->
+        <!-- ═══ Main Chat ═══ -->
         <section id="view-chat" class="view active">
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
                     <div class="message system">
                         <div class="message-content">
-                            <p><strong>CV Zero Claw Agent</strong> — ready to assist with computer vision research.</p>
+                            <p><strong>CV Assistant 👁️</strong> — ready to assist with computer vision research.</p>
                             <p>Try: <em>"Search for recent papers on vision transformers"</em> or <em>"Generate a spec from arxiv.org/abs/2312.00785"</em></p>
                         </div>
                     </div>
@@ -90,6 +99,46 @@
                 <form class="chat-input" id="chatForm">
                     <textarea id="chatInput" placeholder="Ask about CV research, analyze papers, generate specs..." rows="1"></textarea>
                     <button type="submit" id="sendBtn">Send</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- ═══ Agents ═══ -->
+        <section id="view-agents" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🤖 Sub-Agents</h2>
+                    <p class="view-hint">Specialized agents, each focused on a specific task. Click <strong>Chat</strong> to open a dedicated conversation.</p>
+                </div>
+                <button class="btn-sm" onclick="loadAgents()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="agentsGrid" class="agents-grid"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Agent Chat ═══ -->
+        <section id="view-agent-chat" class="view">
+            <div class="chat-container">
+                <div class="agent-chat-header" id="agentChatHeader">
+                    <span id="agentChatIcon">🤖</span>
+                    <div class="agent-chat-meta">
+                        <div id="agentChatName">Agent</div>
+                        <div id="agentChatModel" class="agent-chat-model"></div>
+                    </div>
+                    <button class="btn-sm" onclick="switchView('agents')">← All Agents</button>
+                </div>
+                <div class="chat-messages" id="agentChatMessages">
+                    <div class="message system">
+                        <div class="message-content">Select an agent from the Agents view to start chatting.</div>
+                    </div>
+                </div>
+                <div class="typing-indicator" id="agentTypingIndicator" hidden>
+                    <span></span><span></span><span></span>
+                </div>
+                <form class="chat-input" id="agentChatForm">
+                    <textarea id="agentChatInput" placeholder="Message the agent…" rows="1"></textarea>
+                    <button type="submit" id="agentSendBtn">Send</button>
                 </form>
             </div>
         </section>
@@ -110,7 +159,7 @@
             <div class="view-header">
                 <div>
                     <h2>Channels</h2>
-                    <p class="view-hint">Connect the agent to messaging platforms. Push research updates, digests, and alerts to your preferred channel.</p>
+                    <p class="view-hint">Connect the assistant to messaging platforms. Push research updates, digests, and alerts to your preferred channel.</p>
                 </div>
                 <button class="btn-sm" onclick="loadChannels()">↻ Refresh</button>
             </div>
@@ -192,7 +241,7 @@
             <div class="view-header">
                 <div>
                     <h2>⚡ Skills</h2>
-                    <p class="view-hint">Specialized capabilities the agent can perform. Skills marked <em>Needs Power</em> require an active power to unlock.</p>
+                    <p class="view-hint">Specialized capabilities the assistant can perform. Skills marked <em>Needs Power</em> require an active power to unlock.</p>
                 </div>
                 <button class="btn-sm" onclick="loadSkills()">↻ Refresh</button>
             </div>
@@ -206,7 +255,7 @@
             <div class="view-header">
                 <div>
                     <h2>🔌 Powers</h2>
-                    <p class="view-hint">External resources and integrations available to the agent. Active powers unlock additional skills.</p>
+                    <p class="view-hint">External resources and integrations available to the assistant. Active powers unlock additional skills.</p>
                 </div>
                 <button class="btn-sm" onclick="loadPowers()">↻ Refresh</button>
             </div>
@@ -310,6 +359,23 @@
                         <div id="agentConfigView" class="inst-card-body"><p class="placeholder">Loading…</p></div>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- ═══ Cache ═══ -->
+        <section id="view-cache" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>💾 Cache</h2>
+                    <p class="view-hint">Disk-backed LLM response and tool result cache. Reduces redundant API calls and speeds up repeated queries.</p>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn-sm" onclick="clearCache()">🗑 Clear Expired</button>
+                    <button class="btn-sm" onclick="loadCacheStats()">↻ Refresh</button>
+                </div>
+            </div>
+            <div class="view-scroll">
+                <div id="cacheContent"><p class="placeholder">Loading…</p></div>
             </div>
         </section>
 
