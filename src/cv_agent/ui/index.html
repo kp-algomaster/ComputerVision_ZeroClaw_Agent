@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV Assistant 👁️</title>
-    <link rel="stylesheet" href="/style.css?v=20260304g">
+    <link rel="stylesheet" href="/style.css?v=20260304i">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -264,11 +264,14 @@
             <div class="view-scroll">
                 <div class="t2d-layout">
                     <div id="t2dReadiness" class="t2d-panel t2d-readiness"><p class="placeholder">Checking readiness…</p></div>
-                    <div class="t2d-panel">
-                        <div class="config-row" style="margin-bottom:10px;">
-                            <label>Source Text</label>
-                            <textarea id="t2dSourceText" rows="10" placeholder="Paste paper/method text here..."></textarea>
+                    <div class="t2d-panel t2d-source-panel">
+                        <textarea id="t2dSourceText" placeholder="Paste paper/method text here..."></textarea>
+                        <div class="t2d-source-bar">
+                            <button id="t2dGenerateBtn" class="btn-generate" onclick="startTextToDiagramJob()">▶ Generate Diagram</button>
+                            <span id="t2dJobStatus" class="status-badge inactive">idle</span>
                         </div>
+                    </div>
+                    <div class="t2d-panel">
                         <div class="config-grid">
                             <div class="config-row">
                                 <label>Caption / Intent</label>
@@ -329,10 +332,6 @@
                                     <option value="svg">svg</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="config-actions" style="margin-top:10px;">
-                            <button id="t2dGenerateBtn" class="btn-sm" onclick="startTextToDiagramJob()">Generate Diagram</button>
-                            <span id="t2dJobStatus" class="status-badge inactive">idle</span>
                         </div>
                     </div>
 

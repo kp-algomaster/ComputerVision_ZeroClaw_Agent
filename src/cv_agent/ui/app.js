@@ -1482,6 +1482,11 @@ async function loadTextToDiagramView() {
         status.className = 'status-badge inactive';
         status.textContent = 'idle';
     }
+    // Resume polling if a job is active but no timer is running
+    if (_t2dJobId && !_t2dPollTimer) {
+        pollTextToDiagramJob();
+        _t2dPollTimer = setInterval(pollTextToDiagramJob, 1200);
+    }
 
     try {
         const params = new URLSearchParams({
@@ -1660,9 +1665,12 @@ async function pollTextToDiagramJob() {
         status.className = `status-badge ${data.status === 'completed' ? 'ready' : data.status === 'failed' ? 'needs-power' : 'active'}`;
 
         const eventsEl = document.getElementById('t2dEvents');
+        const running = data.status !== 'completed' && data.status !== 'failed';
+        const pulse = running ? '<div class="t2d-event-pulse">● running…</div>' : '';
         eventsEl.innerHTML = data.events.length
-            ? data.events.map(e => `<div class="t2d-event ${e.kind}"><span>[${escapeHtml(e.time)}]</span> ${escapeHtml(e.message)}</div>`).join('')
-            : '<p class="placeholder">No events yet.</p>';
+            ? data.events.map(e => `<div class="t2d-event ${e.kind}"><span>[${escapeHtml(e.time)}]</span> ${escapeHtml(e.message)}</div>`).join('') + pulse
+            : (running ? pulse : '<p class="placeholder">No events yet.</p>');
+        eventsEl.scrollTop = eventsEl.scrollHeight;
 
         const itersEl = document.getElementById('t2dIterationsList');
         itersEl.innerHTML = data.iterations.length
