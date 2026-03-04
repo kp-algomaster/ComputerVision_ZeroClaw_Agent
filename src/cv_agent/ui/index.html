@@ -15,30 +15,56 @@
     <!-- Sidebar -->
     <nav id="sidebar">
         <div class="sidebar-header">
-            <h1>🦀👁️ CV Agent</h1>
+            <h1>🦀 CV Agent</h1>
             <span class="status-dot" id="statusDot"></span>
         </div>
-        <ul class="nav-list">
-            <li class="nav-item active" data-view="chat">
-                <span class="nav-icon">💬</span> Chat
-            </li>
-            <li class="nav-item" data-view="vault">
-                <span class="nav-icon">🗂️</span> Knowledge Vault
-            </li>
-            <li class="nav-item" data-view="graph">
-                <span class="nav-icon">🕸️</span> Knowledge Graph
-            </li>
-            <li class="nav-item" data-view="specs">
-                <span class="nav-icon">📋</span> Specs
-            </li>
-            <li class="nav-item" data-view="digests">
-                <span class="nav-icon">📰</span> Digests
-            </li>
-            <li class="nav-section-label">Configuration</li>
-            <li class="nav-item" data-view="config">
-                <span class="nav-icon">🤖</span> Model Management
-            </li>
-        </ul>
+        <div class="nav-sections">
+            <!-- Chat -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-chat">Chat <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-chat">
+                    <li class="nav-item active" data-view="chat"><span class="nav-icon">💬</span>Chat</li>
+                </ul>
+            </div>
+            <!-- Control -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-control">Control <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-control">
+                    <li class="nav-item" data-view="overview"><span class="nav-icon">📊</span>Overview</li>
+                    <li class="nav-item" data-view="channels"><span class="nav-icon">🔗</span>Channels</li>
+                    <li class="nav-item" data-view="instances"><span class="nav-icon">🤖</span>Models</li>
+                    <li class="nav-item" data-view="sessions"><span class="nav-icon">📋</span>Sessions</li>
+                    <li class="nav-item" data-view="cron"><span class="nav-icon">⏰</span>Jobs</li>
+                </ul>
+            </div>
+            <!-- Agent -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-agent">Agent <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-agent">
+                    <li class="nav-item" data-view="skills"><span class="nav-icon">⚡</span>Skills</li>
+                    <li class="nav-item" data-view="powers"><span class="nav-icon">🔌</span>Powers</li>
+                </ul>
+            </div>
+            <!-- Research -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-research">Research <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-research">
+                    <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
+                    <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
+                    <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
+                    <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
+                </ul>
+            </div>
+            <!-- Settings -->
+            <div class="nav-group">
+                <div class="nav-group-title" data-toggle="grp-settings">Settings <span class="toggle-icon">−</span></div>
+                <ul class="nav-list" id="grp-settings">
+                    <li class="nav-item" data-view="config"><span class="nav-icon">⚙️</span>Config</li>
+                    <li class="nav-item" data-view="debug"><span class="nav-icon">🔧</span>Debug</li>
+                    <li class="nav-item" data-view="logs"><span class="nav-icon">📄</span>Logs</li>
+                </ul>
+            </div>
+        </div>
         <div class="sidebar-footer">
             <div id="agentInfo">Loading...</div>
         </div>
@@ -46,7 +72,8 @@
 
     <!-- Main Content -->
     <main id="mainContent">
-        <!-- Chat View -->
+
+        <!-- ═══ Chat ═══ -->
         <section id="view-chat" class="view active">
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
@@ -67,7 +94,128 @@
             </div>
         </section>
 
-        <!-- Vault View -->
+        <!-- ═══ Overview ═══ -->
+        <section id="view-overview" class="view">
+            <div class="view-header">
+                <h2>Overview</h2>
+                <button class="btn-sm" onclick="loadOverview()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll" id="overviewContent">
+                <p class="placeholder">Loading…</p>
+            </div>
+        </section>
+
+        <!-- ═══ Channels ═══ -->
+        <section id="view-channels" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>Channels</h2>
+                    <p class="view-hint">Connect the agent to messaging platforms. Push research updates, digests, and alerts to your preferred channel.</p>
+                </div>
+                <button class="btn-sm" onclick="loadChannels()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="channelsGrid" class="integration-grid">
+                    <p class="placeholder">Loading…</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ Models ═══ -->
+        <section id="view-instances" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>Models</h2>
+                    <p class="view-hint">Manage Ollama model instances — pull, delete, and monitor locally running models.</p>
+                </div>
+                <button class="btn-sm" onclick="loadInstances()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div class="instances-layout">
+                    <!-- Hardware + Pulled Models -->
+                    <div class="inst-col">
+                        <div class="inst-card">
+                            <div class="inst-card-header"><h3>Hardware</h3></div>
+                            <div id="hardwareInfo" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                        </div>
+                        <div class="inst-card">
+                            <div class="inst-card-header"><h3>Pulled Models</h3><span id="pulledCount" class="badge-count"></span></div>
+                            <div id="pulledModelsList" class="inst-card-body model-list"><p class="placeholder">Loading…</p></div>
+                        </div>
+                    </div>
+                    <!-- Pull Form + Recommendations -->
+                    <div class="inst-col">
+                        <div class="inst-card">
+                            <div class="inst-card-header"><h3>Pull a Model</h3></div>
+                            <div class="inst-card-body">
+                                <p class="config-hint">Enter an Ollama model tag (e.g. <code>qwen2.5-vl:7b</code>) or leave blank to auto-select the best fit for your hardware.</p>
+                                <div class="pull-form">
+                                    <input id="pullModelInput" type="text" placeholder="e.g. qwen2.5-vl:7b  (blank = auto)" />
+                                    <button id="pullModelBtn" class="btn-pull" onclick="pullModel()">⬇ Pull</button>
+                                </div>
+                                <div id="pullStatus" class="pull-status" hidden></div>
+                            </div>
+                        </div>
+                        <div class="inst-card">
+                            <div class="inst-card-header"><h3>llmfit Recommendations</h3><span id="llmfitBadge" class="badge-count"></span></div>
+                            <div id="recommendedList" class="inst-card-body model-list"><p class="placeholder">Loading…</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ Sessions ═══ -->
+        <section id="view-sessions" class="view">
+            <div class="view-header">
+                <h2>Sessions</h2>
+                <button class="btn-sm" onclick="loadSessions()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="sessionsContent"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Jobs ═══ -->
+        <section id="view-cron" class="view">
+            <div class="view-header">
+                <h2>Jobs</h2>
+                <button class="btn-sm" onclick="loadCron()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="cronContent"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Skills ═══ -->
+        <section id="view-skills" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>⚡ Skills</h2>
+                    <p class="view-hint">Specialized capabilities the agent can perform. Skills marked <em>Needs Power</em> require an active power to unlock.</p>
+                </div>
+                <button class="btn-sm" onclick="loadSkills()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="skillsGrid" class="skills-grid"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Powers ═══ -->
+        <section id="view-powers" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🔌 Powers</h2>
+                    <p class="view-hint">External resources and integrations available to the agent. Active powers unlock additional skills.</p>
+                </div>
+                <button class="btn-sm" onclick="loadPowers()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="powersGrid" class="powers-grid"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Knowledge Vault ═══ -->
         <section id="view-vault" class="view">
             <div class="split-view">
                 <div class="panel-left">
@@ -88,7 +236,7 @@
             </div>
         </section>
 
-        <!-- Graph View -->
+        <!-- ═══ Knowledge Graph ═══ -->
         <section id="view-graph" class="view">
             <div class="panel-header">
                 <h2>Knowledge Graph</h2>
@@ -102,7 +250,7 @@
             </div>
         </section>
 
-        <!-- Specs View -->
+        <!-- ═══ Specs ═══ -->
         <section id="view-specs" class="view">
             <div class="split-view">
                 <div class="panel-left">
@@ -124,7 +272,7 @@
             </div>
         </section>
 
-        <!-- Digests View -->
+        <!-- ═══ Digests ═══ -->
         <section id="view-digests" class="view">
             <div class="split-view">
                 <div class="panel-left">
@@ -144,107 +292,54 @@
                 </div>
             </div>
         </section>
-        <!-- Configuration / Model Management View -->
-        <section id="view-config" class="view config-view">
-            <div class="split-view config-split">
 
-                <!-- Left: Hardware + Pulled Models -->
-                <div class="panel-left config-panel-left">
-                    <div class="panel-header">
-                        <h2>Hardware</h2>
-                        <button class="btn-sm" onclick="loadConfig()">↻ Refresh</button>
-                    </div>
-                    <div id="hardwareInfo" class="config-section">
-                        <p class="placeholder">Loading…</p>
-                    </div>
-
-                    <div class="panel-header" style="border-top:1px solid var(--border)">
-                        <h2>Pulled Models</h2>
-                        <span id="pulledCount" class="badge-count"></span>
-                    </div>
-                    <div id="pulledModelsList" class="config-section model-list">
-                        <p class="placeholder">Loading…</p>
-                    </div>
-                </div>
-
-                <!-- Right: ZeroClaw Status + Pull Form + Recommendations -->
-                <div class="panel-right">
-                    <div class="panel-header">
-                        <h2>ZeroClaw Status</h2>
-                        <button class="btn-sm" onclick="loadZeroClawStatus()">↻ Refresh</button>
-                    </div>
-                    <div id="zeroClawStatus" class="config-section">
-                        <p class="placeholder">Loading…</p>
-                    </div>
-
-                    <div class="panel-header" style="border-top:1px solid var(--border)">
-                        <h2>Pull a Model</h2>
-                    </div>
-                    <div class="config-section">
-                        <p class="config-hint">Enter an Ollama model tag (e.g. <code>qwen2.5-vl:7b</code>) or leave blank to auto-select the best fit for your hardware.</p>
-                        <div class="pull-form">
-                            <input id="pullModelInput" type="text" placeholder="e.g. qwen2.5-vl:7b  (blank = auto)" />
-                            <button id="pullModelBtn" class="btn-pull" onclick="pullModel()">⬇ Pull</button>
-                        </div>
-                        <div id="pullStatus" class="pull-status" hidden></div>
-                    </div>
-
-                    <div class="panel-header" style="border-top:1px solid var(--border)">
-                        <h2>llmfit Recommendations</h2>
-                        <span id="llmfitBadge" class="badge-count"></span>
-                    </div>
-                    <div id="recommendedList" class="config-section model-list">
-                        <p class="placeholder">Loading…</p>
-                    </div>
-                </div>
-
+        <!-- ═══ Config ═══ -->
+        <section id="view-config" class="view">
+            <div class="view-header">
+                <h2>Config</h2>
+                <button class="btn-sm" onclick="loadConfig()">↻ Refresh</button>
             </div>
-
-            <!-- Remote Connections — full-width row below the split panels -->
-            <div class="remote-section">
-                <div class="remote-section-header">
-                    <div>
-                        <h2>Remote Connections</h2>
-                        <p class="remote-section-hint">Connect the agent to messaging platforms. The agent can push research updates, digest summaries, and alerts directly to your preferred channel.</p>
+            <div class="view-scroll">
+                <div class="config-panels">
+                    <div class="inst-card">
+                        <div class="inst-card-header"><h3>ZeroClaw Status</h3></div>
+                        <div id="zeroClawStatus" class="inst-card-body"><p class="placeholder">Loading…</p></div>
                     </div>
-                    <button class="btn-sm" onclick="loadIntegrations()">↻ Refresh</button>
-                </div>
-                <div id="integrationCards" class="integration-grid">
-                    <p class="placeholder">Loading…</p>
+                    <div class="inst-card">
+                        <div class="inst-card-header"><h3>Agent Configuration</h3></div>
+                        <div id="agentConfigView" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                    </div>
                 </div>
             </div>
-
-            <!-- Powers -->
-            <div class="cap-section" id="powersSection">
-                <div class="cap-section-header">
-                    <div>
-                        <h2>⚡ Powers</h2>
-                        <p class="cap-section-hint">External resources and integrations available to the agent. Active powers unlock additional skills.</p>
-                    </div>
-                    <button class="btn-sm" onclick="loadPowers()">↻ Refresh</button>
-                </div>
-                <div id="powersGrid" class="powers-grid">
-                    <p class="placeholder">Loading…</p>
-                </div>
-            </div>
-
-            <!-- Skills -->
-            <div class="cap-section" id="skillsSection">
-                <div class="cap-section-header">
-                    <div>
-                        <h2>🎯 Skills</h2>
-                        <p class="cap-section-hint">Specialized capabilities the agent can perform. Skills marked <em>Needs Power</em> require an active power to unlock.</p>
-                    </div>
-                    <button class="btn-sm" onclick="loadSkills()">↻ Refresh</button>
-                </div>
-                <div id="skillsGrid" class="skills-grid">
-                    <p class="placeholder">Loading…</p>
-                </div>
-            </div>
-
         </section>
-    </main>
 
+        <!-- ═══ Debug ═══ -->
+        <section id="view-debug" class="view">
+            <div class="view-header">
+                <h2>Debug</h2>
+                <button class="btn-sm" onclick="loadDebug()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div id="debugContent"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Logs ═══ -->
+        <section id="view-logs" class="view">
+            <div class="view-header">
+                <h2>Logs</h2>
+                <div class="log-controls">
+                    <label class="log-auto-scroll"><input type="checkbox" id="logAutoScroll" checked> Auto-scroll</label>
+                    <button class="btn-sm" onclick="clearLogs()">Clear</button>
+                    <button class="btn-sm" onclick="loadLogs()">↻ Refresh</button>
+                </div>
+            </div>
+            <div class="log-container" id="logContainer">
+                <pre class="log-output" id="logOutput">Connecting…</pre>
+            </div>
+        </section>
+
+    </main>
     <script src="/app.js"></script>
 </body>
 </html>

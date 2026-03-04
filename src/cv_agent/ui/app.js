@@ -5,6 +5,7 @@ let ws = null;
 let currentView = 'chat';
 let specRawMode = false;
 let currentSpecRaw = '';
+let logWs = null;
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,34 +14,63 @@ document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
 });
 
-// ── Navigation ──
+// ═══════════════════════════════════════════════════════════════════════
+// Navigation
+// ═══════════════════════════════════════════════════════════════════════
+
 function initNav() {
+    // View switching
     document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const view = item.dataset.view;
-            switchView(view);
+        item.addEventListener('click', () => switchView(item.dataset.view));
+    });
+    // Section collapse toggles
+    document.querySelectorAll('.nav-group-title').forEach(title => {
+        title.addEventListener('click', () => {
+            const targetId = title.dataset.toggle;
+            const list = document.getElementById(targetId);
+            const icon = title.querySelector('.toggle-icon');
+            if (list) {
+                list.classList.toggle('collapsed');
+                icon.textContent = list.classList.contains('collapsed') ? '+' : '−';
+            }
         });
     });
 }
 
 function switchView(view) {
     currentView = view;
-
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`.nav-item[data-view="${view}"]`).classList.add('active');
+    const activeItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+    if (activeItem) activeItem.classList.add('active');
 
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-    document.getElementById(`view-${view}`).classList.add('active');
+    const viewEl = document.getElementById(`view-${view}`);
+    if (viewEl) viewEl.classList.add('active');
 
-    // Load data for the view
-    if (view === 'vault')   loadVaultTree();
-    if (view === 'graph')   loadGraph();
-    if (view === 'specs')   loadSpecs();
-    if (view === 'digests') loadDigests();
-    if (view === 'config')  loadConfig();
+    // Load data per view
+    const loaders = {
+        overview: loadOverview,
+        channels: loadChannels,
+        instances: loadInstances,
+        sessions: loadSessions,
+        cron: loadCron,
+        skills: loadSkills,
+        powers: loadPowers,
+        vault: loadVaultTree,
+        graph: loadGraph,
+        specs: loadSpecs,
+        digests: loadDigests,
+        config: loadConfig,
+        debug: loadDebug,
+        logs: loadLogs,
+    };
+    if (loaders[view]) loaders[view]();
 }
 
-// ── Status Check ──
+// ═══════════════════════════════════════════════════════════════════════
+// Status
+// ═══════════════════════════════════════════════════════════════════════
+
 async function checkStatus() {
     try {
         const resp = await fetch('/api/status');
@@ -50,51 +80,46 @@ async function checkStatus() {
             `<div>${data.agent}</div>` +
             `<div style="margin-top:2px">LLM: ${data.llm_model}</div>` +
             `<div>Vision: ${data.vision_model}</div>`;
-    } catch (e) {
+    } catch {
         document.getElementById('agentInfo').textContent = 'Offline';
     }
 }
 
-// ── Chat ──
+// ═══════════════════════════════════════════════════════════════════════
+// Chat
+// ═══════════════════════════════════════════════════════════════════════
+
 function initChat() {
     const form = document.getElementById('chatForm');
     const input = document.getElementById('chatInput');
 
-    // Auto-resize textarea
     input.addEventListener('input', () => {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     });
-
-    // Send on Enter (Shift+Enter for newline)
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             form.dispatchEvent(new Event('submit'));
         }
     });
-
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
-
         addMessage('user', text);
         sendMessage(text);
         input.value = '';
         input.style.height = 'auto';
     });
-
     connectWebSocket();
 }
 
 function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat`);
-
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}/ws/chat`);
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-
         if (data.type === 'typing') {
             document.getElementById('typingIndicator').hidden = !data.status;
             scrollChat();
@@ -104,23 +129,15 @@ function connectWebSocket() {
             addMessage('system', `Error: ${data.content}`);
         }
     };
-
-    ws.onclose = () => {
-        setTimeout(connectWebSocket, 3000);
-    };
-
-    ws.onerror = () => {
-        console.error('WebSocket error');
-    };
+    ws.onclose = () => setTimeout(connectWebSocket, 3000);
+    ws.onerror = () => console.error('WebSocket error');
 }
 
 function sendMessage(text) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ message: text }));
         document.getElementById('sendBtn').disabled = true;
-        setTimeout(() => {
-            document.getElementById('sendBtn').disabled = false;
-        }, 1000);
+        setTimeout(() => { document.getElementById('sendBtn').disabled = false; }, 1000);
     } else {
         addMessage('system', 'Connection lost. Reconnecting...');
         connectWebSocket();
@@ -138,600 +155,121 @@ function addMessage(role, content, html) {
 
     const body = document.createElement('div');
     body.className = 'message-content';
-
-    if (html) {
-        body.innerHTML = html;
-    } else {
-        body.textContent = content;
-    }
+    if (html) { body.innerHTML = html; } else { body.textContent = content; }
 
     if (label.textContent) msg.appendChild(label);
     msg.appendChild(body);
     container.appendChild(msg);
 
-    // Highlight code blocks
-    msg.querySelectorAll('pre code').forEach(block => {
-        hljs.highlightElement(block);
-    });
-
-    // Render KaTeX
+    msg.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
     renderMathInElement(msg);
-
     scrollChat();
 }
 
 function scrollChat() {
-    const container = document.getElementById('chatMessages');
-    container.scrollTop = container.scrollHeight;
+    const c = document.getElementById('chatMessages');
+    c.scrollTop = c.scrollHeight;
 }
 
 function renderMathInElement(el) {
-    // Render $$...$$ blocks
-    el.innerHTML = el.innerHTML.replace(/\$\$([\s\S]*?)\$\$/g, (match, tex) => {
-        try {
-            return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
-        } catch (e) {
-            return match;
-        }
+    el.innerHTML = el.innerHTML.replace(/\$\$([\s\S]*?)\$\$/g, (m, tex) => {
+        try { return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false }); } catch { return m; }
     });
-    // Render $...$ inline
-    el.innerHTML = el.innerHTML.replace(/\$([^\$\n]+?)\$/g, (match, tex) => {
-        try {
-            return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false });
-        } catch (e) {
-            return match;
-        }
+    el.innerHTML = el.innerHTML.replace(/\$([^\$\n]+?)\$/g, (m, tex) => {
+        try { return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false }); } catch { return m; }
     });
 }
 
-// ── Vault Tree ──
-async function loadVaultTree() {
+// ═══════════════════════════════════════════════════════════════════════
+// Overview
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadOverview() {
+    const el = document.getElementById('overviewContent');
     try {
-        const resp = await fetch('/api/vault/tree');
-        const data = await resp.json();
-        const container = document.getElementById('vaultTree');
-        container.innerHTML = '';
-        if (data.tree.length === 0) {
-            container.innerHTML = '<p class="placeholder">Vault is empty. Process some papers to populate it.</p>';
-            return;
-        }
-        container.appendChild(buildTree(data.tree));
-    } catch (e) {
-        console.error('Failed to load vault tree:', e);
-    }
-}
-
-function buildTree(items) {
-    const frag = document.createDocumentFragment();
-    for (const item of items) {
-        if (item.type === 'folder') {
-            const folder = document.createElement('div');
-            folder.className = 'tree-folder';
-            folder.textContent = item.name;
-            folder.addEventListener('click', () => {
-                const children = folder.nextElementSibling;
-                if (children) children.hidden = !children.hidden;
-            });
-            frag.appendChild(folder);
-
-            if (item.children && item.children.length > 0) {
-                const children = document.createElement('div');
-                children.className = 'tree-children';
-                children.appendChild(buildTree(item.children));
-                frag.appendChild(children);
-            }
-        } else {
-            const file = document.createElement('div');
-            file.className = 'tree-file';
-            file.textContent = item.name;
-            file.addEventListener('click', () => {
-                document.querySelectorAll('.tree-file').forEach(f => f.classList.remove('active'));
-                file.classList.add('active');
-                loadVaultNote(item.path);
-            });
-            frag.appendChild(file);
-        }
-    }
-    return frag;
-}
-
-async function loadVaultNote(path) {
-    try {
-        const resp = await fetch(`/api/vault/note/${encodeURIComponent(path)}`);
-        const data = await resp.json();
-        document.getElementById('noteTitle').textContent = path;
-        const container = document.getElementById('noteContent');
-        container.innerHTML = data.html;
-        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-        renderMathInElement(container);
-    } catch (e) {
-        console.error('Failed to load note:', e);
-    }
-}
-
-// ── Knowledge Graph ──
-async function loadGraph() {
-    try {
-        const resp = await fetch('/api/graph');
-        const data = await resp.json();
-        const stats = data.stats;
-        document.getElementById('graphStats').textContent =
-            `${stats.nodes} nodes · ${stats.edges} edges`;
-        drawGraph(data.graph);
-    } catch (e) {
-        console.error('Failed to load graph:', e);
-    }
-}
-
-function drawGraph(graphData) {
-    const canvas = document.getElementById('graphCanvas');
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width * window.devicePixelRatio;
-    canvas.height = rect.height * window.devicePixelRatio;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-
-    const W = rect.width;
-    const H = rect.height;
-    const nodes = graphData.nodes || [];
-    const edges = graphData.edges || [];
-
-    if (nodes.length === 0) {
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '14px -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('No nodes yet. Process papers to build the graph.', W / 2, H / 2);
-        return;
-    }
-
-    // Layout: simple force-directed (single pass for static render)
-    const typeColors = {
-        paper: '#58a6ff',
-        method: '#f0883e',
-        dataset: '#3fb950',
-        task: '#f85149',
-        author: '#d2a8ff',
-        unknown: '#8b949e',
-    };
-
-    // Assign positions in a circle with some noise
-    const positions = {};
-    nodes.forEach((node, i) => {
-        const angle = (2 * Math.PI * i) / nodes.length;
-        const r = Math.min(W, H) * 0.35;
-        positions[node.id] = {
-            x: W / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 40,
-            y: H / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 40,
-        };
-    });
-
-    // Draw edges
-    ctx.strokeStyle = '#30363d';
-    ctx.lineWidth = 1;
-    for (const edge of edges) {
-        const from = positions[edge.source];
-        const to = positions[edge.target];
-        if (from && to) {
-            ctx.beginPath();
-            ctx.moveTo(from.x, from.y);
-            ctx.lineTo(to.x, to.y);
-            ctx.stroke();
-
-            // Arrow
-            const dx = to.x - from.x;
-            const dy = to.y - from.y;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            if (len > 0) {
-                const nx = dx / len;
-                const ny = dy / len;
-                const ax = to.x - nx * 14;
-                const ay = to.y - ny * 14;
-                ctx.beginPath();
-                ctx.moveTo(to.x - nx * 8, to.y - ny * 8);
-                ctx.lineTo(ax - ny * 4, ay + nx * 4);
-                ctx.lineTo(ax + ny * 4, ay - nx * 4);
-                ctx.fillStyle = '#30363d';
-                ctx.fill();
-            }
-        }
-    }
-
-    // Draw nodes
-    for (const node of nodes) {
-        const pos = positions[node.id];
-        if (!pos) continue;
-        const color = typeColors[node.type] || typeColors.unknown;
-        const radius = node.type === 'paper' ? 8 : 6;
-
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.strokeStyle = '#0d1117';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Label
-        const label = (node.title || node.id || '').substring(0, 30);
-        ctx.fillStyle = '#e6edf3';
-        ctx.font = '11px -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, pos.x, pos.y + radius + 14);
-    }
-
-    // Legend
-    let ly = 20;
-    ctx.textAlign = 'left';
-    for (const [type, color] of Object.entries(typeColors)) {
-        ctx.beginPath();
-        ctx.arc(20, ly, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '11px -apple-system, sans-serif';
-        ctx.fillText(type, 32, ly + 4);
-        ly += 18;
-    }
-}
-
-// ── Specs ──
-async function loadSpecs() {
-    try {
-        const resp = await fetch('/api/specs');
-        const data = await resp.json();
-        const container = document.getElementById('specsList');
-        container.innerHTML = '';
-
-        if (data.specs.length === 0) {
-            container.innerHTML = '<p class="placeholder">No specs generated yet.</p>';
-            return;
-        }
-
-        for (const spec of data.specs) {
-            const item = document.createElement('div');
-            item.className = 'file-list-item';
-            item.innerHTML = `
-                <div class="name">${spec.name}</div>
-                <div class="meta">${formatBytes(spec.size)} · ${formatDate(spec.modified)}</div>
-            `;
-            item.addEventListener('click', () => {
-                document.querySelectorAll('#specsList .file-list-item').forEach(el => el.classList.remove('active'));
-                item.classList.add('active');
-                loadSpec(spec.name);
-            });
-            container.appendChild(item);
-        }
-    } catch (e) {
-        console.error('Failed to load specs:', e);
-    }
-}
-
-async function loadSpec(filename) {
-    try {
-        const resp = await fetch(`/api/specs/${encodeURIComponent(filename)}`);
-        const data = await resp.json();
-        document.getElementById('specTitle').textContent = filename;
-        document.getElementById('specRawToggle').hidden = false;
-        currentSpecRaw = data.raw;
-        specRawMode = false;
-
-        const container = document.getElementById('specContent');
-        container.innerHTML = data.html;
-        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-        renderMathInElement(container);
-    } catch (e) {
-        console.error('Failed to load spec:', e);
-    }
-}
-
-function toggleSpecRaw() {
-    specRawMode = !specRawMode;
-    const container = document.getElementById('specContent');
-    const btn = document.getElementById('specRawToggle');
-
-    if (specRawMode) {
-        container.innerHTML = `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(currentSpecRaw)}</pre>`;
-        btn.textContent = 'Rendered';
-    } else {
-        loadSpec(document.getElementById('specTitle').textContent);
-        btn.textContent = 'Raw';
-    }
-}
-
-// ── Digests ──
-async function loadDigests() {
-    try {
-        const resp = await fetch('/api/digests');
-        const data = await resp.json();
-        const container = document.getElementById('digestsList');
-        container.innerHTML = '';
-
-        if (data.digests.length === 0) {
-            container.innerHTML = '<p class="placeholder">No digests yet. Run: cv-agent digest</p>';
-            return;
-        }
-
-        for (const digest of data.digests) {
-            const item = document.createElement('div');
-            item.className = 'file-list-item';
-            item.innerHTML = `
-                <div class="name">${digest.name}</div>
-                <div class="meta">${formatBytes(digest.size)} · ${formatDate(digest.modified)}</div>
-            `;
-            item.addEventListener('click', () => {
-                document.querySelectorAll('#digestsList .file-list-item').forEach(el => el.classList.remove('active'));
-                item.classList.add('active');
-                loadDigest(digest.name);
-            });
-            container.appendChild(item);
-        }
-    } catch (e) {
-        console.error('Failed to load digests:', e);
-    }
-}
-
-async function loadDigest(filename) {
-    try {
-        const resp = await fetch(`/api/digests/${encodeURIComponent(filename)}`);
-        const data = await resp.json();
-        document.getElementById('digestTitle').textContent = filename;
-
-        const container = document.getElementById('digestContent');
-        container.innerHTML = data.html;
-        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-        renderMathInElement(container);
-    } catch (e) {
-        console.error('Failed to load digest:', e);
-    }
-}
-
-// ── Config / Model Management ──
-
-async function loadConfig() {
-    await Promise.all([
-        loadZeroClawStatus(), loadHardwareAndRecommended(),
-        loadPulledModels(), loadIntegrations(),
-        loadPowers(), loadSkills(),
-    ]);
-}
-
-async function loadZeroClawStatus() {
-    const el = document.getElementById('zeroClawStatus');
-    try {
-        const resp = await fetch('/api/zeroclaw');
+        const resp = await fetch('/api/overview');
         const d = await resp.json();
-
-        const modeLabel = d.mode === 'shim'
-            ? '<span class="zc-value shim">Local Shim</span>'
-            : '<span class="zc-value pkg">Real Package</span>';
-
-        let updateHtml = '';
-        if (d.update_available) {
-            updateHtml = `<div class="zc-update-banner">
-                ⬆ Update available: <strong>${d.pypi_version}</strong> (current: ${d.current_version})
-                — run <code>pip install -U zeroclaw-tools</code>
-            </div>`;
-        } else if (!d.package_on_pypi && d.mode === 'shim') {
-            updateHtml = `<div class="zc-not-on-pypi">
-                zeroclaw-tools not yet on PyPI — using local compatibility shim.
-                <div class="zc-install-hint">When published: <code>pip install zeroclaw-tools</code> then delete <code>src/zeroclaw_tools/</code></div>
-            </div>`;
-        }
-
-        const toolsHtml = (d.builtin_tools || [])
-            .map(t => `<span class="zc-tool-chip">${t}</span>`)
-            .join('');
-
         el.innerHTML = `
-            ${updateHtml}
-            <div class="zc-grid">
-                <div class="zc-card highlight">
-                    <div class="zc-label">Mode</div>
-                    ${modeLabel}
+            <div class="overview-grid">
+                <div class="ov-card accent">
+                    <div class="ov-icon">🦀</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.agent_name}</div>
+                        <div class="ov-label">Agent</div>
+                    </div>
+                    <span class="status-dot-lg ${d.status === 'ok' ? 'online' : ''}"></span>
                 </div>
-                <div class="zc-card">
-                    <div class="zc-label">Version</div>
-                    <div class="zc-value">${d.current_version}</div>
+                <div class="ov-card">
+                    <div class="ov-icon">🤖</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.models_pulled}</div>
+                        <div class="ov-label">Models Pulled</div>
+                    </div>
                 </div>
-                <div class="zc-card">
-                    <div class="zc-label">Agent Framework</div>
-                    <div class="zc-value" style="font-size:11px">${d.agent_framework}</div>
+                <div class="ov-card">
+                    <div class="ov-icon">⚡</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.skills_ready} / ${d.skills_total}</div>
+                        <div class="ov-label">Skills Ready</div>
+                    </div>
                 </div>
-                <div class="zc-card">
-                    <div class="zc-label">Tool Call Mode</div>
-                    <div class="zc-value" style="font-size:10px;line-height:1.4">${d.tool_call_mode}</div>
+                <div class="ov-card">
+                    <div class="ov-icon">🔌</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.powers_active} / ${d.powers_total}</div>
+                        <div class="ov-label">Nodes Active</div>
+                    </div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">🔗</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.channels_enabled} / ${d.channels_total}</div>
+                        <div class="ov-label">Channels Enabled</div>
+                    </div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">📚</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.vault_notes}</div>
+                        <div class="ov-label">Vault Notes</div>
+                    </div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">📋</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.specs_count}</div>
+                        <div class="ov-label">Specs Generated</div>
+                    </div>
+                </div>
+                <div class="ov-card">
+                    <div class="ov-icon">📰</div>
+                    <div class="ov-info">
+                        <div class="ov-value">${d.digests_count}</div>
+                        <div class="ov-label">Weekly Digests</div>
+                    </div>
                 </div>
             </div>
-            <div class="zc-label" style="margin-bottom:6px">Built-in Tools</div>
-            <div class="zc-tools">${toolsHtml}</div>
-        `;
-    } catch (e) {
-        el.innerHTML = '<p class="placeholder">Failed to load ZeroClaw status.</p>';
-    }
-}
-
-async function loadHardwareAndRecommended() {
-    try {
-        const resp = await fetch('/api/models/recommended');
-        const data = await resp.json();
-
-        // Hardware panel
-        const hw = data.hardware;
-        const hwEl = document.getElementById('hardwareInfo');
-        if (hw) {
-            hwEl.innerHTML = `
-                <div class="hw-grid">
-                    <div class="hw-card">
-                        <div class="hw-value">${hw.ram_gb.toFixed(0)} GB</div>
-                        <div class="hw-label">System RAM</div>
-                    </div>
-                    <div class="hw-card">
-                        <div class="hw-value">${hw.gpu_vram_gb.toFixed(0)} GB</div>
-                        <div class="hw-label">GPU VRAM</div>
-                    </div>
-                    <div class="hw-card">
-                        <div class="hw-value">${hw.cpu_cores}</div>
-                        <div class="hw-label">CPU Cores</div>
-                    </div>
-                    <div class="hw-card">
-                        <div class="hw-value">${hw.gpu_vram_gb > 0 ? 'GPU' : 'CPU'}</div>
-                        <div class="hw-label">Inference Mode</div>
-                    </div>
-                    <div class="hw-accel">
-                        <span>Acceleration</span>
-                        <span class="accel-badge">${hw.acceleration.toUpperCase()}</span>
-                    </div>
-                </div>`;
-        } else if (!data.llmfit_available) {
-            hwEl.innerHTML = `<div class="llmfit-notice">
-                ⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.<br>
-                Install: <code>brew install llmfit</code>
+            <div class="ov-section">
+                <h3>System</h3>
+                <div class="ov-system-grid">
+                    <div class="ov-sys-item"><span class="ov-sys-label">LLM Model</span><span class="ov-sys-val">${d.llm_model}</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">Vision Model</span><span class="ov-sys-val">${d.vision_model}</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">ZeroClaw</span><span class="ov-sys-val">${d.zeroclaw_mode}</span></div>
+                    <div class="ov-sys-item"><span class="ov-sys-label">Vault Path</span><span class="ov-sys-val mono">${d.vault_path}</span></div>
+                </div>
             </div>`;
-        } else {
-            hwEl.innerHTML = '<p class="placeholder">Hardware info unavailable.</p>';
-        }
-
-        // Recommended models panel
-        const recEl = document.getElementById('recommendedList');
-        const badge = document.getElementById('llmfitBadge');
-        if (!data.llmfit_available) {
-            recEl.innerHTML = `<div class="llmfit-notice">Install llmfit to get hardware-matched recommendations.</div>`;
-            badge.textContent = 'llmfit required';
-            return;
-        }
-        const recs = data.recommended || [];
-        badge.textContent = recs.length + ' models';
-        if (recs.length === 0) {
-            recEl.innerHTML = '<p class="placeholder">No recommendations found.</p>';
-            return;
-        }
-        recEl.innerHTML = '';
-        for (const m of recs) {
-            const row = document.createElement('div');
-            row.className = 'model-row';
-            const fitCls = { perfect: 'fit-perfect', good: 'fit-good', marginal: 'fit-marginal' }[m.fit] || 'fit-unknown';
-            row.innerHTML = `
-                <span class="fit-badge ${fitCls}">${m.fit}</span>
-                <span class="model-name" title="${m.name}:${m.quantization}">${m.name}:${m.quantization}</span>
-                <span class="model-meta">${m.vram_gb}GB</span>
-                <button class="btn-pull-sm" onclick="quickPull('${m.name}:${m.quantization}', this)">⬇</button>`;
-            recEl.appendChild(row);
-        }
     } catch (e) {
-        document.getElementById('hardwareInfo').innerHTML = '<p class="placeholder">Failed to load.</p>';
+        el.innerHTML = '<p class="placeholder">Failed to load overview.</p>';
         console.error(e);
     }
 }
 
-async function loadPulledModels() {
-    try {
-        const resp = await fetch('/api/models');
-        const data = await resp.json();
-        const container = document.getElementById('pulledModelsList');
-        const badge = document.getElementById('pulledCount');
-        const models = data.models || [];
-        badge.textContent = models.length;
+// ═══════════════════════════════════════════════════════════════════════
+// Channels (Remote Integrations)
+// ═══════════════════════════════════════════════════════════════════════
 
-        if (models.length === 0) {
-            container.innerHTML = '<p class="placeholder">No models pulled yet.</p>';
-            return;
-        }
-        container.innerHTML = '';
-        for (const name of models.sort()) {
-            const row = document.createElement('div');
-            row.className = 'model-row';
-            row.innerHTML = `
-                <span class="model-name" title="${name}">${name}</span>
-                <button class="btn-delete" onclick="deleteModel('${name}', this)" title="Delete">✕</button>`;
-            container.appendChild(row);
-        }
-    } catch (e) {
-        document.getElementById('pulledModelsList').innerHTML = '<p class="placeholder">Failed to load.</p>';
-    }
-}
-
-async function pullModel() {
-    const input = document.getElementById('pullModelInput');
-    const btn = document.getElementById('pullModelBtn');
-    const status = document.getElementById('pullStatus');
-    const model = input.value.trim();
-
-    btn.disabled = true;
-    btn.textContent = '⏳ Pulling…';
-    status.hidden = false;
-    status.className = 'pull-status';
-    status.textContent = model ? `Pulling '${model}'…` : 'Auto-selecting and pulling best model…';
-
-    try {
-        const resp = await fetch('/api/models/pull', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model }),
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error);
-
-        status.className = 'pull-status success';
-        status.textContent = data.message;
-        input.value = '';
-        await loadPulledModels();
-    } catch (e) {
-        status.className = 'pull-status error';
-        status.textContent = 'Error: ' + e.message;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '⬇ Pull';
-    }
-}
-
-async function quickPull(modelTag, btn) {
-    const status = document.getElementById('pullStatus');
-    btn.disabled = true;
-    btn.textContent = '⏳';
-    status.hidden = false;
-    status.className = 'pull-status';
-    status.textContent = `Pulling '${modelTag}'…`;
-
-    try {
-        const resp = await fetch('/api/models/pull', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: modelTag }),
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error);
-        status.className = 'pull-status success';
-        status.textContent = data.message;
-        await loadPulledModels();
-    } catch (e) {
-        status.className = 'pull-status error';
-        status.textContent = 'Error: ' + e.message;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '⬇';
-    }
-}
-
-async function deleteModel(name, btn) {
-    if (!confirm(`Delete model '${name}'? This cannot be undone.`)) return;
-    btn.disabled = true;
-    try {
-        const resp = await fetch(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error);
-        await loadPulledModels();
-    } catch (e) {
-        alert('Delete failed: ' + e.message);
-        btn.disabled = false;
-    }
-}
-
-// ── Remote Integrations ──
-
-async function loadIntegrations() {
-    const grid = document.getElementById('integrationCards');
+async function loadChannels() {
+    const grid = document.getElementById('channelsGrid');
     try {
         const resp = await fetch('/api/integrations');
         const data = await resp.json();
@@ -739,8 +277,8 @@ async function loadIntegrations() {
         for (const [id, info] of Object.entries(data)) {
             grid.appendChild(buildIntegrationCard(id, info));
         }
-    } catch (e) {
-        grid.innerHTML = '<p class="placeholder">Failed to load integrations.</p>';
+    } catch {
+        grid.innerHTML = '<p class="placeholder">Failed to load channels.</p>';
     }
 }
 
@@ -753,7 +291,6 @@ function buildIntegrationCard(id, info) {
     const dotClass = info.enabled ? 'ok' : (info.configured ? 'warn' : '');
     const statusLabel = info.enabled ? 'Enabled' : (info.configured ? 'Configured' : 'Not configured');
 
-    // Build credential fields HTML
     const fieldsHtml = info.fields.map(f => `
         <div class="int-field">
             <label>${f.label}</label>
@@ -795,8 +332,7 @@ function buildIntegrationCard(id, info) {
 }
 
 function toggleIntegrationForm(id) {
-    const form = document.getElementById(`int-form-${id}`);
-    form.classList.toggle('open');
+    document.getElementById(`int-form-${id}`).classList.toggle('open');
 }
 
 async function toggleIntegration(id, enabled) {
@@ -806,27 +342,19 @@ async function toggleIntegration(id, enabled) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled }),
         });
-        await loadIntegrations();
-    } catch (e) {
-        console.error('Toggle failed:', e);
-    }
+        await loadChannels();
+    } catch (e) { console.error('Toggle failed:', e); }
 }
 
 async function saveIntegration(id) {
     const statusEl = document.getElementById(`int-save-status-${id}`);
     statusEl.className = 'int-save-status';
     statusEl.textContent = 'Saving…';
-
-    // Collect field values from inputs
     const fields = {};
     document.querySelectorAll(`#int-form-${id} input[id^="int-${id}-"]`).forEach(input => {
         const key = input.id.replace(`int-${id}-`, '');
-        // Only send non-masked values (user has typed something real)
-        if (input.value && !input.value.match(/^•+/)) {
-            fields[key] = input.value;
-        }
+        if (input.value && !input.value.match(/^•+/)) fields[key] = input.value;
     });
-
     try {
         const resp = await fetch(`/api/integrations/${id}/configure`, {
             method: 'POST',
@@ -837,7 +365,7 @@ async function saveIntegration(id) {
         if (!data.ok) throw new Error(data.error || 'Unknown error');
         statusEl.className = 'int-save-status ok';
         statusEl.textContent = `Saved (${data.updated.length} key${data.updated.length !== 1 ? 's' : ''})`;
-        await loadIntegrations();
+        await loadChannels();
     } catch (e) {
         statusEl.className = 'int-save-status error';
         statusEl.textContent = e.message;
@@ -853,28 +381,310 @@ async function testIntegration(id) {
         const data = await resp.json();
         btn.textContent = data.ok ? '✓' : '✗';
         btn.title = data.message;
-        // Show result in save-status if form is open, else alert
         const statusEl = document.getElementById(`int-save-status-${id}`);
         if (statusEl) {
             statusEl.className = `int-save-status ${data.ok ? 'ok' : 'error'}`;
             statusEl.textContent = data.message;
-            // Open form to show result
             document.getElementById(`int-form-${id}`).classList.add('open');
         }
         setTimeout(() => { btn.textContent = '▷ Test'; btn.title = ''; }, 3000);
     } catch (e) {
         btn.textContent = '✗';
-        btn.title = e.message;
-        setTimeout(() => { btn.textContent = '▷ Test'; btn.title = ''; }, 3000);
+        setTimeout(() => { btn.textContent = '▷ Test'; }, 3000);
+    } finally { btn.disabled = false; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Models
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadInstances() {
+    await Promise.all([loadHardwareAndRecommended(), loadPulledModels()]);
+}
+
+async function loadHardwareAndRecommended() {
+    try {
+        const resp = await fetch('/api/models/recommended');
+        const data = await resp.json();
+        const hw = data.hardware;
+        const hwEl = document.getElementById('hardwareInfo');
+        if (hw) {
+            const accel = hw.acceleration || 'cpu';
+            const accelLabel = { metal: 'Metal', mps: 'MPS', mlx: 'MLX', cuda: 'CUDA', rocm: 'ROCm', cpu: 'CPU' }[accel] || accel.toUpperCase();
+            const inferLabel = accel === 'cpu' ? 'CPU' : accelLabel;
+            const vramLabel = hw.gpu_vram_gb > 0 ? `${hw.gpu_vram_gb.toFixed(0)} GB` : '—';
+            hwEl.innerHTML = `
+                <div class="hw-grid">
+                    <div class="hw-card"><div class="hw-value">${hw.ram_gb.toFixed(0)} GB</div><div class="hw-label">System RAM</div></div>
+                    <div class="hw-card"><div class="hw-value">${vramLabel}</div><div class="hw-label">GPU VRAM</div></div>
+                    <div class="hw-card"><div class="hw-value">${hw.cpu_cores}</div><div class="hw-label">CPU Cores</div></div>
+                    <div class="hw-card"><div class="hw-value">${inferLabel}</div><div class="hw-label">Inference</div></div>
+                    <div class="hw-accel"><span>Acceleration</span><span class="accel-badge ${accel}">${accelLabel}</span></div>
+                </div>`;
+        } else if (!data.llmfit_available) {
+            hwEl.innerHTML = `<div class="llmfit-notice">⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.<br>Install: <code>brew install llmfit</code></div>`;
+        } else {
+            hwEl.innerHTML = '<p class="placeholder">Hardware info unavailable.</p>';
+        }
+
+        const recEl = document.getElementById('recommendedList');
+        const badge = document.getElementById('llmfitBadge');
+        if (!data.llmfit_available) {
+            recEl.innerHTML = '<div class="llmfit-notice">Install llmfit to get hardware-matched recommendations.</div>';
+            badge.textContent = 'llmfit required';
+            return;
+        }
+        const recs = data.recommended || [];
+        badge.textContent = recs.length + ' models';
+        if (recs.length === 0) { recEl.innerHTML = '<p class="placeholder">No recommendations found.</p>'; return; }
+        recEl.innerHTML = '';
+        for (const m of recs) {
+            const row = document.createElement('div');
+            row.className = 'model-row';
+            const fitCls = { perfect: 'fit-perfect', good: 'fit-good', marginal: 'fit-marginal' }[m.fit] || 'fit-unknown';
+            row.innerHTML = `
+                <span class="fit-badge ${fitCls}">${m.fit}</span>
+                <span class="model-name" title="${m.name}:${m.quantization}">${m.name}:${m.quantization}</span>
+                <span class="model-meta">${m.vram_gb}GB</span>
+                <button class="btn-pull-sm" onclick="quickPull('${m.name}:${m.quantization}', this)">⬇</button>`;
+            recEl.appendChild(row);
+        }
+    } catch (e) {
+        document.getElementById('hardwareInfo').innerHTML = '<p class="placeholder">Failed to load.</p>';
+        console.error(e);
+    }
+}
+
+async function loadPulledModels() {
+    try {
+        const resp = await fetch('/api/models');
+        const data = await resp.json();
+        const container = document.getElementById('pulledModelsList');
+        const badge = document.getElementById('pulledCount');
+        const models = data.models || [];
+        badge.textContent = models.length;
+        if (models.length === 0) { container.innerHTML = '<p class="placeholder">No models pulled yet.</p>'; return; }
+        container.innerHTML = '';
+        for (const name of models.sort()) {
+            const row = document.createElement('div');
+            row.className = 'model-row';
+            row.innerHTML = `
+                <span class="model-name" title="${name}">${name}</span>
+                <button class="btn-delete" onclick="deleteModel('${name}', this)" title="Delete">✕</button>`;
+            container.appendChild(row);
+        }
+    } catch {
+        document.getElementById('pulledModelsList').innerHTML = '<p class="placeholder">Failed to load.</p>';
+    }
+}
+
+async function pullModel() {
+    const input = document.getElementById('pullModelInput');
+    const btn = document.getElementById('pullModelBtn');
+    const status = document.getElementById('pullStatus');
+    const model = input.value.trim();
+    btn.disabled = true;
+    btn.textContent = '⏳ Pulling…';
+    status.hidden = false;
+    status.className = 'pull-status';
+    status.textContent = model ? `Pulling '${model}'…` : 'Auto-selecting and pulling best model…';
+    try {
+        const resp = await fetch('/api/models/pull', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        status.className = 'pull-status success';
+        status.textContent = data.message;
+        input.value = '';
+        await loadPulledModels();
+    } catch (e) {
+        status.className = 'pull-status error';
+        status.textContent = 'Error: ' + e.message;
     } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ Pull';
+    }
+}
+
+async function quickPull(modelTag, btn) {
+    const status = document.getElementById('pullStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    status.hidden = false;
+    status.className = 'pull-status';
+    status.textContent = `Pulling '${modelTag}'…`;
+    try {
+        const resp = await fetch('/api/models/pull', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelTag }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        status.className = 'pull-status success';
+        status.textContent = data.message;
+        await loadPulledModels();
+    } catch (e) {
+        status.className = 'pull-status error';
+        status.textContent = 'Error: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇';
+    }
+}
+
+async function deleteModel(name, btn) {
+    if (!confirm(`Delete model '${name}'? This cannot be undone.`)) return;
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/api/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        await loadPulledModels();
+    } catch (e) {
+        alert('Delete failed: ' + e.message);
         btn.disabled = false;
     }
 }
 
-// ── Powers ──
+// ═══════════════════════════════════════════════════════════════════════
+// Sessions
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadSessions() {
+    const el = document.getElementById('sessionsContent');
+    try {
+        const resp = await fetch('/api/sessions');
+        const data = await resp.json();
+        const sessions = data.sessions || [];
+        if (sessions.length === 0) {
+            el.innerHTML = '<p class="placeholder">No chat sessions recorded yet. Start a conversation in the Chat view.</p>';
+            return;
+        }
+        let html = '<div class="sessions-list">';
+        for (const s of sessions) {
+            html += `<div class="session-row">
+                <div class="session-info">
+                    <div class="session-id">${escapeHtml(s.id)}</div>
+                    <div class="session-meta">${s.messages} messages · Started ${formatDate(s.started)}</div>
+                </div>
+                <span class="status-badge ${s.active ? 'active' : 'inactive'}">${s.active ? 'active' : 'ended'}</span>
+            </div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load sessions.</p>';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Cron Jobs
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadCron() {
+    const el = document.getElementById('cronContent');
+    try {
+        const resp = await fetch('/api/cron');
+        const data = await resp.json();
+        const jobs = data.jobs || [];
+        if (jobs.length === 0) {
+            el.innerHTML = '<p class="placeholder">No jobs configured.</p>';
+            return;
+        }
+        let html = '<div class="cron-list">';
+        for (const j of jobs) {
+            const statusCls = j.enabled ? 'active' : 'inactive';
+            html += `<div class="cron-card">
+                <div class="cron-head">
+                    <span class="cron-icon">${j.icon || '⏰'}</span>
+                    <div class="cron-info">
+                        <div class="cron-title">${escapeHtml(j.name)}</div>
+                        <div class="cron-desc">${escapeHtml(j.description)}</div>
+                    </div>
+                    <span class="status-badge ${statusCls}">${j.enabled ? 'enabled' : 'disabled'}</span>
+                </div>
+                <div class="cron-detail">
+                    <span class="cron-schedule">Schedule: <code>${escapeHtml(j.schedule)}</code></span>
+                    <span class="cron-next">Next run: <strong>${j.next_run || 'N/A'}</strong></span>
+                    <span class="cron-last">Last run: ${j.last_run || 'Never'}</span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load jobs.</p>';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Skills
+// ═══════════════════════════════════════════════════════════════════════
+
+const _CAT_ORDER_SKILLS = ['vision', 'research', 'content', 'ml'];
+const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research', content: '✍️ Content', ml: '⚙️ ML / Training' };
+
+async function loadSkills() {
+    const grid = document.getElementById('skillsGrid');
+    try {
+        const resp = await fetch('/api/skills');
+        const data = await resp.json();
+        grid.innerHTML = '';
+        const groups = {};
+        for (const [id, info] of Object.entries(data)) {
+            const cat = info.category || 'research';
+            (groups[cat] = groups[cat] || []).push([id, info]);
+        }
+        for (const cat of _CAT_ORDER_SKILLS) {
+            if (!groups[cat]) continue;
+            const label = document.createElement('div');
+            label.className = 'cap-group-label';
+            label.textContent = _CAT_LABELS_SKILLS[cat] || cat;
+            grid.appendChild(label);
+            for (const [id, info] of groups[cat]) {
+                grid.appendChild(buildSkillCard(id, info));
+            }
+        }
+    } catch {
+        grid.innerHTML = '<p class="placeholder">Failed to load skills.</p>';
+    }
+}
+
+function buildSkillCard(_id, info) {
+    const card = document.createElement('div');
+    card.className = `skill-card ${info.status}`;
+    const toolsHtml = (info.tools || []).map(t => `<span class="skill-tool-chip">${t}</span>`).join('');
+    const missingHtml = (info.missing || []).length
+        ? `<div class="skill-missing">⚠ Requires: ${info.missing.join(', ')}</div>` : '';
+    const installHtml = info.install
+        ? `<code class="skill-install" title="Click to copy">${escapeHtml(info.install)}</code>` : '';
+    card.innerHTML = `
+        <div class="skill-head">
+            <span class="skill-icon">${info.icon}</span>
+            <span class="skill-title">${info.label}</span>
+            <span class="status-badge ${info.status}">${info.status.replace('-', ' ')}</span>
+        </div>
+        <div class="skill-cat">${info.category}</div>
+        <div class="skill-desc">${info.description}</div>
+        ${missingHtml}
+        ${installHtml}
+        ${toolsHtml ? `<div class="skill-tools">${toolsHtml}</div>` : ''}`;
+    if (info.install) {
+        card.querySelector('.skill-install')?.addEventListener('click', () => {
+            navigator.clipboard?.writeText(info.install);
+        });
+    }
+    return card;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Nodes (Powers)
+// ═══════════════════════════════════════════════════════════════════════
 
 const _CAT_ORDER_POWERS = ['built-in', 'integration', 'cloud'];
-const _CAT_LABELS_POWERS = { 'built-in': '🔌 Built-in', 'integration': '🔗 Integrations', 'cloud': '☁️ Cloud Compute' };
+const _CAT_LABELS_POWERS = { 'built-in': '🔌 Built-in', integration: '🔗 Integrations', cloud: '☁️ Cloud Compute' };
 
 async function loadPowers() {
     const grid = document.getElementById('powersGrid');
@@ -882,8 +692,6 @@ async function loadPowers() {
         const resp = await fetch('/api/powers');
         const data = await resp.json();
         grid.innerHTML = '';
-
-        // Group by category
         const groups = {};
         for (const [id, info] of Object.entries(data)) {
             const cat = info.category || 'integration';
@@ -899,7 +707,7 @@ async function loadPowers() {
                 grid.appendChild(buildPowerCard(id, info));
             }
         }
-    } catch (e) {
+    } catch {
         grid.innerHTML = '<p class="placeholder">Failed to load powers.</p>';
     }
 }
@@ -952,26 +760,20 @@ async function savePower(id) {
     const statusEl = document.getElementById(`pwr-save-status-${id}`);
     statusEl.className = 'pwr-save-status';
     statusEl.textContent = 'Saving…';
-
     const fields = {};
     document.querySelectorAll(`#pwr-form-${id} input[id^="pwr-${id}-"]`).forEach(input => {
         const key = input.id.replace(`pwr-${id}-`, '');
-        if (input.value && !input.value.match(/^•+/)) {
-            fields[key] = input.value;
-        }
+        if (input.value && !input.value.match(/^•+/)) fields[key] = input.value;
     });
-
     try {
         const resp = await fetch(`/api/powers/${id}/configure`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fields }),
         });
         const data = await resp.json();
         if (!data.ok) throw new Error(data.error || 'Unknown error');
         statusEl.className = 'pwr-save-status ok';
         statusEl.textContent = `Saved ${data.updated.length} key${data.updated.length !== 1 ? 's' : ''}`;
-        // Refresh both powers (status changes) and skills (power dependencies)
         await Promise.all([loadPowers(), loadSkills()]);
     } catch (e) {
         statusEl.className = 'pwr-save-status error';
@@ -979,73 +781,375 @@ async function savePower(id) {
     }
 }
 
-// ── Skills ──
+// ═══════════════════════════════════════════════════════════════════════
+// Vault Tree
+// ═══════════════════════════════════════════════════════════════════════
 
-const _CAT_ORDER_SKILLS = ['vision', 'research', 'content', 'ml'];
-const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research', content: '✍️ Content', ml: '⚙️ ML / Training' };
-
-async function loadSkills() {
-    const grid = document.getElementById('skillsGrid');
+async function loadVaultTree() {
     try {
-        const resp = await fetch('/api/skills');
+        const resp = await fetch('/api/vault/tree');
         const data = await resp.json();
-        grid.innerHTML = '';
-
-        const groups = {};
-        for (const [id, info] of Object.entries(data)) {
-            const cat = info.category || 'research';
-            (groups[cat] = groups[cat] || []).push([id, info]);
+        const container = document.getElementById('vaultTree');
+        container.innerHTML = '';
+        if (data.tree.length === 0) {
+            container.innerHTML = '<p class="placeholder">Vault is empty. Process some papers to populate it.</p>';
+            return;
         }
-        for (const cat of _CAT_ORDER_SKILLS) {
-            if (!groups[cat]) continue;
-            const label = document.createElement('div');
-            label.className = 'cap-group-label';
-            label.textContent = _CAT_LABELS_SKILLS[cat] || cat;
-            grid.appendChild(label);
-            for (const [id, info] of groups[cat]) {
-                grid.appendChild(buildSkillCard(id, info));
+        container.appendChild(buildTree(data.tree));
+    } catch (e) { console.error('Failed to load vault tree:', e); }
+}
+
+function buildTree(items) {
+    const frag = document.createDocumentFragment();
+    for (const item of items) {
+        if (item.type === 'folder') {
+            const folder = document.createElement('div');
+            folder.className = 'tree-folder';
+            folder.textContent = item.name;
+            folder.addEventListener('click', () => {
+                const children = folder.nextElementSibling;
+                if (children) children.hidden = !children.hidden;
+            });
+            frag.appendChild(folder);
+            if (item.children && item.children.length > 0) {
+                const children = document.createElement('div');
+                children.className = 'tree-children';
+                children.appendChild(buildTree(item.children));
+                frag.appendChild(children);
+            }
+        } else {
+            const file = document.createElement('div');
+            file.className = 'tree-file';
+            file.textContent = item.name;
+            file.addEventListener('click', () => {
+                document.querySelectorAll('.tree-file').forEach(f => f.classList.remove('active'));
+                file.classList.add('active');
+                loadVaultNote(item.path);
+            });
+            frag.appendChild(file);
+        }
+    }
+    return frag;
+}
+
+async function loadVaultNote(path) {
+    try {
+        const resp = await fetch(`/api/vault/note/${encodeURIComponent(path)}`);
+        const data = await resp.json();
+        document.getElementById('noteTitle').textContent = path;
+        const container = document.getElementById('noteContent');
+        container.innerHTML = data.html;
+        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        renderMathInElement(container);
+    } catch (e) { console.error('Failed to load note:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Knowledge Graph
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadGraph() {
+    try {
+        const resp = await fetch('/api/graph');
+        const data = await resp.json();
+        const stats = data.stats;
+        document.getElementById('graphStats').textContent = `${stats.nodes} nodes · ${stats.edges} edges`;
+        drawGraph(data.graph);
+    } catch (e) { console.error('Failed to load graph:', e); }
+}
+
+function drawGraph(graphData) {
+    const canvas = document.getElementById('graphCanvas');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * devicePixelRatio;
+    canvas.height = rect.height * devicePixelRatio;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+
+    const W = rect.width, H = rect.height;
+    const nodes = graphData.nodes || [], edges = graphData.edges || [];
+
+    if (nodes.length === 0) {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '14px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No nodes yet. Process papers to build the graph.', W / 2, H / 2);
+        return;
+    }
+
+    const typeColors = { paper: '#58a6ff', method: '#f0883e', dataset: '#3fb950', task: '#f85149', author: '#d2a8ff', unknown: '#8b949e' };
+    const positions = {};
+    nodes.forEach((node, i) => {
+        const angle = (2 * Math.PI * i) / nodes.length;
+        const r = Math.min(W, H) * 0.35;
+        positions[node.id] = {
+            x: W / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 40,
+            y: H / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 40,
+        };
+    });
+
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+    for (const edge of edges) {
+        const from = positions[edge.source], to = positions[edge.target];
+        if (from && to) {
+            ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+            const dx = to.x - from.x, dy = to.y - from.y, len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0) {
+                const nx = dx / len, ny = dy / len, ax = to.x - nx * 14, ay = to.y - ny * 14;
+                ctx.beginPath();
+                ctx.moveTo(to.x - nx * 8, to.y - ny * 8);
+                ctx.lineTo(ax - ny * 4, ay + nx * 4);
+                ctx.lineTo(ax + ny * 4, ay - nx * 4);
+                ctx.fillStyle = '#30363d'; ctx.fill();
             }
         }
-    } catch (e) {
-        grid.innerHTML = '<p class="placeholder">Failed to load skills.</p>';
+    }
+
+    for (const node of nodes) {
+        const pos = positions[node.id];
+        if (!pos) continue;
+        const color = typeColors[node.type] || typeColors.unknown;
+        const radius = node.type === 'paper' ? 8 : 6;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 2; ctx.stroke();
+        const label = (node.title || node.id || '').substring(0, 30);
+        ctx.fillStyle = '#e6edf3'; ctx.font = '11px -apple-system, sans-serif';
+        ctx.textAlign = 'center'; ctx.fillText(label, pos.x, pos.y + radius + 14);
+    }
+
+    let ly = 20; ctx.textAlign = 'left';
+    for (const [type, color] of Object.entries(typeColors)) {
+        ctx.beginPath(); ctx.arc(20, ly, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.fillStyle = '#8b949e'; ctx.font = '11px -apple-system, sans-serif';
+        ctx.fillText(type, 32, ly + 4);
+        ly += 18;
     }
 }
 
-function buildSkillCard(_id, info) {
-    const card = document.createElement('div');
-    card.className = `skill-card ${info.status}`;
+// ═══════════════════════════════════════════════════════════════════════
+// Specs
+// ═══════════════════════════════════════════════════════════════════════
 
-    const toolsHtml = (info.tools || []).map(t =>
-        `<span class="skill-tool-chip">${t}</span>`).join('');
-
-    const missingHtml = (info.missing || []).length
-        ? `<div class="skill-missing">⚠ Requires: ${info.missing.join(', ')}</div>` : '';
-
-    const installHtml = info.install
-        ? `<code class="skill-install" title="Click to copy">${escapeHtml(info.install)}</code>` : '';
-
-    card.innerHTML = `
-        <div class="skill-head">
-            <span class="skill-icon">${info.icon}</span>
-            <span class="skill-title">${info.label}</span>
-            <span class="status-badge ${info.status}">${info.status.replace('-', ' ')}</span>
-        </div>
-        <div class="skill-cat">${info.category}</div>
-        <div class="skill-desc">${info.description}</div>
-        ${missingHtml}
-        ${installHtml}
-        ${toolsHtml ? `<div class="skill-tools">${toolsHtml}</div>` : ''}`;
-
-    // Copy install command on click
-    if (info.install) {
-        card.querySelector('.skill-install')?.addEventListener('click', () => {
-            navigator.clipboard?.writeText(info.install);
-        });
-    }
-    return card;
+async function loadSpecs() {
+    try {
+        const resp = await fetch('/api/specs');
+        const data = await resp.json();
+        const container = document.getElementById('specsList');
+        container.innerHTML = '';
+        if (data.specs.length === 0) { container.innerHTML = '<p class="placeholder">No specs generated yet.</p>'; return; }
+        for (const spec of data.specs) {
+            const item = document.createElement('div');
+            item.className = 'file-list-item';
+            item.innerHTML = `<div class="name">${spec.name}</div><div class="meta">${formatBytes(spec.size)} · ${formatDate(spec.modified)}</div>`;
+            item.addEventListener('click', () => {
+                document.querySelectorAll('#specsList .file-list-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                loadSpec(spec.name);
+            });
+            container.appendChild(item);
+        }
+    } catch (e) { console.error('Failed to load specs:', e); }
 }
 
-// ── Helpers ──
+async function loadSpec(filename) {
+    try {
+        const resp = await fetch(`/api/specs/${encodeURIComponent(filename)}`);
+        const data = await resp.json();
+        document.getElementById('specTitle').textContent = filename;
+        document.getElementById('specRawToggle').hidden = false;
+        currentSpecRaw = data.raw;
+        specRawMode = false;
+        const container = document.getElementById('specContent');
+        container.innerHTML = data.html;
+        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        renderMathInElement(container);
+    } catch (e) { console.error('Failed to load spec:', e); }
+}
+
+function toggleSpecRaw() {
+    specRawMode = !specRawMode;
+    const container = document.getElementById('specContent');
+    const btn = document.getElementById('specRawToggle');
+    if (specRawMode) {
+        container.innerHTML = `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(currentSpecRaw)}</pre>`;
+        btn.textContent = 'Rendered';
+    } else {
+        loadSpec(document.getElementById('specTitle').textContent);
+        btn.textContent = 'Raw';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Digests
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadDigests() {
+    try {
+        const resp = await fetch('/api/digests');
+        const data = await resp.json();
+        const container = document.getElementById('digestsList');
+        container.innerHTML = '';
+        if (data.digests.length === 0) { container.innerHTML = '<p class="placeholder">No digests yet. Run: cv-agent digest</p>'; return; }
+        for (const digest of data.digests) {
+            const item = document.createElement('div');
+            item.className = 'file-list-item';
+            item.innerHTML = `<div class="name">${digest.name}</div><div class="meta">${formatBytes(digest.size)} · ${formatDate(digest.modified)}</div>`;
+            item.addEventListener('click', () => {
+                document.querySelectorAll('#digestsList .file-list-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                loadDigest(digest.name);
+            });
+            container.appendChild(item);
+        }
+    } catch (e) { console.error('Failed to load digests:', e); }
+}
+
+async function loadDigest(filename) {
+    try {
+        const resp = await fetch(`/api/digests/${encodeURIComponent(filename)}`);
+        const data = await resp.json();
+        document.getElementById('digestTitle').textContent = filename;
+        const container = document.getElementById('digestContent');
+        container.innerHTML = data.html;
+        container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        renderMathInElement(container);
+    } catch (e) { console.error('Failed to load digest:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Config
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadConfig() {
+    await Promise.all([loadZeroClawStatus(), loadAgentConfig()]);
+}
+
+async function loadZeroClawStatus() {
+    const el = document.getElementById('zeroClawStatus');
+    try {
+        const resp = await fetch('/api/zeroclaw');
+        const d = await resp.json();
+        const modeLabel = d.mode === 'shim'
+            ? '<span class="zc-value shim">Local Shim</span>'
+            : '<span class="zc-value pkg">Real Package</span>';
+        let updateHtml = '';
+        if (d.update_available) {
+            updateHtml = `<div class="zc-update-banner">⬆ Update available: <strong>${d.pypi_version}</strong> (current: ${d.current_version}) — run <code>pip install -U zeroclaw-tools</code></div>`;
+        } else if (!d.package_on_pypi && d.mode === 'shim') {
+            updateHtml = `<div class="zc-not-on-pypi">zeroclaw-tools not yet on PyPI — using local compatibility shim.<div class="zc-install-hint">When published: <code>pip install zeroclaw-tools</code> then delete <code>src/zeroclaw_tools/</code></div></div>`;
+        }
+        const toolsHtml = (d.builtin_tools || []).map(t => `<span class="zc-tool-chip">${t}</span>`).join('');
+        el.innerHTML = `
+            ${updateHtml}
+            <div class="zc-grid">
+                <div class="zc-card highlight"><div class="zc-label">Mode</div>${modeLabel}</div>
+                <div class="zc-card"><div class="zc-label">Version</div><div class="zc-value">${d.current_version}</div></div>
+                <div class="zc-card"><div class="zc-label">Agent Framework</div><div class="zc-value" style="font-size:11px">${d.agent_framework}</div></div>
+                <div class="zc-card"><div class="zc-label">Tool Call Mode</div><div class="zc-value" style="font-size:10px;line-height:1.4">${d.tool_call_mode}</div></div>
+            </div>
+            <div class="zc-label" style="margin-bottom:6px">Built-in Tools</div>
+            <div class="zc-tools">${toolsHtml}</div>`;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load ZeroClaw status.</p>';
+    }
+}
+
+async function loadAgentConfig() {
+    const el = document.getElementById('agentConfigView');
+    try {
+        const resp = await fetch('/api/status');
+        const d = await resp.json();
+        el.innerHTML = `
+            <div class="config-kv">
+                <div class="config-row"><span class="config-key">Agent Name</span><span class="config-val">${d.agent}</span></div>
+                <div class="config-row"><span class="config-key">LLM Model</span><span class="config-val mono">${d.llm_model}</span></div>
+                <div class="config-row"><span class="config-key">Vision Model</span><span class="config-val mono">${d.vision_model}</span></div>
+                <div class="config-row"><span class="config-key">Vault Path</span><span class="config-val mono">${d.vault_path}</span></div>
+                <div class="config-row"><span class="config-key">Status</span><span class="config-val"><span class="status-badge active">${d.status}</span></span></div>
+            </div>`;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load agent config.</p>';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Debug
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadDebug() {
+    const el = document.getElementById('debugContent');
+    try {
+        const resp = await fetch('/api/debug');
+        const d = await resp.json();
+        let html = '<div class="debug-panels">';
+
+        // Dependencies
+        html += '<div class="inst-card"><div class="inst-card-header"><h3>Dependencies</h3></div><div class="inst-card-body">';
+        for (const dep of d.dependencies) {
+            const cls = dep.installed ? 'active' : 'inactive';
+            html += `<div class="debug-dep-row">
+                <span class="status-badge ${cls}">${dep.installed ? 'installed' : 'missing'}</span>
+                <span class="debug-dep-name">${dep.name}</span>
+                <span class="debug-dep-ver">${dep.version || ''}</span>
+            </div>`;
+        }
+        html += '</div></div>';
+
+        // Environment
+        html += '<div class="inst-card"><div class="inst-card-header"><h3>Environment</h3></div><div class="inst-card-body"><div class="config-kv">';
+        for (const [k, v] of Object.entries(d.environment)) {
+            html += `<div class="config-row"><span class="config-key">${k}</span><span class="config-val mono">${escapeHtml(String(v))}</span></div>`;
+        }
+        html += '</div></div></div>';
+
+        // Tool registry
+        html += '<div class="inst-card"><div class="inst-card-header"><h3>Registered Tools</h3></div><div class="inst-card-body"><div class="zc-tools">';
+        for (const t of d.tools) {
+            html += `<span class="zc-tool-chip">${t}</span>`;
+        }
+        html += '</div></div></div>';
+
+        html += '</div>';
+        el.innerHTML = html;
+    } catch {
+        el.innerHTML = '<p class="placeholder">Failed to load debug info.</p>';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Logs
+// ═══════════════════════════════════════════════════════════════════════
+
+function loadLogs() {
+    const output = document.getElementById('logOutput');
+    output.textContent = 'Connecting to log stream…\n';
+    if (logWs) { logWs.close(); logWs = null; }
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    logWs = new WebSocket(`${protocol}//${location.host}/ws/logs`);
+    logWs.onopen = () => { output.textContent += '[connected]\n'; };
+    logWs.onmessage = (event) => {
+        output.textContent += event.data + '\n';
+        if (document.getElementById('logAutoScroll').checked) {
+            const container = document.getElementById('logContainer');
+            container.scrollTop = container.scrollHeight;
+        }
+    };
+    logWs.onclose = () => { output.textContent += '[disconnected]\n'; };
+    logWs.onerror = () => { output.textContent += '[error]\n'; };
+}
+
+function clearLogs() {
+    document.getElementById('logOutput').textContent = '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════
+
 function formatBytes(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1054,12 +1158,8 @@ function formatBytes(bytes) {
 
 function formatDate(isoStr) {
     try {
-        return new Date(isoStr).toLocaleDateString(undefined, {
-            month: 'short', day: 'numeric', year: 'numeric',
-        });
-    } catch {
-        return isoStr;
-    }
+        return new Date(isoStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch { return isoStr; }
 }
 
 function escapeHtml(text) {

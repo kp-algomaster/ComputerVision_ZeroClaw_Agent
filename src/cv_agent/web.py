@@ -812,6 +812,228 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         }
         return JSONResponse(skills)
 
+    # ── Overview ───────────────────────────────────────────────────────────
+
+    @app.get("/api/overview")
+    async def overview():
+        """Aggregate dashboard stats."""
+        import importlib.util as _ilu
+
+        def _e(k: str) -> str:
+            return os.environ.get(k, "").strip()
+
+        # Models
+        from cv_agent.tools.hardware_probe import list_ollama_models
+        models = list_ollama_models(config.vision.ollama.host)
+
+        # Vault notes count
+        vault = Path(config.knowledge.vault_path).expanduser().resolve()
+        vault_notes = len(list(vault.rglob("*.md"))) if vault.exists() else 0
+
+        # Specs and digests count
+        specs_dir = Path(config.spec.output_dir).expanduser().resolve()
+        specs_count = len(list(specs_dir.glob("*.md"))) if specs_dir.exists() else 0
+        digests_dir = Path(config.output.digests_dir).expanduser().resolve()
+        digests_count = len(list(digests_dir.glob("*.md"))) if digests_dir.exists() else 0
+
+        # Powers
+        def _has(*keys: str) -> bool:
+            return all(_e(k) for k in keys)
+        power_defs = [
+            ("internet_search", True),
+            ("file_system", True),
+            ("arxiv", True),
+            ("semantic_scholar", bool(_e("SEMANTIC_SCHOLAR_API_KEY"))),
+            ("email", _has("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD")),
+            ("huggingface", bool(_e("HF_TOKEN"))),
+            ("kaggle", _has("KAGGLE_USERNAME", "KAGGLE_KEY")),
+            ("github", bool(_e("GITHUB_TOKEN"))),
+            ("azure_ml", _has("AZURE_SUBSCRIPTION_ID", "AZURE_ML_WORKSPACE")),
+            ("runpod", bool(_e("RUNPOD_API_KEY"))),
+        ]
+        powers_active = sum(1 for _, active in power_defs if active)
+
+        # Skills
+        has_3d = _ilu.find_spec("open3d") is not None or _ilu.find_spec("trimesh") is not None
+        has_video = _ilu.find_spec("cv2") is not None or _ilu.find_spec("decord") is not None
+        skill_ready = [
+            True, True, _has("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"),
+            True, has_3d, has_video, True, True, True,
+            _has("KAGGLE_USERNAME", "KAGGLE_KEY"),
+            bool(_e("HF_TOKEN")) or _has("AZURE_SUBSCRIPTION_ID", "AZURE_ML_WORKSPACE"),
+            True,
+        ]
+        skills_ready = sum(skill_ready)
+
+        # Channels
+        channel_keys = [
+            "TELEGRAM_ENABLED", "DISCORD_ENABLED",
+            "WHATSAPP_ENABLED", "SIGNAL_ENABLED",
+        ]
+        channels_enabled = sum(
+            1 for k in channel_keys if _e(k).lower() == "true"
+        )
+
+        # ZeroClaw mode
+        try:
+            import importlib.metadata as _meta
+            _meta.version("zeroclaw-tools")
+            zc_mode = "package"
+        except Exception:
+            zc_mode = "shim"
+
+        return JSONResponse({
+            "status": "ok",
+            "agent_name": config.name,
+            "llm_model": config.llm.model,
+            "vision_model": config.vision.ollama.default_model,
+            "vault_path": config.knowledge.vault_path,
+            "models_pulled": len(models),
+            "skills_ready": skills_ready,
+            "skills_total": len(skill_ready),
+            "powers_active": powers_active,
+            "powers_total": len(power_defs),
+            "channels_enabled": channels_enabled,
+            "channels_total": len(channel_keys),
+            "vault_notes": vault_notes,
+            "specs_count": specs_count,
+            "digests_count": digests_count,
+            "zeroclaw_mode": zc_mode,
+        })
+
+    # ── Sessions ───────────────────────────────────────────────────────────
+
+    @app.get("/api/sessions")
+    async def list_sessions():
+        """Return chat session info."""
+        sessions = []
+        if hasattr(app.state, "sessions"):
+            sessions = app.state.sessions
+        return JSONResponse({"sessions": sessions})
+
+    # ── Cron Jobs ──────────────────────────────────────────────────────────
+
+    @app.get("/api/cron")
+    async def list_cron_jobs():
+        """Return configured scheduled tasks."""
+        digest_day = config.research.digest_day
+        check_hours = config.research.check_interval_hours
+        jobs = [
+            {
+                "name": "Weekly Research Digest",
+                "icon": "📰",
+                "description": f"Compile a curated digest of the latest CV breakthroughs from ArXiv, Papers With Code, and Semantic Scholar.",
+                "schedule": f"Every {digest_day}",
+                "enabled": True,
+                "next_run": f"Next {digest_day}",
+                "last_run": None,
+            },
+            {
+                "name": "Research Monitor",
+                "icon": "🔬",
+                "description": f"Check all configured research sources for new papers and update the knowledge base.",
+                "schedule": f"Every {check_hours}h",
+                "enabled": True,
+                "next_run": f"In {check_hours}h",
+                "last_run": None,
+            },
+            {
+                "name": "Knowledge Graph Sync",
+                "icon": "🕸️",
+                "description": "Re-scan the Obsidian vault and rebuild the knowledge graph from linked notes.",
+                "schedule": "On demand",
+                "enabled": True,
+                "next_run": "Manual",
+                "last_run": None,
+            },
+        ]
+        return JSONResponse({"jobs": jobs})
+
+    # ── Debug ──────────────────────────────────────────────────────────────
+
+    @app.get("/api/debug")
+    async def debug_info():
+        """Return dependency and environment debug info."""
+        import importlib.metadata as _meta
+        import importlib.util as _ilu
+        import sys
+
+        deps = [
+            "fastapi", "uvicorn", "httpx", "pydantic", "pyyaml",
+            "jinja2", "networkx", "Pillow", "feedparser", "tiktoken",
+            "rich", "click", "python-dotenv", "markdown",
+            "zeroclaw-tools", "langchain-core", "langgraph",
+            "mlx", "mlx-vlm", "open3d", "opencv-python",
+        ]
+        dep_list = []
+        for d in deps:
+            try:
+                ver = _meta.version(d)
+                dep_list.append({"name": d, "installed": True, "version": ver})
+            except _meta.PackageNotFoundError:
+                dep_list.append({"name": d, "installed": False, "version": None})
+
+        tools = [
+            "analyze_image", "describe_image", "compare_images",
+            "mlx_analyze_image", "fetch_arxiv_paper", "search_arxiv",
+            "extract_equations", "extract_key_info",
+            "add_paper_to_graph", "query_graph", "export_graph",
+            "generate_spec", "generate_spec_from_url",
+        ]
+
+        env = {
+            "Python": sys.version.split()[0],
+            "Platform": sys.platform,
+            "Prefix": sys.prefix,
+            "Agent": config.name,
+            "LLM Provider": config.llm.provider,
+            "LLM Model": config.llm.model,
+            "Vision Model": config.vision.ollama.default_model,
+            "Ollama Host": config.vision.ollama.host,
+            "Vault Path": config.knowledge.vault_path,
+        }
+
+        return JSONResponse({
+            "dependencies": dep_list,
+            "tools": tools,
+            "environment": env,
+        })
+
+    # ── Logs WebSocket ─────────────────────────────────────────────────────
+
+    _log_buffer: list[str] = []
+
+    class _WSLogHandler(logging.Handler):
+        """Captures log records into a ring buffer for the WebSocket stream."""
+        def emit(self, record: logging.LogRecord) -> None:
+            msg = self.format(record)
+            _log_buffer.append(msg)
+            if len(_log_buffer) > 2000:
+                _log_buffer.pop(0)
+
+    _ws_handler = _WSLogHandler()
+    _ws_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"))
+    logging.getLogger().addHandler(_ws_handler)
+    logging.getLogger("uvicorn.access").addHandler(_ws_handler)
+    logging.getLogger("uvicorn.error").addHandler(_ws_handler)
+
+    @app.websocket("/ws/logs")
+    async def ws_logs(websocket: WebSocket):
+        await websocket.accept()
+        # Send buffered logs first
+        for line in _log_buffer[-200:]:
+            await websocket.send_text(line)
+        cursor = len(_log_buffer)
+        try:
+            while True:
+                await asyncio.sleep(0.5)
+                new_logs = _log_buffer[cursor:]
+                for line in new_logs:
+                    await websocket.send_text(line)
+                cursor = len(_log_buffer)
+        except WebSocketDisconnect:
+            pass
+
     return app
 
 

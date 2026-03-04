@@ -61,15 +61,17 @@ class HardwareInfo:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> HardwareInfo:
         gpus = d.get("gpus", [])
-        total_vram = sum(float(g.get("vram_gb", 0)) for g in gpus)
-        acceleration = d.get("acceleration", "cpu")
+        total_vram = float(d.get("gpu_vram_gb", 0)) or sum(float(g.get("vram_gb", 0)) for g in gpus)
+        # llmfit uses "backend" and "total_ram_gb"; fall back to legacy keys
+        acceleration = d.get("backend") or d.get("acceleration", "cpu")
         if isinstance(acceleration, list):
             acceleration = acceleration[0] if acceleration else "cpu"
+        ram_gb = float(d.get("total_ram_gb") or d.get("ram_gb", 0))
         return cls(
-            ram_gb=float(d.get("ram_gb", 0)),
+            ram_gb=ram_gb,
             cpu_cores=int(d.get("cpu_cores", 0)),
             gpu_vram_gb=total_vram,
-            acceleration=str(acceleration),
+            acceleration=str(acceleration).lower(),
         )
 
 
@@ -112,6 +114,9 @@ def get_hardware_info() -> HardwareInfo | None:
     data = _run_llmfit_json("system", "--json")
     if not isinstance(data, dict):
         return None
+    # llmfit wraps output under a "system" key
+    if "system" in data:
+        data = data["system"]
     return HardwareInfo.from_dict(data)
 
 
