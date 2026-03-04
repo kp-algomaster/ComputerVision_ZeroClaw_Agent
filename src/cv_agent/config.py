@@ -103,6 +103,18 @@ class SpecConfig(BaseModel):
     template: str = "templates/spec.md.j2"
 
 
+class TextToDiagramConfig(BaseModel):
+    enabled: bool = True
+    vlm_provider: str = "ollama"
+    image_provider: str = "matplotlib"
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_vlm_model: str = "qwen2.5-vl:7b"
+    ollama_code_model: str = "qwen2.5-coder:latest"
+    default_iterations: int = 2
+    output_dir: str = "./output/diagrams"
+    default_diagram_type: str = "methodology"
+
+
 class OutputConfig(BaseModel):
     base_dir: str = "./output"
     digests_dir: str = "./output/digests"
@@ -159,6 +171,7 @@ class AgentsConfig(BaseModel):
     model_training: AgentInstanceConfig = Field(default_factory=AgentInstanceConfig)
     data_visualization: AgentInstanceConfig = Field(default_factory=AgentInstanceConfig)
     paper_to_code: AgentInstanceConfig = Field(default_factory=AgentInstanceConfig)
+    digest_writer: AgentInstanceConfig = Field(default_factory=AgentInstanceConfig)
 
 
 class AgentConfig(BaseModel):
@@ -171,6 +184,7 @@ class AgentConfig(BaseModel):
     research: ResearchConfig = Field(default_factory=ResearchConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     spec: SpecConfig = Field(default_factory=SpecConfig)
+    text_to_diagram: TextToDiagramConfig = Field(default_factory=TextToDiagramConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     remote: RemoteConnectionsConfig = Field(default_factory=RemoteConnectionsConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)

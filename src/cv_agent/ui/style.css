@@ -186,18 +186,24 @@ body { display: flex; }
 .message-content ul, .message-content ol { padding-left: 20px; margin-bottom: 8px; }
 .message-content img { max-width: 100%; border-radius: 6px; }
 
-/* ── Status Line (replaces typing dots) ── */
-.status-line { padding: 6px 24px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
-.status-icon { color: var(--accent); font-size: 10px; flex-shrink: 0; animation: statusPulse 1.5s ease-in-out infinite; }
-.status-text { color: var(--text-secondary); }
-@keyframes statusPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-
+/* ── Status Line — animated eye ── */
+.status-line { padding: 6px 24px; display: flex; align-items: center; gap: 7px; font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
+.status-eye { font-size: 14px; display: inline-block; flex-shrink: 0; transform-origin: center 60%; animation: eyeBlink 3s ease-in-out infinite, eyeGlow 1.8s ease-in-out infinite; }
+.status-text { color: var(--text-secondary); letter-spacing: 0.01em; }
+@keyframes eyeBlink {
+    0%, 78%, 100% { transform: scaleY(1); }
+    85%            { transform: scaleY(0.08); }
+}
+@keyframes eyeGlow {
+    0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px #58a6ff66); }
+    50%       { opacity: 0.65; filter: drop-shadow(0 0 7px #58a6ffaa); }
+}
 
 /* Tool activity — Claude Code style */
 .tool-activity { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; padding: 6px 10px; background: var(--bg-tertiary); border-radius: 6px; border-left: 2px solid var(--border); font-size: 12px; font-family: var(--font-mono); }
 .tool-entry { display: flex; align-items: baseline; gap: 5px; color: var(--text-secondary); }
 .tool-entry.done { color: var(--text-muted); }
-.tool-dot { color: var(--accent); font-size: 9px; flex-shrink: 0; animation: statusPulse 1.5s ease-in-out infinite; }
+.tool-dot { color: var(--accent); font-size: 9px; flex-shrink: 0; animation: eyeGlow 1.5s ease-in-out infinite; }
 .tool-entry.done .tool-dot { display: none; }
 .tool-check { color: var(--success); font-size: 11px; flex-shrink: 0; }
 .tool-name { color: var(--accent); font-weight: 600; }
@@ -665,7 +671,79 @@ body { display: flex; }
 .agent-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
 .agent-model { font-size: 12px; color: var(--text-muted); }
 .agent-model code { background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
-.agent-actions { display: flex; gap: 8px; }
+.agent-actions { display: flex; gap: 8px; align-items: center; }
+.pin-btn { padding: 5px 10px; font-size: 11px; border-radius: 5px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-muted); transition: all 0.15s; white-space: nowrap; }
+.pin-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pin-btn.pinned { background: #2a1f00; border-color: #664400; color: #f0a832; }
+.pin-btn.pinned:hover { background: #3a2c00; }
+
+/* ── Pinned nav items ── */
+.pinned-agent-item { padding-left: 32px; font-size: 12px; color: var(--text-secondary); }
+.pinned-agent-item .nav-icon { margin-right: 6px; font-size: 13px; }
+.pinned-agent-item::before { content: ''; }
+
+.pinned-skill-item {
+    padding-left: 32px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+.pinned-skill-item .nav-icon { margin-right: 6px; font-size: 13px; }
+
+.pinned-skill-item .pin-drag {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.pinned-skill-item.drag-over {
+    outline: 1px dashed var(--accent);
+    background: #17314a;
+}
+
+.pinned-skill-item.dragging {
+    opacity: 0.55;
+}
+
+/* ── Text to Diagram ── */
+.t2d-layout { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 4px 2px; }
+.t2d-panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.t2d-panel .config-row {
+    display: grid;
+    grid-template-columns: 170px 1fr;
+    align-items: start;
+    gap: 12px;
+}
+.t2d-panel .config-row label { padding-top: 6px; }
+.t2d-panel .config-row input,
+.t2d-panel .config-row select,
+.t2d-panel .config-row textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+.t2d-panel #t2dSourceText {
+    min-height: 260px;
+    resize: vertical;
+}
+.t2d-readiness { border-left: 3px solid var(--border); }
+.t2d-ok { color: var(--success); font-size: 13px; }
+.t2d-bad { color: var(--danger); font-size: 13px; margin-bottom: 6px; }
+.t2d-list { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12px; }
+.t2d-fixes { margin-top: 8px; }
+.t2d-events { max-height: 220px; overflow-y: auto; font-family: var(--font-mono); font-size: 12px; }
+.t2d-event { padding: 5px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.t2d-event.success { color: var(--success); }
+.t2d-event.error { color: var(--danger); }
+.t2d-event.warn { color: #f0a832; }
+.t2d-iters { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.t2d-iter-card { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.t2d-iter-head { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.t2d-iter-note { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.t2d-img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.skill-actions { margin-top: 8px; }
 
 /* ── Agent Chat Header ── */
 .agent-chat-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -673,6 +751,14 @@ body { display: flex; }
 .agent-chat-meta { flex: 1; }
 .agent-chat-meta > div:first-child { font-weight: 600; font-size: 14px; }
 .agent-chat-model { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+@media (max-width: 900px) {
+    .t2d-panel .config-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    .t2d-panel .config-row label { padding-top: 0; }
+}
 
 @media (max-width: 768px) {
     #sidebar { width: 56px; min-width: 56px; }

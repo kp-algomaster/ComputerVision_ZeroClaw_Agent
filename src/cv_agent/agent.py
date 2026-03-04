@@ -18,6 +18,7 @@ from cv_agent.agents import (
     run_model_training_agent,
     run_data_visualization_agent,
     run_paper_to_code_agent,
+    run_digest_agent,
 )
 from cv_agent.tools.vision import analyze_image, describe_image, compare_images
 from cv_agent.tools.mlx_vision import mlx_analyze_image
@@ -25,6 +26,7 @@ from cv_agent.tools.paper_fetch import fetch_arxiv_paper, search_arxiv, fetch_pa
 from cv_agent.tools.equation_extract import extract_equations, extract_key_info
 from cv_agent.tools.knowledge_graph import add_paper_to_graph, query_graph, export_graph
 from cv_agent.tools.spec_generator import generate_spec, generate_spec_from_url
+from cv_agent.tools.text_to_diagram import text_to_diagram
 from cv_agent.tools.hardware_probe import (
     check_runnable_models,
     list_available_models,
@@ -100,6 +102,18 @@ def _make_delegation_tools(config: AgentConfig) -> list:
             """
             return asyncio.run(run_paper_to_code_agent(task, config))
         delegation.append(delegate_paper_to_code)
+
+    if config.agents.digest_writer.enabled:
+        @tool
+        def delegate_digest_writer(task: str) -> str:
+            """Delegate a digest generation task to the Digest Writer Agent.
+
+            Use when the user asks to generate, write, or create a weekly CV research digest.
+            Args:
+                task: The digest instruction (e.g. "generate this week's CV digest").
+            """
+            return asyncio.run(run_digest_agent(task, config))
+        delegation.append(delegate_digest_writer)
 
     return delegation
 
@@ -191,6 +205,7 @@ the latest CV breakthroughs.
    - `delegate_model_training` — generate training configs, scripts, cost estimates
    - `delegate_data_visualization` — generate charts and extract paper metrics
    - `delegate_paper_to_code` — scaffold PyTorch implementations from ArXiv papers
+   - `delegate_digest_writer` — generate magazine-style weekly CV research digests
 
 When synthesising results from tools:
 - Lead with the most impactful / novel findings
@@ -227,6 +242,7 @@ def build_tools(config: AgentConfig) -> list:
         export_graph,
         generate_spec,
         generate_spec_from_url,
+        text_to_diagram,
     ]
 
     # Add MLX tools if available on Apple Silicon

@@ -8,12 +8,45 @@ let currentSpecRaw = '';
 let logWs = null;
 let agentWs = null;
 let currentAgentId = null;
+const _PINNED_KEY = 'cv_pinned_agents';
+const _PINNED_SKILLS_KEY = 'cv_pinned_skills';
+let _t2dJobId = null;
+let _t2dPollTimer = null;
+let _t2dReady = false;
+let _t2dProviderDefaults = { profiles: {}, vlm_providers: {}, image_providers: {} };
+let _skillsById = {};
+let _draggedPinnedSkillId = null;
+
+function _localDefaultT2DVlmModel(vlmProvider) {
+    if (vlmProvider === 'gemini') return 'gemini-2.0-flash';
+    if (vlmProvider === 'openai') return 'gpt-4o';
+    if (vlmProvider === 'openrouter') return 'openai/gpt-4o-mini';
+    return 'qwen2.5-vl:7b';
+}
+
+function _localDefaultT2DImageModel(imageProvider) {
+    if (imageProvider === 'matplotlib') return 'matplotlib';
+    if (imageProvider === 'google_imagen') return 'gemini-3-pro-image-preview';
+    if (imageProvider === 'openai_imagen') return 'gpt-image-1';
+    if (imageProvider === 'openrouter_imagen') return 'openai/gpt-image-1';
+    if (imageProvider === 'stability') return 'stabilityai/stable-diffusion-3.5-large';
+    return 'matplotlib';
+}
+
+function _localT2DProfileMap(profile) {
+    if (profile === 'gemini') return { vlm_provider: 'gemini', image_provider: 'google_imagen' };
+    if (profile === 'openai') return { vlm_provider: 'openai', image_provider: 'openai_imagen' };
+    if (profile === 'openrouter') return { vlm_provider: 'openrouter', image_provider: 'openrouter_imagen' };
+    return { vlm_provider: 'ollama', image_provider: 'matplotlib' };
+}
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', () => {
     initNav();
     initChat();
     initAgentChat();
+    renderPinnedNavItems();
+    renderPinnedSkillNavItems();
     checkStatus();
 });
 
@@ -58,6 +91,7 @@ function switchView(view) {
         sessions: loadSessions,
         cron: loadCron,
         skills: loadSkills,
+        text2diagram: loadTextToDiagramView,
         powers: loadPowers,
         vault: loadVaultTree,
         graph: loadGraph,
@@ -127,6 +161,19 @@ let _streamingContent = '';
 let _toolActivity = null;
 let _streamTimeout = null;
 let _hadToolCalls = false;
+let _writingResponse = false;
+
+function _toolStatusText(name) {
+    if (/search|arxiv/i.test(name)) return 'Searching…';
+    if (/fetch|download|pdf/i.test(name)) return 'Fetching…';
+    if (/analyz|vision|image|mlx/i.test(name)) return 'Analyzing…';
+    if (/graph|kg|map/i.test(name)) return 'Mapping…';
+    if (/draft|blog|write|generat|scaffold/i.test(name)) return 'Drafting…';
+    if (/hardware|probe/i.test(name)) return 'Probing hardware…';
+    if (/extract|equat/i.test(name)) return 'Extracting…';
+    if (/train|cost|scaffold/i.test(name)) return 'Computing…';
+    return 'Thinking…';
+}
 
 function _resetStreamTimeout() {
     if (_streamTimeout) clearTimeout(_streamTimeout);
@@ -144,25 +191,25 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'typing') {
-            // suppress — status shown only during final write phase
+            // suppress
         } else if (data.type === 'message') {
             addMessage('assistant', data.content, data.html);
         } else if (data.type === 'stream_start') {
             _startStreamingMessage();
         } else if (data.type === 'stream_token') {
             _resetStreamTimeout();
-            if (_hadToolCalls) {
-                const ind = document.getElementById('typingIndicator');
+            if (!_writingResponse) {
+                _writingResponse = true;
                 document.getElementById('typingText').textContent = 'Writing response…';
-                ind.hidden = false;
-                scrollChat();
             }
             _appendStreamToken(data.content);
         } else if (data.type === 'tool_start') {
             _resetStreamTimeout();
+            document.getElementById('typingText').textContent = _toolStatusText(data.name);
             _showToolActivity(data.name, data.input);
         } else if (data.type === 'tool_end') {
             _resetStreamTimeout();
+            document.getElementById('typingText').textContent = 'Thinking…';
             _hideToolActivity(data.name, data.output);
         } else if (data.type === 'stream_end') {
             if (_streamTimeout) clearTimeout(_streamTimeout);
@@ -183,6 +230,10 @@ function _startStreamingMessage() {
     const container = document.getElementById('chatMessages');
     _streamingContent = '';
     _hadToolCalls = false;
+    _writingResponse = false;
+    const ind = document.getElementById('typingIndicator');
+    document.getElementById('typingText').textContent = 'Thinking…';
+    ind.hidden = false;
 
     _streamingMsg = document.createElement('div');
     _streamingMsg.className = 'message assistant';
@@ -278,6 +329,7 @@ function _clearStream() {
     _streamingContent = '';
     _toolActivity = null;
     _hadToolCalls = false;
+    _writingResponse = false;
     document.getElementById('typingIndicator').hidden = true;
 }
 
@@ -445,6 +497,148 @@ async function loadOverview() {
 // Agents
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Pin helpers ──
+function getPinnedAgents() {
+    try { return JSON.parse(localStorage.getItem(_PINNED_KEY) || '[]'); }
+    catch { return []; }
+}
+function setPinnedAgents(agents) {
+    localStorage.setItem(_PINNED_KEY, JSON.stringify(agents));
+}
+function isPinned(id) {
+    return getPinnedAgents().some(a => a.id === id);
+}
+function togglePinAgent(id, name, icon, model) {
+    const pinned = getPinnedAgents();
+    const idx = pinned.findIndex(a => a.id === id);
+    if (idx >= 0) pinned.splice(idx, 1);
+    else pinned.push({ id, name, icon, model });
+    setPinnedAgents(pinned);
+    renderPinnedNavItems();
+    loadAgents();
+}
+function renderPinnedNavItems() {
+    const list = document.getElementById('grp-agents');
+    if (!list) return;
+    list.querySelectorAll('.pinned-agent-item').forEach(el => el.remove());
+    let insertAfter = list.querySelector('[data-view="agents"]');
+    for (const agent of getPinnedAgents()) {
+        const li = document.createElement('li');
+        li.className = 'nav-item pinned-agent-item';
+        li.id = `pinned-nav-${agent.id}`;
+        li.dataset.agentId = agent.id;
+        li.innerHTML = `<span class="nav-icon">${agent.icon}</span>${agent.name}`;
+        li.addEventListener('click', () => openAgentChat(agent.id, agent.name, agent.icon, agent.model));
+        if (insertAfter && insertAfter.nextSibling) list.insertBefore(li, insertAfter.nextSibling);
+        else list.appendChild(li);
+        insertAfter = li;
+    }
+}
+
+// ── Pinned skills helpers ──
+function getPinnedSkills() {
+    try { return JSON.parse(localStorage.getItem(_PINNED_SKILLS_KEY) || '[]'); }
+    catch { return []; }
+}
+
+function setPinnedSkills(skills) {
+    localStorage.setItem(_PINNED_SKILLS_KEY, JSON.stringify(skills));
+}
+
+function isSkillPinned(id) {
+    return getPinnedSkills().some(s => s.id === id);
+}
+
+function openPinnedSkill(skillId) {
+    if (skillId === 'text_to_diagram') {
+        openTextToDiagramSkill();
+    } else {
+        switchView('skills');
+    }
+    document.querySelectorAll('.pinned-skill-item').forEach(el => el.classList.remove('active'));
+    const pinnedItem = document.getElementById(`pinned-skill-nav-${skillId}`);
+    if (pinnedItem) pinnedItem.classList.add('active');
+}
+
+function togglePinSkill(id) {
+    const info = _skillsById[id] || {};
+    const label = info.label || id;
+    const icon = info.icon || '⚡';
+    const pinned = getPinnedSkills();
+    const idx = pinned.findIndex(s => s.id === id);
+    if (idx >= 0) pinned.splice(idx, 1);
+    else pinned.push({ id, label, icon });
+    setPinnedSkills(pinned);
+    renderPinnedSkillNavItems();
+    loadSkills();
+}
+
+function renderPinnedSkillNavItems() {
+    const list = document.getElementById('grp-agent');
+    if (!list) return;
+
+    list.querySelectorAll('.pinned-skill-item').forEach(el => el.remove());
+
+    const anchor = list.querySelector('[data-view="skills"]');
+    let insertAfter = anchor || null;
+
+    for (const skill of getPinnedSkills()) {
+        const li = document.createElement('li');
+        li.className = 'nav-item pinned-skill-item';
+        li.id = `pinned-skill-nav-${skill.id}`;
+        li.dataset.skillId = skill.id;
+        li.draggable = true;
+        li.innerHTML = `<span class="nav-icon">${skill.icon || '⚡'}</span>${skill.label}<span class="pin-drag">↕</span>`;
+        li.addEventListener('click', () => openPinnedSkill(skill.id));
+        li.addEventListener('dragstart', (e) => {
+            _draggedPinnedSkillId = skill.id;
+            li.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', skill.id);
+            }
+        });
+        li.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (_draggedPinnedSkillId && _draggedPinnedSkillId !== skill.id) {
+                li.classList.add('drag-over');
+            }
+        });
+        li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+        li.addEventListener('drop', (e) => {
+            e.preventDefault();
+            li.classList.remove('drag-over');
+            const fromId = _draggedPinnedSkillId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : '');
+            if (!fromId || fromId === skill.id) return;
+            reorderPinnedSkills(fromId, skill.id);
+        });
+        li.addEventListener('dragend', () => {
+            _draggedPinnedSkillId = null;
+            list.querySelectorAll('.pinned-skill-item').forEach(el => {
+                el.classList.remove('drag-over');
+                el.classList.remove('dragging');
+            });
+        });
+
+        if (insertAfter && insertAfter.nextSibling) list.insertBefore(li, insertAfter.nextSibling);
+        else list.appendChild(li);
+        insertAfter = li;
+    }
+}
+
+function reorderPinnedSkills(fromId, toId) {
+    const pinned = getPinnedSkills();
+    const fromIdx = pinned.findIndex(s => s.id === fromId);
+    const toIdx = pinned.findIndex(s => s.id === toId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+
+    const [moved] = pinned.splice(fromIdx, 1);
+    const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
+    pinned.splice(insertAt, 0, moved);
+    setPinnedSkills(pinned);
+    renderPinnedSkillNavItems();
+}
+
 async function loadAgents() {
     const grid = document.getElementById('agentsGrid');
     try {
@@ -483,6 +677,9 @@ function buildAgentCard(agent) {
             <button class="int-btn primary" ${!agent.enabled ? 'disabled' : ''} onclick="openAgentChat('${agent.id}', '${agent.name}', '${agent.icon || '🤖'}', '${agent.model}')">
                 💬 Chat
             </button>
+            <button class="pin-btn ${isPinned(agent.id) ? 'pinned' : ''}" onclick="togglePinAgent('${agent.id}', '${agent.name}', '${agent.icon || '🤖'}', '${agent.model}')" title="${isPinned(agent.id) ? 'Unpin from sidebar' : 'Pin to sidebar'}">
+                📌 ${isPinned(agent.id) ? 'Pinned' : 'Pin'}
+            </button>
         </div>`;
     return card;
 }
@@ -493,7 +690,13 @@ function openAgentChat(id, name, icon, model) {
     document.getElementById('agentChatName').textContent = name;
     document.getElementById('agentChatModel').textContent = model;
     document.getElementById('agentChatLabel').textContent = name;
-    document.getElementById('nav-agent-chat').style.display = '';
+    // Show the generic nav item only when agent is not pinned
+    const navAgentChat = document.getElementById('nav-agent-chat');
+    navAgentChat.style.display = isPinned(id) ? 'none' : '';
+    // Update active state on pinned nav items
+    document.querySelectorAll('.pinned-agent-item').forEach(el => el.classList.remove('active'));
+    const pinnedItem = document.getElementById(`pinned-nav-${id}`);
+    if (pinnedItem) pinnedItem.classList.add('active');
     // Clear previous messages
     const msgs = document.getElementById('agentChatMessages');
     msgs.innerHTML = `<div class="message system"><div class="message-content">
@@ -1011,6 +1214,7 @@ async function loadSkills() {
     try {
         const resp = await fetch('/api/skills');
         const data = await resp.json();
+        _skillsById = data || {};
         grid.innerHTML = '';
         const groups = {};
         for (const [id, info] of Object.entries(data)) {
@@ -1032,7 +1236,7 @@ async function loadSkills() {
     }
 }
 
-function buildSkillCard(_id, info) {
+function buildSkillCard(id, info) {
     const card = document.createElement('div');
     card.className = `skill-card ${info.status}`;
     const toolsHtml = (info.tools || []).map(t => `<span class="skill-tool-chip">${t}</span>`).join('');
@@ -1040,6 +1244,17 @@ function buildSkillCard(_id, info) {
         ? `<div class="skill-missing">⚠ Requires: ${info.missing.join(', ')}</div>` : '';
     const installHtml = info.install
         ? `<code class="skill-install" title="Click to copy">${escapeHtml(info.install)}</code>` : '';
+    const actions = [];
+    if (id === 'text_to_diagram') {
+        actions.push(`<button class="btn-sm" onclick="openTextToDiagramSkill()">Open</button>`);
+    }
+    actions.push(
+        `<button class="pin-btn ${isSkillPinned(id) ? 'pinned' : ''}" ` +
+        `onclick="togglePinSkill('${id}')" ` +
+        `title="${isSkillPinned(id) ? 'Unpin from sidebar' : 'Pin to sidebar'}">` +
+        `📌 ${isSkillPinned(id) ? 'Pinned' : 'Pin'}</button>`
+    );
+    const actionsHtml = `<div class="skill-actions">${actions.join('')}</div>`;
     card.innerHTML = `
         <div class="skill-head">
             <span class="skill-icon">${info.icon}</span>
@@ -1050,6 +1265,7 @@ function buildSkillCard(_id, info) {
         <div class="skill-desc">${info.description}</div>
         ${missingHtml}
         ${installHtml}
+        ${actionsHtml}
         ${toolsHtml ? `<div class="skill-tools">${toolsHtml}</div>` : ''}`;
     if (info.install) {
         card.querySelector('.skill-install')?.addEventListener('click', () => {
@@ -1057,6 +1273,321 @@ function buildSkillCard(_id, info) {
         });
     }
     return card;
+}
+
+function openTextToDiagramSkill() {
+    switchView('text2diagram');
+}
+
+function _getT2DSelections() {
+    const provider = document.getElementById('t2dProvider')?.value || 'ollama';
+    const vlmProvider = document.getElementById('t2dVlmProvider')?.value || 'ollama';
+    const imageProvider = document.getElementById('t2dImageProvider')?.value || 'matplotlib';
+    const vlmModel = document.getElementById('t2dVlmModel')?.value?.trim() || '';
+    const imageModel = document.getElementById('t2dImageModel')?.value?.trim() || '';
+    const outputFormat = document.getElementById('t2dOutputFormat')?.value || 'png';
+    return { provider, vlmProvider, imageProvider, vlmModel, imageModel, outputFormat };
+}
+
+function _syncT2DProfileFromProviders() {
+    const profileSel = document.getElementById('t2dProvider');
+    const vlmProvider = document.getElementById('t2dVlmProvider')?.value;
+    const imageProvider = document.getElementById('t2dImageProvider')?.value;
+    if (!profileSel || !vlmProvider || !imageProvider) return;
+
+    const profiles = _t2dProviderDefaults.profiles || {};
+    let matched = null;
+    for (const [id, profile] of Object.entries(profiles)) {
+        if (profile.vlm_provider === vlmProvider && profile.image_provider === imageProvider) {
+            matched = id;
+            break;
+        }
+    }
+    if (matched) profileSel.value = matched;
+}
+
+function _setT2DModelInputState() {
+    const imageProvider = document.getElementById('t2dImageProvider')?.value || 'matplotlib';
+    const imageInput = document.getElementById('t2dImageModel');
+    if (!imageInput) return;
+    const locked = imageProvider === 'matplotlib';
+    imageInput.disabled = locked;
+    if (locked) imageInput.value = 'matplotlib';
+}
+
+function _applyT2DProviderDefaults(vlmProvider, imageProvider, force = false) {
+    const vlmDefaults = (_t2dProviderDefaults.vlm_providers || {})[vlmProvider] || {};
+    const imageDefaults = (_t2dProviderDefaults.image_providers || {})[imageProvider] || {};
+    const vlmInput = document.getElementById('t2dVlmModel');
+    const imageInput = document.getElementById('t2dImageModel');
+    if (!vlmInput || !imageInput) return;
+
+    const fallbackVlm = _localDefaultT2DVlmModel(vlmProvider);
+    const fallbackImage = _localDefaultT2DImageModel(imageProvider);
+
+    if (force || !vlmInput.value.trim()) {
+        vlmInput.value = vlmDefaults.default_vlm_model || fallbackVlm;
+    }
+    if (force || !imageInput.value.trim()) {
+        imageInput.value = imageDefaults.default_image_model || fallbackImage;
+    }
+    _setT2DModelInputState();
+}
+
+function onT2DProfileChange() {
+    const provider = document.getElementById('t2dProvider')?.value || 'ollama';
+    const profile = (_t2dProviderDefaults.profiles || {})[provider] || _localT2DProfileMap(provider);
+    const vlmProviderSel = document.getElementById('t2dVlmProvider');
+    const imageProviderSel = document.getElementById('t2dImageProvider');
+    if (profile && vlmProviderSel && imageProviderSel) {
+        vlmProviderSel.value = profile.vlm_provider || 'ollama';
+        imageProviderSel.value = profile.image_provider || 'matplotlib';
+        _applyT2DProviderDefaults(vlmProviderSel.value, imageProviderSel.value, true);
+    }
+    loadTextToDiagramView();
+}
+
+function onT2DVlmProviderChange() {
+    const vlmProvider = document.getElementById('t2dVlmProvider')?.value || 'ollama';
+    const imageProvider = document.getElementById('t2dImageProvider')?.value || 'matplotlib';
+    _applyT2DProviderDefaults(vlmProvider, imageProvider, true);
+    _syncT2DProfileFromProviders();
+    loadTextToDiagramView();
+}
+
+function onT2DImageProviderChange() {
+    const vlmProvider = document.getElementById('t2dVlmProvider')?.value || 'ollama';
+    const imageProvider = document.getElementById('t2dImageProvider')?.value || 'matplotlib';
+    _applyT2DProviderDefaults(vlmProvider, imageProvider, true);
+    _syncT2DProfileFromProviders();
+    loadTextToDiagramView();
+}
+
+function _t2dDownloadName(url, fallback) {
+    try {
+        const clean = String(url || '').split('?')[0];
+        const name = clean.substring(clean.lastIndexOf('/') + 1);
+        return name || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+async function loadTextToDiagramView() {
+    const status = document.getElementById('t2dJobStatus');
+    const readiness = document.getElementById('t2dReadiness');
+    const generateBtn = document.getElementById('t2dGenerateBtn');
+    const { provider, vlmProvider, imageProvider, vlmModel, imageModel } = _getT2DSelections();
+    _applyT2DProviderDefaults(vlmProvider, imageProvider);
+    if (status && !_t2dJobId) {
+        status.className = 'status-badge inactive';
+        status.textContent = 'idle';
+    }
+
+    try {
+        const params = new URLSearchParams({
+            provider,
+            vlm_provider: vlmProvider,
+            image_provider: imageProvider,
+        });
+        if (vlmModel) params.set('vlm_model', vlmModel);
+        if (imageModel) params.set('image_model', imageModel);
+        const resp = await fetch(`/api/text-to-diagram/readiness?${params.toString()}`);
+        const data = await resp.json();
+        _t2dReady = Boolean(data.ready);
+        if (generateBtn) generateBtn.disabled = !_t2dReady;
+
+        // Support both new hybrid details schema and legacy single-provider schema.
+        const details = data?.details || {};
+        const legacyProviders = details.providers || {};
+        const legacyVlmProviders = {};
+        const legacyImageProviders = {};
+        for (const [key, meta] of Object.entries(legacyProviders)) {
+            legacyVlmProviders[key] = {
+                default_vlm_model: meta.default_vlm_model || _localDefaultT2DVlmModel(key),
+            };
+            legacyImageProviders[key] = {
+                default_image_model: meta.default_image_model || _localDefaultT2DImageModel(meta.image_provider || key),
+            };
+        }
+
+        _t2dProviderDefaults = {
+            profiles: details.profiles || {},
+            vlm_providers: details.vlm_providers || legacyVlmProviders,
+            image_providers: details.image_providers || legacyImageProviders,
+        };
+
+        const resolvedVlmModel = details.selected_vlm_model || '';
+        const resolvedImageModel = details.selected_image_model || '';
+        const resolvedVlmProvider = details.selected_vlm_provider || '';
+        const resolvedImageProvider = details.selected_image_provider || '';
+        const resolvedImageProviderEffective = details.selected_image_provider_effective || resolvedImageProvider;
+        const vlmInput = document.getElementById('t2dVlmModel');
+        const imageInput = document.getElementById('t2dImageModel');
+        const effectiveSelectedImageProvider = imageProvider === 'stability' ? 'openrouter_imagen' : imageProvider;
+
+        const canApplyResolvedVlm = resolvedVlmProvider === vlmProvider;
+        const canApplyResolvedImage =
+            resolvedImageProvider === imageProvider ||
+            resolvedImageProviderEffective === effectiveSelectedImageProvider;
+
+        if (
+            vlmInput &&
+            canApplyResolvedVlm &&
+            (!vlmInput.value.trim() || vlmInput.value.trim() === _localDefaultT2DVlmModel(vlmProvider))
+        ) {
+            vlmInput.value = resolvedVlmModel || vlmInput.value;
+        }
+        if (
+            imageInput &&
+            canApplyResolvedImage &&
+            (!imageInput.value.trim() || imageInput.value.trim() === _localDefaultT2DImageModel(imageProvider))
+        ) {
+            imageInput.value = resolvedImageModel || imageInput.value;
+        }
+
+        _applyT2DProviderDefaults(vlmProvider, imageProvider);
+        _syncT2DProfileFromProviders();
+
+        const activeProfile = document.getElementById('t2dProvider')?.value || provider;
+        const activeVlmProvider = document.getElementById('t2dVlmProvider')?.value || vlmProvider;
+        const activeImageProvider = document.getElementById('t2dImageProvider')?.value || imageProvider;
+
+        if (_t2dReady) {
+            const pickedProfile = escapeHtml(activeProfile);
+            const pickedVlm = escapeHtml(activeVlmProvider);
+            const pickedImage = escapeHtml(activeImageProvider);
+            readiness.innerHTML = `<div class="t2d-ok">Ready: profile <strong>${pickedProfile}</strong> → VLM <strong>${pickedVlm}</strong> + image <strong>${pickedImage}</strong> can generate diagrams.</div>`;
+        } else {
+            const issues = (data.issues || []).map(i => `<li>${escapeHtml(i)}</li>`).join('');
+            const fixes = (data.fixes || []).map(f => `<code class="skill-install">${escapeHtml(f)}</code>`).join('<br/>');
+            readiness.innerHTML = `
+                <div class="t2d-bad">Not Ready: fix items below before generating.</div>
+                <ul class="t2d-list">${issues || '<li>Unknown readiness error</li>'}</ul>
+                <div class="t2d-fixes">${fixes || ''}</div>
+            `;
+        }
+    } catch (e) {
+        _t2dReady = false;
+        if (generateBtn) generateBtn.disabled = true;
+        readiness.innerHTML = `<div class="t2d-bad">Readiness check failed: ${escapeHtml(String(e.message || e))}</div>`;
+    }
+}
+
+async function startTextToDiagramJob() {
+    const sourceText = document.getElementById('t2dSourceText').value.trim();
+    const caption = document.getElementById('t2dCaption').value.trim();
+    const diagramType = document.getElementById('t2dType').value;
+    const iterations = Number(document.getElementById('t2dIterations').value || 2);
+    const { provider, vlmProvider, imageProvider, vlmModel, imageModel, outputFormat } = _getT2DSelections();
+    const status = document.getElementById('t2dJobStatus');
+
+    if (!_t2dReady) {
+        status.className = 'status-badge needs-power';
+        status.textContent = 'not ready';
+        await loadTextToDiagramView();
+        return;
+    }
+
+    if (!sourceText) {
+        status.className = 'status-badge needs-power';
+        status.textContent = 'source text required';
+        return;
+    }
+    if (!caption) {
+        status.className = 'status-badge needs-power';
+        status.textContent = 'caption required';
+        return;
+    }
+
+    document.getElementById('t2dEvents').innerHTML = '<p class="placeholder">Starting job…</p>';
+    document.getElementById('t2dIterationsList').innerHTML = '<p class="placeholder">Waiting for iteration output…</p>';
+    document.getElementById('t2dFinal').innerHTML = '<p class="placeholder">Running…</p>';
+
+    try {
+        const resp = await fetch('/api/text-to-diagram/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source_text: sourceText,
+                caption,
+                diagram_type: diagramType,
+                iterations,
+                provider,
+                vlm_provider: vlmProvider,
+                image_provider: imageProvider,
+                vlm_model: vlmModel,
+                image_model: imageModel,
+                output_format: outputFormat,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to create job');
+        _t2dJobId = data.job_id;
+        status.className = 'status-badge active';
+        status.textContent = 'running';
+        if (_t2dPollTimer) clearInterval(_t2dPollTimer);
+        await pollTextToDiagramJob();
+        _t2dPollTimer = setInterval(pollTextToDiagramJob, 1200);
+    } catch (e) {
+        status.className = 'status-badge needs-power';
+        status.textContent = String(e.message || e);
+    }
+}
+
+async function pollTextToDiagramJob() {
+    if (!_t2dJobId) return;
+    const status = document.getElementById('t2dJobStatus');
+    try {
+        const resp = await fetch(`/api/text-to-diagram/jobs/${_t2dJobId}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Job lookup failed');
+
+        status.textContent = data.status;
+        status.className = `status-badge ${data.status === 'completed' ? 'ready' : data.status === 'failed' ? 'needs-power' : 'active'}`;
+
+        const eventsEl = document.getElementById('t2dEvents');
+        eventsEl.innerHTML = data.events.length
+            ? data.events.map(e => `<div class="t2d-event ${e.kind}"><span>[${escapeHtml(e.time)}]</span> ${escapeHtml(e.message)}</div>`).join('')
+            : '<p class="placeholder">No events yet.</p>';
+
+        const itersEl = document.getElementById('t2dIterationsList');
+        itersEl.innerHTML = data.iterations.length
+            ? data.iterations.map(it => `
+                <div class="t2d-iter-card">
+                    <div class="t2d-iter-head">Iteration ${it.iteration}</div>
+                    <img src="${it.image_url}" alt="Iteration ${it.iteration}" class="t2d-img" />
+                    <div style="margin-top:8px;">
+                        <a class="btn-sm" href="${it.image_url}" download="${_t2dDownloadName(it.image_url, `diagram_iter_${it.iteration}.png`)}">Download Iteration ${it.iteration}</a>
+                    </div>
+                    <div class="t2d-iter-note">${escapeHtml(it.critique_summary || 'No critique summary yet.')}</div>
+                </div>
+            `).join('')
+            : '<p class="placeholder">No iterations yet.</p>';
+
+        const finalEl = document.getElementById('t2dFinal');
+        if (data.final_image_url) {
+            finalEl.innerHTML = `
+                <img src="${data.final_image_url}" alt="Final output" class="t2d-img" />
+                <div style="margin-top:8px;">
+                    <a class="btn-sm" href="${data.final_image_url}" download="${_t2dDownloadName(data.final_image_url, 'final_output.png')}">Download Final Output</a>
+                </div>
+                <div class="t2d-iter-note">${escapeHtml(data.result_description || '')}</div>
+            `;
+        } else if (data.status === 'failed') {
+            finalEl.innerHTML = `<p class="placeholder">Failed: ${escapeHtml(data.error || 'Unknown error')}</p>`;
+        }
+
+        if (data.status === 'completed' || data.status === 'failed') {
+            if (_t2dPollTimer) {
+                clearInterval(_t2dPollTimer);
+                _t2dPollTimer = null;
+            }
+        }
+    } catch (e) {
+        status.className = 'status-badge needs-power';
+        status.textContent = 'polling error';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

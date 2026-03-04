@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,97 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         config = load_config()
 
     app = FastAPI(title="CV Zero Claw Agent", version="0.1.0")
+
+    output_dir = _PROJECT_ROOT / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/output", StaticFiles(directory=output_dir), name="output")
+    app.state.diagram_jobs = {}
+
+    def _add_diag_event(job: dict[str, Any], message: str, kind: str = "info") -> None:
+        job["events"].append(
+            {
+                "time": datetime.now().isoformat(timespec="seconds"),
+                "kind": kind,
+                "message": message,
+            }
+        )
+
+    def _project_relative_url(path: Path) -> str:
+        rel = path.resolve().relative_to(_PROJECT_ROOT)
+        return f"/{rel.as_posix()}"
+
+    def _scan_diagram_job(job: dict[str, Any]) -> None:
+        run_dir = job.get("run_dir")
+        if not run_dir:
+            return
+        run_path = Path(run_dir)
+        if not run_path.exists():
+            return
+
+        if not job.get("planning_seen") and (run_path / "planning.json").exists():
+            job["planning_seen"] = True
+            _add_diag_event(job, "Planning/styling phase completed.")
+
+        for image_path in sorted(run_path.glob("diagram_iter_*.png")):
+            m = re.search(r"diagram_iter_(\d+)\.png$", image_path.name)
+            if not m:
+                continue
+            iter_num = int(m.group(1))
+            if iter_num in job["seen_iterations"]:
+                continue
+
+            item: dict[str, Any] = {
+                "iteration": iter_num,
+                "image_url": _project_relative_url(image_path),
+                "critique_summary": "",
+                "needs_revision": None,
+            }
+            details_path = run_path / f"iter_{iter_num}" / "details.json"
+            if details_path.exists():
+                try:
+                    details = json.loads(details_path.read_text())
+                    critique = details.get("critique", {})
+                    item["critique_summary"] = critique.get("summary", "")
+                    item["needs_revision"] = critique.get("needs_revision")
+                except Exception:
+                    pass
+
+            job["seen_iterations"].add(iter_num)
+            job["iterations"].append(item)
+            _add_diag_event(job, f"Iteration {iter_num} image generated.")
+
+        final_output = run_path / "final_output.svg"
+        if not final_output.exists():
+            final_output = run_path / "final_output.png"
+        if not final_output.exists():
+            jpeg_output = run_path / "final_output.jpeg"
+            webp_output = run_path / "final_output.webp"
+            if jpeg_output.exists():
+                final_output = jpeg_output
+            elif webp_output.exists():
+                final_output = webp_output
+        if final_output.exists():
+            job["final_image_url"] = _project_relative_url(final_output)
+
+    def _embed_raster_as_svg(raster_path: Path, svg_path: Path) -> None:
+        suffix = raster_path.suffix.lower()
+        mime = {
+            ".png": "image/png",
+            ".jpeg": "image/jpeg",
+            ".jpg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(suffix, "image/png")
+        encoded = base64.b64encode(raster_path.read_bytes()).decode("ascii")
+
+        svg = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" "
+            "width=\"100%\" height=\"100%\" viewBox=\"0 0 2048 1536\">\n"
+            f"  <image href=\"data:{mime};base64,{encoded}\" x=\"0\" y=\"0\" "
+            "width=\"2048\" height=\"1536\" preserveAspectRatio=\"xMidYMid meet\"/>\n"
+            "</svg>\n"
+        )
+        svg_path.write_text(svg)
 
     # ── Serve the main UI ──────────────────────────────────────────────────
 
@@ -273,6 +367,635 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "vision_model": config.vision.ollama.default_model,
             "vault_path": config.knowledge.vault_path,
         })
+
+    # ── Text To Diagram ───────────────────────────────────────────────────
+
+    _T2D_PROVIDER_PRESETS: dict[str, dict[str, str]] = {
+        "ollama": {
+            "vlm_provider": "ollama",
+            "image_provider": "matplotlib",
+            "api_key_env": "",
+            "label": "Ollama Local",
+        },
+        "gemini": {
+            "vlm_provider": "gemini",
+            "image_provider": "google_imagen",
+            "api_key_env": "GOOGLE_API_KEY",
+            "label": "Google Gemini",
+        },
+        "openai": {
+            "vlm_provider": "openai",
+            "image_provider": "openai_imagen",
+            "api_key_env": "OPENAI_API_KEY",
+            "label": "OpenAI",
+        },
+        "openrouter": {
+            "vlm_provider": "openrouter",
+            "image_provider": "openrouter_imagen",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "label": "OpenRouter",
+        },
+    }
+
+    _T2D_VLM_PROVIDER_OPTIONS: dict[str, dict[str, str]] = {
+        "ollama": {
+            "provider": "ollama",
+            "label": "Ollama Local",
+            "required_env": "",
+        },
+        "gemini": {
+            "provider": "gemini",
+            "label": "Google Gemini",
+            "required_env": "GOOGLE_API_KEY",
+        },
+        "openai": {
+            "provider": "openai",
+            "label": "OpenAI",
+            "required_env": "OPENAI_API_KEY",
+        },
+        "openrouter": {
+            "provider": "openrouter",
+            "label": "OpenRouter",
+            "required_env": "OPENROUTER_API_KEY",
+        },
+    }
+
+    _T2D_IMAGE_PROVIDER_OPTIONS: dict[str, dict[str, str]] = {
+        "matplotlib": {
+            "provider": "matplotlib",
+            "label": "Matplotlib (local)",
+            "required_env": "",
+        },
+        "google_imagen": {
+            "provider": "google_imagen",
+            "label": "Google Imagen",
+            "required_env": "GOOGLE_API_KEY",
+        },
+        "openai_imagen": {
+            "provider": "openai_imagen",
+            "label": "OpenAI Image",
+            "required_env": "OPENAI_API_KEY",
+        },
+        "openrouter_imagen": {
+            "provider": "openrouter_imagen",
+            "label": "OpenRouter Image",
+            "required_env": "OPENROUTER_API_KEY",
+        },
+        # Alias for a common Stable Diffusion route through OpenRouter.
+        "stability": {
+            "provider": "openrouter_imagen",
+            "label": "Stability (via OpenRouter)",
+            "required_env": "OPENROUTER_API_KEY",
+        },
+    }
+
+    def _normalize_t2d_provider(raw_provider: str | None, cfg_now: AgentConfig) -> str:
+        candidate = (raw_provider or cfg_now.text_to_diagram.vlm_provider or "ollama").strip().lower()
+        return candidate if candidate in _T2D_PROVIDER_PRESETS else "ollama"
+
+    def _normalize_t2d_vlm_provider(
+        raw_vlm_provider: str | None,
+        cfg_now: AgentConfig,
+        legacy_provider: str | None,
+    ) -> str:
+        if raw_vlm_provider:
+            candidate = raw_vlm_provider.strip().lower()
+            if candidate in _T2D_VLM_PROVIDER_OPTIONS:
+                return candidate
+        if legacy_provider and legacy_provider in _T2D_PROVIDER_PRESETS:
+            return _T2D_PROVIDER_PRESETS[legacy_provider]["vlm_provider"]
+        configured = (cfg_now.text_to_diagram.vlm_provider or "ollama").strip().lower()
+        return configured if configured in _T2D_VLM_PROVIDER_OPTIONS else "ollama"
+
+    def _normalize_t2d_image_provider(
+        raw_image_provider: str | None,
+        cfg_now: AgentConfig,
+        legacy_provider: str | None,
+    ) -> str:
+        if raw_image_provider:
+            candidate = raw_image_provider.strip().lower()
+            if candidate in _T2D_IMAGE_PROVIDER_OPTIONS:
+                return candidate
+        if legacy_provider and legacy_provider in _T2D_PROVIDER_PRESETS:
+            return _T2D_PROVIDER_PRESETS[legacy_provider]["image_provider"]
+        configured = (cfg_now.text_to_diagram.image_provider or "matplotlib").strip().lower()
+        return configured if configured in _T2D_IMAGE_PROVIDER_OPTIONS else "matplotlib"
+
+    def _effective_t2d_image_provider(image_provider: str) -> str:
+        return _T2D_IMAGE_PROVIDER_OPTIONS[image_provider]["provider"]
+
+    def _default_t2d_vlm_model(vlm_provider: str, cfg_now: AgentConfig) -> str:
+        if vlm_provider == "ollama":
+            return cfg_now.text_to_diagram.ollama_vlm_model
+        if vlm_provider == "gemini":
+            return os.environ.get("PAPERBANANA_GEMINI_VLM_MODEL") or "gemini-2.0-flash"
+        if vlm_provider == "openai":
+            return os.environ.get("PAPERBANANA_OPENAI_VLM_MODEL") or "gpt-4o"
+        return os.environ.get("PAPERBANANA_OPENROUTER_VLM_MODEL") or "openai/gpt-4o-mini"
+
+    def _default_t2d_image_model(image_provider: str) -> str:
+        if image_provider == "matplotlib":
+            return "matplotlib"
+        if image_provider == "google_imagen":
+            return os.environ.get("PAPERBANANA_GEMINI_IMAGE_MODEL") or "gemini-3-pro-image-preview"
+        if image_provider == "openai_imagen":
+            return os.environ.get("PAPERBANANA_OPENAI_IMAGE_MODEL") or "gpt-image-1"
+        if image_provider == "openrouter_imagen":
+            return os.environ.get("PAPERBANANA_OPENROUTER_IMAGE_MODEL") or "openai/gpt-image-1"
+        if image_provider == "stability":
+            return os.environ.get("PAPERBANANA_STABILITY_IMAGE_MODEL") or "stabilityai/stable-diffusion-3.5-large"
+        return "matplotlib"
+
+    def _resolve_t2d_models(
+        vlm_provider: str,
+        image_provider: str,
+        cfg_now: AgentConfig,
+        vlm_model: str | None,
+        image_model: str | None,
+    ) -> tuple[str, str]:
+        selected_vlm_model = (vlm_model or _default_t2d_vlm_model(vlm_provider, cfg_now)).strip()
+        if image_provider == "matplotlib":
+            return selected_vlm_model, "matplotlib"
+        selected_image_model = (image_model or _default_t2d_image_model(image_provider)).strip()
+        return selected_vlm_model, selected_image_model
+
+    def _build_t2d_settings_kwargs(
+        selected_vlm_provider: str,
+        selected_image_provider: str,
+        cfg_now: AgentConfig,
+        selected_vlm_model: str,
+        selected_image_model: str,
+        requested_iterations: int,
+        requested_output_format: str,
+    ) -> dict[str, Any]:
+        t2d = cfg_now.text_to_diagram
+        effective_image_provider = _effective_t2d_image_provider(selected_image_provider)
+        kwargs: dict[str, Any] = {
+            "vlm_provider": selected_vlm_provider,
+            "image_provider": effective_image_provider,
+            "vlm_model": selected_vlm_model,
+            "image_model": selected_image_model,
+            "output_dir": t2d.output_dir,
+            "refinement_iterations": requested_iterations,
+            "max_iterations": requested_iterations,
+            "output_format": "png" if requested_output_format == "svg" else requested_output_format,
+            "ollama_base_url": t2d.ollama_base_url,
+            "ollama_code_model": t2d.ollama_code_model,
+        }
+
+        if selected_vlm_provider == "ollama":
+            kwargs["ollama_vlm_model"] = selected_vlm_model
+        elif selected_vlm_provider == "gemini":
+            kwargs["google_api_key"] = os.environ.get("GOOGLE_API_KEY")
+        elif selected_vlm_provider == "openai":
+            kwargs["openai_api_key"] = os.environ.get("OPENAI_API_KEY")
+            kwargs["openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            kwargs["openai_vlm_model"] = selected_vlm_model
+        elif selected_vlm_provider == "openrouter":
+            kwargs["openrouter_api_key"] = os.environ.get("OPENROUTER_API_KEY")
+
+        if effective_image_provider == "google_imagen":
+            kwargs["google_api_key"] = os.environ.get("GOOGLE_API_KEY")
+        elif effective_image_provider == "openai_imagen":
+            kwargs["openai_api_key"] = os.environ.get("OPENAI_API_KEY")
+            kwargs["openai_base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            kwargs["openai_image_model"] = selected_image_model
+        elif effective_image_provider == "openrouter_imagen":
+            kwargs["openrouter_api_key"] = os.environ.get("OPENROUTER_API_KEY")
+
+        return kwargs
+
+    def _format_t2d_exception(exc: Exception) -> str:
+        """Unwrap nested provider errors (e.g. tenacity RetryError) into actionable text."""
+        base = str(exc)
+        nested_exc = None
+
+        last_attempt = getattr(exc, "last_attempt", None)
+        if last_attempt is not None:
+            try:
+                nested_exc = last_attempt.exception()
+            except Exception:
+                nested_exc = None
+
+        if nested_exc is not None:
+            base = f"{type(nested_exc).__name__}: {nested_exc}"
+
+        if "not found for API version" in base and "generateContent" in base:
+            base += " | Hint: use image model 'gemini-3-pro-image-preview' for provider 'google_imagen'."
+
+        return base
+
+    @app.get("/api/text-to-diagram/readiness")
+    async def text_to_diagram_readiness(
+        provider: str | None = None,
+        vlm_provider: str | None = None,
+        image_provider: str | None = None,
+        vlm_model: str | None = None,
+        image_model: str | None = None,
+    ):
+        issues: list[str] = []
+        fixes: list[str] = []
+        details: dict[str, Any] = {}
+
+        cfg_now = load_config()
+        t2d = cfg_now.text_to_diagram
+        selected_provider = _normalize_t2d_provider(provider, cfg_now)
+        selected_vlm_provider = _normalize_t2d_vlm_provider(vlm_provider, cfg_now, selected_provider)
+        selected_image_provider = _normalize_t2d_image_provider(image_provider, cfg_now, selected_provider)
+        effective_image_provider = _effective_t2d_image_provider(selected_image_provider)
+        selected_vlm_model, selected_image_model = _resolve_t2d_models(
+            selected_vlm_provider,
+            selected_image_provider,
+            cfg_now,
+            vlm_model,
+            image_model,
+        )
+
+        details["configured_vlm_provider"] = t2d.vlm_provider
+        details["configured_image_provider"] = t2d.image_provider
+        details["configured_vlm_model"] = t2d.ollama_vlm_model
+        details["configured_code_model"] = t2d.ollama_code_model
+        details["selected_profile"] = selected_provider
+        details["selected_vlm_provider"] = selected_vlm_provider
+        details["selected_image_provider"] = selected_image_provider
+        details["selected_image_provider_effective"] = effective_image_provider
+        details["selected_vlm_model"] = selected_vlm_model
+        details["selected_image_model"] = selected_image_model
+        details["profiles"] = {
+            key: {
+                "label": meta["label"],
+                "vlm_provider": meta["vlm_provider"],
+                "image_provider": meta["image_provider"],
+            }
+            for key, meta in _T2D_PROVIDER_PRESETS.items()
+        }
+        details["vlm_providers"] = {
+            key: {
+                "label": meta["label"],
+                "default_vlm_model": _default_t2d_vlm_model(key, cfg_now),
+                "required_env": meta["required_env"],
+            }
+            for key, meta in _T2D_VLM_PROVIDER_OPTIONS.items()
+        }
+        details["image_providers"] = {
+            key: {
+                "label": meta["label"],
+                "effective_provider": meta["provider"],
+                "default_image_model": _default_t2d_image_model(key),
+                "required_env": meta["required_env"],
+            }
+            for key, meta in _T2D_IMAGE_PROVIDER_OPTIONS.items()
+        }
+
+        # Check package + provider modules are available in the installed Paperbanana.
+        try:
+            import importlib
+
+            importlib.import_module("paperbanana")
+            details["paperbanana_installed"] = True
+        except Exception as exc:
+            details["paperbanana_installed"] = False
+            issues.append(f"paperbanana import failed: {exc}")
+            fixes.append("pip install -e ./paperbanana")
+
+        if selected_vlm_provider == "ollama":
+            try:
+                import importlib
+
+                importlib.import_module("paperbanana.providers.vlm.ollama")
+                details["ollama_provider_module"] = True
+            except Exception as exc:
+                details["ollama_provider_module"] = False
+                issues.append(f"paperbanana missing ollama provider module: {exc}")
+                fixes.append("Install/pin patched paperbanana with ollama provider support")
+
+            try:
+                import importlib
+
+                importlib.import_module("paperbanana.providers.image_gen.matplotlib_gen")
+                details["matplotlib_provider_module"] = True
+            except Exception as exc:
+                details["matplotlib_provider_module"] = False
+                issues.append(f"paperbanana missing matplotlib provider module: {exc}")
+                fixes.append("Install/pin patched paperbanana with matplotlib image provider support")
+
+        # Check provider-level credentials and model availability.
+        vlm_required_key = _T2D_VLM_PROVIDER_OPTIONS[selected_vlm_provider]["required_env"]
+        if vlm_required_key and not os.environ.get(vlm_required_key, "").strip():
+            issues.append(f"{vlm_required_key} is not set for VLM provider '{selected_vlm_provider}'")
+            fixes.append(f"Set {vlm_required_key} in .env or in Powers → configure")
+
+        image_required_key = _T2D_IMAGE_PROVIDER_OPTIONS[selected_image_provider]["required_env"]
+        if image_required_key and not os.environ.get(image_required_key, "").strip():
+            issues.append(
+                f"{image_required_key} is not set for image provider '{selected_image_provider}'"
+            )
+            fixes.append(f"Set {image_required_key} in .env or in Powers → configure")
+
+        if selected_vlm_provider == "ollama":
+            from cv_agent.tools.hardware_probe import list_ollama_models
+
+            ollama_host = t2d.ollama_base_url.removesuffix("/v1")
+            pulled_models = list_ollama_models(ollama_host)
+            details["ollama_host"] = ollama_host
+            details["ollama_reachable"] = bool(pulled_models)
+            details["pulled_models"] = pulled_models[:50]
+            if not pulled_models:
+                issues.append(f"Ollama not reachable at {ollama_host} or no models pulled")
+                fixes.append("Start Ollama and ensure at least one model is pulled")
+
+            if pulled_models and selected_vlm_model not in pulled_models:
+                issues.append(
+                    f"Selected VLM model '{selected_vlm_model}' not pulled in Ollama"
+                )
+                fixes.append(f"ollama pull {selected_vlm_model}")
+
+            if pulled_models and t2d.ollama_code_model and t2d.ollama_code_model not in pulled_models:
+                issues.append(
+                    f"Configured code model '{t2d.ollama_code_model}' not pulled in Ollama"
+                )
+                fixes.append(f"ollama pull {t2d.ollama_code_model}")
+
+        # De-duplicate fixes while preserving order.
+        dedup_fixes: list[str] = []
+        for item in fixes:
+            if item not in dedup_fixes:
+                dedup_fixes.append(item)
+
+        return JSONResponse(
+            {
+                "ready": len(issues) == 0,
+                "issues": issues,
+                "fixes": dedup_fixes,
+                "details": details,
+            }
+        )
+
+    @app.post("/api/text-to-diagram/jobs")
+    async def create_text_to_diagram_job(body: dict):
+        source_text = str(body.get("source_text", ""))
+        caption = str(body.get("caption", ""))
+        diagram_type = str(body.get("diagram_type", "")) or config.text_to_diagram.default_diagram_type
+        iterations = body.get("iterations")
+        provider = str(body.get("provider", "")).strip().lower() if body.get("provider") is not None else None
+        vlm_provider = (
+            str(body.get("vlm_provider", "")).strip().lower()
+            if body.get("vlm_provider") is not None
+            else None
+        )
+        image_provider = (
+            str(body.get("image_provider", "")).strip().lower()
+            if body.get("image_provider") is not None
+            else None
+        )
+        vlm_model = str(body.get("vlm_model", "")).strip() if body.get("vlm_model") is not None else None
+        image_model = str(body.get("image_model", "")).strip() if body.get("image_model") is not None else None
+        output_format = str(body.get("output_format", "png")).strip().lower()
+        if output_format not in {"png", "svg"}:
+            return JSONResponse({"error": "output_format must be one of: png, svg"}, status_code=400)
+
+        if not source_text.strip():
+            return JSONResponse({"error": "source_text is required"}, status_code=400)
+        if not caption.strip():
+            return JSONResponse({"error": "caption is required"}, status_code=400)
+
+        job_id = uuid.uuid4().hex[:12]
+        job: dict[str, Any] = {
+            "id": job_id,
+            "status": "queued",
+            "source_text": source_text,
+            "caption": caption,
+            "diagram_type": diagram_type,
+            "iterations_requested": int(iterations) if iterations is not None else config.text_to_diagram.default_iterations,
+            "provider": provider,
+            "vlm_provider": vlm_provider,
+            "image_provider": image_provider,
+            "vlm_model": vlm_model,
+            "image_model": image_model,
+            "output_format_requested": output_format,
+            "output_format_effective": None,
+            "events": [],
+            "iterations": [],
+            "seen_iterations": set(),
+            "planning_seen": False,
+            "run_id": None,
+            "run_dir": None,
+            "final_image_url": None,
+            "result_description": "",
+            "error": None,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        app.state.diagram_jobs[job_id] = job
+        _add_diag_event(job, "Job created. Initializing Paperbanana pipeline...")
+
+        async def _runner() -> None:
+            from cv_agent.tools.hardware_probe import list_ollama_models
+            from paperbanana import DiagramType, GenerationInput, PaperBananaPipeline
+            from paperbanana.core.config import Settings
+
+            try:
+                job["status"] = "running"
+                cfg_now = load_config()
+                t2d = cfg_now.text_to_diagram
+                requested_iterations = max(1, int(job["iterations_requested"]))
+                selected_profile = _normalize_t2d_provider(job.get("provider"), cfg_now)
+                selected_vlm_provider = _normalize_t2d_vlm_provider(
+                    job.get("vlm_provider"),
+                    cfg_now,
+                    selected_profile,
+                )
+                selected_image_provider = _normalize_t2d_image_provider(
+                    job.get("image_provider"),
+                    cfg_now,
+                    selected_profile,
+                )
+                selected_vlm_model, selected_image_model = _resolve_t2d_models(
+                    selected_vlm_provider,
+                    selected_image_provider,
+                    cfg_now,
+                    job.get("vlm_model"),
+                    job.get("image_model"),
+                )
+
+                # Older UI defaults used a Gemini image preview model that is invalid for this API path.
+                if selected_image_provider == "google_imagen" and "flash-image-preview" in selected_image_model:
+                    selected_image_model = "gemini-3-pro-image-preview"
+                    _add_diag_event(
+                        job,
+                        "Image model 'gemini-2.5-flash-image-preview' is not supported here. "
+                        "Using 'gemini-3-pro-image-preview'.",
+                        kind="warn",
+                    )
+
+                job["provider"] = selected_profile
+                job["vlm_provider"] = selected_vlm_provider
+                job["image_provider"] = selected_image_provider
+                job["vlm_model"] = selected_vlm_model
+                job["image_model"] = selected_image_model
+
+                _add_diag_event(
+                    job,
+                    "Using providers/models: "
+                    f"vlm={selected_vlm_provider} ({selected_vlm_model}), "
+                    f"image={selected_image_provider} ({selected_image_model}), "
+                    f"output={job.get('output_format_requested', 'png')}",
+                )
+
+                if selected_vlm_provider == "ollama":
+                    ollama_host = t2d.ollama_base_url.removesuffix("/v1")
+                    pulled_models = list_ollama_models(ollama_host)
+                    if pulled_models and selected_vlm_model not in pulled_models:
+                        preferred_model = cfg_now.vision.ollama.default_model
+                        if preferred_model in pulled_models:
+                            selected_vlm_model = preferred_model
+                        else:
+                            selected_vlm_model = next(
+                                (m for m in pulled_models if any(k in m.lower() for k in ("vl", "llava", "vision"))),
+                                pulled_models[0],
+                            )
+                        _add_diag_event(
+                            job,
+                            f"Configured VLM model '{t2d.ollama_vlm_model}' not found. Using '{selected_vlm_model}'.",
+                            kind="warn",
+                        )
+
+                settings = Settings(
+                    **_build_t2d_settings_kwargs(
+                        selected_vlm_provider=selected_vlm_provider,
+                        selected_image_provider=selected_image_provider,
+                        cfg_now=cfg_now,
+                        selected_vlm_model=selected_vlm_model,
+                        selected_image_model=selected_image_model,
+                        requested_iterations=requested_iterations,
+                        requested_output_format=job.get("output_format_requested", "png"),
+                    )
+                )
+
+                try:
+                    pipeline = PaperBananaPipeline(settings=settings)
+                except Exception as exc:
+                    if "Unknown VLM provider: ollama" not in str(exc):
+                        raise
+
+                    if selected_image_provider == "openai_imagen":
+                        raise RuntimeError(
+                            "This Paperbanana build lacks native ollama VLM provider support, and "
+                            "OpenAI image generation cannot be combined with Ollama fallback mode. "
+                            "Choose a different image provider (google_imagen/openrouter_imagen/matplotlib) "
+                            "or upgrade Paperbanana with native ollama support."
+                        )
+
+                    settings = Settings(
+                        vlm_provider="openai",
+                        image_provider=_effective_t2d_image_provider(selected_image_provider),
+                        vlm_model=selected_vlm_model,
+                        image_model=selected_image_model,
+                        openai_api_key=(os.environ.get("OPENAI_API_KEY") or "ollama-local"),
+                        openai_base_url=t2d.ollama_base_url,
+                        openai_vlm_model=selected_vlm_model,
+                        google_api_key=os.environ.get("GOOGLE_API_KEY"),
+                        openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
+                        ollama_code_model=t2d.ollama_code_model,
+                        output_dir=t2d.output_dir,
+                        output_format="png",
+                        refinement_iterations=requested_iterations,
+                        max_iterations=requested_iterations,
+                    )
+                    _add_diag_event(
+                        job,
+                        "Provider fallback applied: openai provider with Ollama-compatible /v1 endpoint.",
+                        kind="warn",
+                    )
+                    pipeline = PaperBananaPipeline(settings=settings)
+                run_dir = Path(settings.output_dir).expanduser().resolve() / pipeline.run_id
+                job["run_id"] = pipeline.run_id
+                job["run_dir"] = str(run_dir)
+                _add_diag_event(job, f"Pipeline started (run_id={pipeline.run_id}).")
+
+                run_task = asyncio.create_task(
+                    pipeline.generate(
+                        GenerationInput(
+                            source_context=source_text,
+                            communicative_intent=caption,
+                            diagram_type=(
+                                DiagramType.STATISTICAL_PLOT
+                                if str(diagram_type).lower() == "statistical_plot"
+                                else DiagramType.METHODOLOGY
+                            ),
+                        )
+                    )
+                )
+
+                while not run_task.done():
+                    _scan_diagram_job(job)
+                    await asyncio.sleep(1)
+
+                result = await run_task
+                _scan_diagram_job(job)
+
+                requested_output_format = (job.get("output_format_requested") or "png").lower()
+                if requested_output_format == "svg" and job.get("run_dir"):
+                    run_path = Path(job["run_dir"])
+                    final_png = run_path / "final_output.png"
+                    final_jpeg = run_path / "final_output.jpeg"
+                    final_webp = run_path / "final_output.webp"
+                    raster_source = final_png if final_png.exists() else final_jpeg if final_jpeg.exists() else final_webp
+                    if raster_source and raster_source.exists():
+                        final_svg = run_path / "final_output.svg"
+                        _embed_raster_as_svg(raster_source, final_svg)
+                        job["final_image_url"] = _project_relative_url(final_svg)
+                        job["output_format_effective"] = "svg"
+                        _add_diag_event(job, "Final output exported as SVG.")
+                    else:
+                        job["output_format_effective"] = "png"
+                        _add_diag_event(
+                            job,
+                            "SVG export requested but raster source was not found; using PNG output.",
+                            kind="warn",
+                        )
+                else:
+                    job["output_format_effective"] = "png"
+
+                job["result_description"] = result.description
+                job["status"] = "completed"
+                _add_diag_event(job, "Generation complete.", kind="success")
+            except Exception as exc:
+                job["status"] = "failed"
+                error_text = _format_t2d_exception(exc)
+                job["error"] = error_text
+                _add_diag_event(job, f"Generation failed: {error_text}", kind="error")
+
+        asyncio.create_task(_runner())
+        return JSONResponse({"job_id": job_id})
+
+    @app.get("/api/text-to-diagram/jobs/{job_id}")
+    async def get_text_to_diagram_job(job_id: str):
+        job = app.state.diagram_jobs.get(job_id)
+        if not job:
+            return JSONResponse({"error": "Job not found"}, status_code=404)
+        _scan_diagram_job(job)
+        return JSONResponse(
+            {
+                "id": job["id"],
+                "status": job["status"],
+                "caption": job["caption"],
+                "diagram_type": job["diagram_type"],
+                "iterations_requested": job["iterations_requested"],
+                "provider": job["provider"],
+                "vlm_provider": job.get("vlm_provider"),
+                "image_provider": job.get("image_provider"),
+                "vlm_model": job["vlm_model"],
+                "image_model": job["image_model"],
+                "output_format_requested": job.get("output_format_requested"),
+                "output_format_effective": job.get("output_format_effective"),
+                "run_id": job["run_id"],
+                "final_image_url": job["final_image_url"],
+                "result_description": job["result_description"],
+                "error": job["error"],
+                "events": job["events"],
+                "iterations": sorted(job["iterations"], key=lambda x: x["iteration"]),
+            }
+        )
 
     # ── Sub-Agent API ──────────────────────────────────────────────────────
 
@@ -713,6 +1436,15 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "fields": [{"key": "BRAVE_API_KEY", "label": "Brave API Key", "secret": True, "placeholder": "BSA..."}],
                 "field_values": {"BRAVE_API_KEY": _mask(_e("BRAVE_API_KEY"))},
             },
+            "gemini": {
+                "label": "Gemini API", "icon": "✨", "category": "cloud",
+                "description": "Configure Google Gemini access for higher quality text-to-diagram generation.",
+                "status": "active" if _has("GOOGLE_API_KEY") else "inactive",
+                "detail": "GOOGLE_API_KEY configured — ready for Gemini providers" if _has("GOOGLE_API_KEY") else "Set GOOGLE_API_KEY to enable Gemini providers",
+                "configurable": True,
+                "fields": [{"key": "GOOGLE_API_KEY", "label": "Gemini API Key", "secret": True, "placeholder": "AIza..."}],
+                "field_values": {"GOOGLE_API_KEY": _mask(_e("GOOGLE_API_KEY"))},
+            },
             "file_system": {
                 "label": "Local File System", "icon": "📁", "category": "built-in",
                 "description": "Read and write files on the local machine via ZeroClaw built-in tools.",
@@ -870,6 +1602,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_hf     = bool(_e("HF_TOKEN"))
         has_3d     = _pkg("open3d") or _pkg("trimesh") or _pkg("pyntcloud")
         has_video  = _pkg("cv2") or _pkg("decord")
+        has_paperbanana = _pkg("paperbanana")
 
         skills = {
             "research_blog": {
@@ -936,6 +1669,14 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "status": "ready",
                 "tools": ["extract_equations", "extract_key_info"],
                 "missing": [],
+            },
+            "text_to_diagram": {
+                "label": "Text → Diagram", "icon": "🧭", "category": "research",
+                "description": "Paste or write text and generate diagrams via Paperbanana (Ollama + matplotlib).",
+                "status": "ready" if has_paperbanana else "needs-install",
+                "tools": ["text_to_diagram"],
+                "missing": [] if has_paperbanana else ["paperbanana"],
+                "install": None if has_paperbanana else "pip install -e /tmp/paperbanana",
             },
             "kaggle_competition": {
                 "label": "Kaggle Competition", "icon": "🏆", "category": "ml",
@@ -1005,9 +1746,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         # Skills
         has_3d = _ilu.find_spec("open3d") is not None or _ilu.find_spec("trimesh") is not None
         has_video = _ilu.find_spec("cv2") is not None or _ilu.find_spec("decord") is not None
+        has_paperbanana = _ilu.find_spec("paperbanana") is not None
         skill_ready = [
             True, True, _has("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"),
             True, has_3d, has_video, True, True, True,
+            has_paperbanana,
             _has("KAGGLE_USERNAME", "KAGGLE_KEY"),
             bool(_e("HF_TOKEN")) or _has("AZURE_SUBSCRIPTION_ID", "AZURE_ML_WORKSPACE"),
             True,
@@ -1186,9 +1929,13 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     return app
 
 
+# Module-level app instance for `uvicorn cv_agent.web:app --reload`
+app = create_app()
+
+
 def run_server(config: AgentConfig | None = None, host: str = "127.0.0.1", port: int = 8420):
     """Start the web UI server."""
     import uvicorn
-    app = create_app(config)
+    _app = create_app(config)
     print(f"\n  CV Zero Claw Agent UI → http://{host}:{port}\n")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(_app, host=host, port=port, log_level="info")

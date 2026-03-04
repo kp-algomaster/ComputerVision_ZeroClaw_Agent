@@ -11,6 +11,7 @@ def test_default_config():
     assert cfg.name == "CV Research Agent"
     assert cfg.vision.ollama.default_model == "qwen2.5-vl:7b"
     assert cfg.llm.provider == "ollama"
+    assert cfg.text_to_diagram.default_iterations == 2
 
 
 def test_load_config_from_yaml(tmp_path: Path):
@@ -24,6 +25,8 @@ vision:
     default_model: "llava:13b"
 llm:
   model: "qwen2.5:14b"
+text_to_diagram:
+  default_iterations: 4
 """
     config_file = tmp_path / "test_config.yaml"
     config_file.write_text(yaml_content)
@@ -33,6 +36,7 @@ llm:
     assert cfg.log_level == "DEBUG"
     assert cfg.vision.ollama.default_model == "llava:13b"
     assert cfg.llm.model == "qwen2.5:14b"
+    assert cfg.text_to_diagram.default_iterations == 4
 
 
 def test_load_config_missing_file():

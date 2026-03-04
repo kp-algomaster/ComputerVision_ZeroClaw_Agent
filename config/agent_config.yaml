@@ -116,6 +116,18 @@ spec:
     metrics: true
     ablation_results: true
 
+# Text-to-diagram generation via Paperbanana
+text_to_diagram:
+  enabled: true
+  vlm_provider: "${PAPERBANANA_VLM_PROVIDER:-ollama}"
+  image_provider: "${PAPERBANANA_IMAGE_PROVIDER:-matplotlib}"
+  ollama_base_url: "${OLLAMA_BASE_URL:-http://localhost:11434/v1}"
+  ollama_vlm_model: "${PAPERBANANA_OLLAMA_VLM_MODEL:-qwen2.5-vl:7b}"
+  ollama_code_model: "${PAPERBANANA_OLLAMA_CODE_MODEL:-qwen2.5-coder:latest}"
+  default_iterations: 2
+  output_dir: "${OUTPUT_DIR:-./output}/diagrams"
+  default_diagram_type: "methodology"
+
 # Output
 output:
   base_dir: "${OUTPUT_DIR:-./output}"
@@ -147,3 +159,6 @@ agents:
   paper_to_code:
     enabled: true
     model_override: "${PAPER_TO_CODE_MODEL:-}"
+  digest_writer:
+    enabled: true
+    model_override: "${DIGEST_WRITER_MODEL:-}"

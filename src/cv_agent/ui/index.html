@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CV Assistant 👁️</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css?v=20260304b">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -94,8 +94,8 @@
                     </div>
                 </div>
                 <div class="status-line" id="typingIndicator" hidden>
-                    <span class="status-icon">⏺</span>
-                    <span class="status-text" id="typingText">Writing response…</span>
+                    <span class="status-eye">👁️</span>
+                    <span class="status-text" id="typingText">Thinking…</span>
                 </div>
                 <form class="chat-input" id="chatForm">
                     <textarea id="chatInput" placeholder="Ask about CV research, analyze papers, generate specs..." rows="1"></textarea>
@@ -135,8 +135,8 @@
                     </div>
                 </div>
                 <div class="status-line" id="agentTypingIndicator" hidden>
-                    <span class="status-icon">⏺</span>
-                    <span class="status-text" id="agentTypingText">Writing response…</span>
+                    <span class="status-eye">👁️</span>
+                    <span class="status-text" id="agentTypingText">Thinking…</span>
                 </div>
                 <form class="chat-input" id="agentChatForm">
                     <textarea id="agentChatInput" placeholder="Message the agent…" rows="1"></textarea>
@@ -249,6 +249,107 @@
             </div>
             <div class="view-scroll">
                 <div id="skillsGrid" class="skills-grid"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Text to Diagram ═══ -->
+        <section id="view-text2diagram" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🧭 Text to Diagram</h2>
+                    <p class="view-hint">Paste context, choose type, and generate diagrams with live Paperbanana status and iteration previews.</p>
+                </div>
+                <button class="btn-sm" onclick="switchView('skills')">← Back to Skills</button>
+            </div>
+            <div class="view-scroll">
+                <div class="t2d-layout">
+                    <div id="t2dReadiness" class="t2d-panel t2d-readiness"><p class="placeholder">Checking readiness…</p></div>
+                    <div class="t2d-panel">
+                        <div class="config-grid">
+                            <div class="config-row">
+                                <label>Caption / Intent</label>
+                                <input id="t2dCaption" type="text" placeholder="Architecture overview of proposed method" />
+                            </div>
+                            <div class="config-row">
+                                <label>Diagram Type</label>
+                                <select id="t2dType">
+                                    <option value="methodology">methodology</option>
+                                    <option value="statistical_plot">statistical_plot</option>
+                                </select>
+                            </div>
+                            <div class="config-row">
+                                <label>Provider Profile</label>
+                                <select id="t2dProvider" onchange="onT2DProfileChange()">
+                                    <option value="ollama">ollama (local + matplotlib)</option>
+                                    <option value="gemini">gemini (google)</option>
+                                    <option value="openai">openai</option>
+                                    <option value="openrouter">openrouter</option>
+                                </select>
+                            </div>
+                            <div class="config-row">
+                                <label>VLM Provider</label>
+                                <select id="t2dVlmProvider" onchange="onT2DVlmProviderChange()">
+                                    <option value="ollama">ollama (local)</option>
+                                    <option value="gemini">gemini</option>
+                                    <option value="openai">openai</option>
+                                    <option value="openrouter">openrouter</option>
+                                </select>
+                            </div>
+                            <div class="config-row">
+                                <label>Image Provider</label>
+                                <select id="t2dImageProvider" onchange="onT2DImageProviderChange()">
+                                    <option value="matplotlib">matplotlib (local)</option>
+                                    <option value="google_imagen">google_imagen</option>
+                                    <option value="openai_imagen">openai_imagen</option>
+                                    <option value="openrouter_imagen">openrouter_imagen</option>
+                                    <option value="stability">stability (via openrouter)</option>
+                                </select>
+                            </div>
+                            <div class="config-row">
+                                <label>VLM Model</label>
+                                <input id="t2dVlmModel" type="text" placeholder="Auto by provider" />
+                            </div>
+                            <div class="config-row">
+                                <label>Image Model</label>
+                                <input id="t2dImageModel" type="text" placeholder="Auto by provider" />
+                            </div>
+                            <div class="config-row">
+                                <label>Iterations</label>
+                                <input id="t2dIterations" type="number" min="1" value="2" />
+                            </div>
+                            <div class="config-row">
+                                <label>Final Image Format</label>
+                                <select id="t2dOutputFormat">
+                                    <option value="png">png</option>
+                                    <option value="svg">svg</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="config-row" style="margin-top:10px;">
+                            <label>Source Text</label>
+                            <textarea id="t2dSourceText" rows="10" placeholder="Paste paper/method text here..."></textarea>
+                        </div>
+                        <div class="config-actions" style="margin-top:10px;">
+                            <button id="t2dGenerateBtn" class="btn-sm" onclick="startTextToDiagramJob()">Generate Diagram</button>
+                            <span id="t2dJobStatus" class="status-badge inactive">idle</span>
+                        </div>
+                    </div>
+
+                    <div class="t2d-panel">
+                        <h3 class="section-title">Live Status</h3>
+                        <div id="t2dEvents" class="t2d-events"><p class="placeholder">No job yet.</p></div>
+                    </div>
+
+                    <div class="t2d-panel">
+                        <h3 class="section-title">Iteration Outputs</h3>
+                        <div id="t2dIterationsList" class="t2d-iters"><p class="placeholder">No iterations yet.</p></div>
+                    </div>
+
+                    <div class="t2d-panel">
+                        <h3 class="section-title">Final Output</h3>
+                        <div id="t2dFinal" class="t2d-final"><p class="placeholder">Final image will appear here.</p></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -408,6 +509,6 @@
         </section>
 
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=20260304b"></script>
 </body>
 </html>

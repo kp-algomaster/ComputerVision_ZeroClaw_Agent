@@ -5,6 +5,7 @@ from cv_agent.agents.website_maintenance import run_website_maintenance_agent
 from cv_agent.agents.model_training import run_model_training_agent
 from cv_agent.agents.data_visualization import run_data_visualization_agent
 from cv_agent.agents.paper_to_code import run_paper_to_code_agent
+from cv_agent.agents.digest import run_digest_agent
 
 __all__ = [
     "run_blog_writer_agent",
@@ -12,6 +13,7 @@ __all__ = [
     "run_model_training_agent",
     "run_data_visualization_agent",
     "run_paper_to_code_agent",
+    "run_digest_agent",
 ]
 
 AGENT_REGISTRY: dict[str, dict] = {
@@ -49,5 +51,12 @@ AGENT_REGISTRY: dict[str, dict] = {
         "icon": "📄→💻",
         "runner": run_paper_to_code_agent,
         "config_key": "paper_to_code",
+    },
+    "digest_writer": {
+        "name": "Digest Writer Agent",
+        "description": "Searches arXiv and generates magazine-style weekly CV research digests.",
+        "icon": "📰",
+        "runner": run_digest_agent,
+        "config_key": "digest_writer",
     },
 }
