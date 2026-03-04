@@ -208,7 +208,7 @@ rm -rf src/zeroclaw_tools/   # zero other changes required
 ### Setup
 
 ```bash
-git clone https://github.com/kp-algomaster/ComputerVision_ZeroClaw_Agent
+git clone https://github.com/kp-algomaster/ComputerVision-Assistant
 cd CV_Zero_Claw_Agent
 
 python -m venv .venv
