@@ -1,4 +1,4 @@
-# Computer Vision Assistant🦀👁️
+# Computer Vision Assistant 👁️
 
 An autonomous Computer Vision research assistant — monitors arXiv, processes papers, builds knowledge graphs, generates specs, and runs vision tasks locally via Ollama and MLX. Powered by [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
