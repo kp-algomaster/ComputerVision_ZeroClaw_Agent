@@ -96,17 +96,20 @@ Skills are specialised capabilities the agent can perform. A skill is **Ready** 
 | ✍️ | Write Research Blog | Content | ✅ Ready |
 | 📰 | Weekly Digest | Content | ✅ Ready |
 | 📧 | Email Reports | Content | ⚡ Needs Power (Email) |
-| 🖼️ | 2D Image Processing | Vision | ✅ Ready |
-| 🧊 | 3D Image Processing | Vision | 📦 Needs Install (`open3d`) |
 | 🎥 | Video Understanding | Vision | 📦 Needs Install (`opencv-python`) |
+| 🔍 | Object Detection | Vision | ⚡ Needs Power (2D Image Processing) |
+| 🎯 | Object Tracking | Vision | ⚡ Needs Power (2D Image Processing) |
+| ✂️ | Image Segmentation | Vision | ⚡ Needs Power (2D Image Processing) |
+| 🧩 | Instance Segmentation | Vision | ⚡ Needs Power (2D Image Processing) |
 | 📋 | Paper → Spec | Research | ✅ Ready |
 | 🕸️ | Knowledge Graph | Research | ✅ Ready |
 | ∑ | Equation Extraction | Research | ✅ Ready |
+| 📄 | Document Text Extraction | Research | ⚡ Needs Power (OCR) |
 | 🏆 | Kaggle Competition | ML | ⚡ Needs Power (Kaggle) |
 | 🎯 | Model Fine-Tuning | ML | ⚡ Needs Power (HuggingFace / Azure ML) |
 | 📊 | Dataset Analysis | ML | ✅ Ready |
 
-**7 / 12 skills ready** out of the box. Unlock the rest by configuring the relevant Powers.
+**5 / 15 skills ready** out of the box. Unlock the rest by configuring the relevant Powers.
 
 ---
 
@@ -122,6 +125,8 @@ Powers are external resources and integrations. Active powers unlock additional 
 | 📁 | Local File System | ✅ Active | `file_read`, `file_write`, `shell` via ZeroClaw |
 | 📚 | ArXiv | ✅ Active | Free public API — no key required |
 | 🔬 | Semantic Scholar | ⚠️ Limited | Rate-limited; set `SEMANTIC_SCHOLAR_API_KEY` for full access |
+| 🖼️ | 2D Image Processing | ✅ Active | Pillow + OpenCV; unlocks Object Detection, Tracking, Segmentation skills |
+| 🧊 | 3D Image Processing | 📦 Install | Requires `open3d`; `pip install open3d` |
 
 ### 🔗 Integrations (configure in Powers view)
 
@@ -131,6 +136,7 @@ Powers are external resources and integrations. Active powers unlock additional 
 | 🤗 | HuggingFace Hub | Inactive | `HF_TOKEN` |
 | 🏆 | Kaggle | Inactive | `KAGGLE_USERNAME`, `KAGGLE_KEY` |
 | 🐙 | GitHub | Inactive | `GITHUB_TOKEN` |
+| 🔤 | OCR | Inactive | `OCR_ENGINE` (`tesseract` or `easyocr`); unlocks Document Text Extraction skill |
 
 ### ☁️ Cloud Compute
 
