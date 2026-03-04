@@ -314,4 +314,24 @@ Full configuration reference: [`config/agent_config.yaml`](config/agent_config.y
 
 ## License
 
-MIT
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for full terms.
+
+```
+MIT License  Copyright (c) 2025 kp-algomaster
+```
+
+You are free to use, modify, and distribute this software for any purpose, including commercial use, with no warranty. Attribution appreciated but not required.
+
+### Third-party notices
+
+| Dependency | License |
+|------------|---------|
+| [LangChain](https://github.com/langchain-ai/langchain) | MIT |
+| [LangGraph](https://github.com/langchain-ai/langgraph) | MIT |
+| [FastAPI](https://github.com/tiangolo/fastapi) | MIT |
+| [Ollama](https://github.com/ollama/ollama) | MIT |
+| [llmfit](https://github.com/AlexsJones/llmfit) | Apache 2.0 |
+| [MLX](https://github.com/ml-explore/mlx) | MIT |
+| [Pydantic](https://github.com/pydantic/pydantic) | MIT |
+
+> **Model licenses** vary by provider. `minimax-m2.5:cloud` and other Ollama-served models are subject to their own upstream licenses. Check the model card on [Ollama Hub](https://ollama.com/library) before commercial use.
