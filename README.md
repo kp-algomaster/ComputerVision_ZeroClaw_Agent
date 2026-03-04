@@ -136,7 +136,7 @@ Powers are external resources and integrations. Active powers unlock additional 
 | 🤗 | HuggingFace Hub | Inactive | `HF_TOKEN` |
 | 🏆 | Kaggle | Inactive | `KAGGLE_USERNAME`, `KAGGLE_KEY` |
 | 🐙 | GitHub | Inactive | `GITHUB_TOKEN` |
-| 🔤 | OCR | Inactive | `OCR_ENGINE` (`tesseract` or `easyocr`); unlocks Document Text Extraction skill |
+| 🔤 | OCR | Inactive | `OCR_ENGINE` (`tesseract`, `easyocr`, or `monkeyocr`); unlocks Document Text Extraction skill |
 | 🎬 | Vid-LLMs | Inactive | `VID_LLM_MODEL` (e.g. `video-llava`, `internvl2`); unlocks Video Understanding skill |
 
 ### ☁️ Cloud Compute
