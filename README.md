@@ -213,10 +213,17 @@ cd CV_Zero_Claw_Agent
 
 python -m venv .venv
 source .venv/bin/activate
+
+# Install the agent + ZeroClaw shim dependencies (LangChain, LangGraph, etc.)
 pip install -e ".[dev]"
+
+# Optional: install ZeroClaw when it ships on PyPI (shim is used until then)
+# pip install zeroclaw-tools
 
 cp .env.example .env   # add API keys
 ```
+
+> **ZeroClaw shim:** `zeroclaw-tools` is not yet on PyPI. The repo ships a local compatibility shim at `src/zeroclaw_tools/` that provides the identical `@tool` / `create_agent` API via LangChain + LangGraph. `pip install -e ".[dev]"` installs all shim dependencies automatically. Once the real package is published, replace it with `pip install zeroclaw-tools` and delete the `src/zeroclaw_tools/` directory — no other changes needed.
 
 ### Launch
 
