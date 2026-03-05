@@ -11,8 +11,27 @@ const PYTHON_BACKEND = 'http://127.0.0.1:8420';
 
 app.use(express.json());
 
-const activeRuns = new Map();
+const activeRuns = new Map();       // runId -> { emitter, events[], done }
 const pendingCheckpoints = new Map();
+
+function createRun(runId) {
+    const run = {
+        emitter: new EventEmitter(),
+        events: [],
+        done: false,
+    };
+    // Buffer every event
+    run.emitter.on('update', (data) => {
+        run.events.push(data);
+        if (data.status === 'completed' || data.status === 'failed' || data.error) {
+            run.done = true;
+        }
+    });
+    activeRuns.set(runId, run);
+    // Clean up after 60s
+    setTimeout(() => activeRuns.delete(runId), 60000);
+    return run;
+}
 
 // Basic health check endpoint required by Python cv_agent
 app.get('/health', (req, res) => {
@@ -26,28 +45,34 @@ app.get('/workflow/:runId/stream', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Send initial connection heartbeat
-    res.write(`data: ${JSON.stringify({ status: 'connected', runId })}\n\n`);
-
-    const runEmitter = activeRuns.get(runId);
-    if (!runEmitter) {
-        res.write(`data: ${JSON.stringify({ error: 'Run ID not found or already completed', status: 'failed' })}\n\n`);
+    const run = activeRuns.get(runId);
+    if (!run) {
+        res.write(`data: ${JSON.stringify({ error: 'Run ID not found', status: 'failed' })}\n\n`);
         return res.end();
     }
 
+    // Replay all buffered events first
+    for (const evt of run.events) {
+        res.write(`data: ${JSON.stringify(evt)}\n\n`);
+    }
+
+    // If already done, close immediately
+    if (run.done) {
+        return res.end();
+    }
+
+    // Otherwise, stream new events as they arrive
     const onUpdate = (data) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
-        if (data.status === 'completed' || data.error) {
+        if (data.status === 'completed' || data.status === 'failed' || data.error) {
             res.end();
         }
     };
 
-    runEmitter.on('update', onUpdate);
+    run.emitter.on('update', onUpdate);
 
     req.on('close', () => {
-        if (runEmitter) {
-            runEmitter.off('update', onUpdate);
-        }
+        run.emitter.off('update', onUpdate);
     });
 });
 
@@ -74,8 +99,8 @@ app.post('/workflow/run', async (req, res) => {
         }
 
         const runId = `run_${Date.now()}`;
-        const runEmitter = new EventEmitter();
-        activeRuns.set(runId, runEmitter);
+        const run = createRun(runId);
+        const runEmitter = run.emitter;
 
         res.status(202).json({
             message: 'Workflow accepted',
@@ -181,9 +206,7 @@ app.post('/workflow/run', async (req, res) => {
                 console.error(`Error in run ${runId}:`, err);
                 runEmitter.emit('update', { error: err.message, status: 'failed' });
             } finally {
-                setTimeout(() => {
-                    activeRuns.delete(runId);
-                }, 5000);
+                // Run is kept alive by createRun's 60s timeout
             }
         })();
 
