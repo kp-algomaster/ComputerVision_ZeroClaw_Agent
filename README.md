@@ -20,16 +20,7 @@ An autonomous Computer Vision research assistant — monitors arXiv, processes p
 
 ## Hardware-Aware Model Selection
 
-```mermaid
-flowchart LR
-    HW["🖥️ Hardware Probe\nllmfit system"]
-    INFO["M4 Max\n36 GB RAM · 36 GB VRAM\n14 cores · Metal"]
-    RANK["📊 llmfit rank\nmodels by fit score"]
-    SEL["✅ Selected Model\nqwen3.5:latest"]
-    AG["🧠 Agent\ncreate_agent(model)"]
-
-    HW --> INFO --> RANK --> SEL --> AG
-```
+![Hardware-aware model selection — llmfit probes hardware, scores models, auto-selects best fit](docs/images/hardware_selection.png)
 
 ---
 
