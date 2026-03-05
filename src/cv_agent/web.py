@@ -1786,9 +1786,12 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_sam3_pkg   = _pkg("sam3")
         has_sam3_model = is_model_downloaded("sam3")
 
+        import sys as _sys
+        _py = _sys.executable
+
         def _skill(label, icon, category, description, status, tools,
                    missing=None, packages=None, models=None, powers=None,
-                   model=None, model_label=None, install=None):
+                   model=None, model_label=None, install=None, commands=None):
             return {
                 "label": label, "icon": icon, "category": category,
                 "description": description, "status": status, "tools": tools,
@@ -1796,6 +1799,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "packages": packages or [],   # list of pip package names to install
                 "models": models or [],        # list of {id, label} model dicts to download
                 "powers": powers or [],        # list of {id, label} power dicts to configure
+                "commands": commands or [],    # list of shell commands to run in order
                 "model": model, "model_label": model_label,
                 "install": install,
             }
@@ -1877,8 +1881,12 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                     else (["SAM3 model weights (~6.9 GB, gated)"] if has_sam3_pkg
                           else ["sam3 package", "SAM3 model weights"])
                 ),
-                packages=[] if has_sam3_pkg else [],
+                packages=[],
                 models=[] if has_sam3_model else [{"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"}],
+                commands=[] if has_sam3_pkg else [
+                    "git clone https://github.com/facebookresearch/sam3",
+                    f'"{_py}" -m pip install -e sam3/',
+                ],
                 install=(
                     None if has_sam3_pkg
                     else "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
@@ -2025,6 +2033,34 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 yield f'data: {_json.dumps({"status": "__done__", "success": True})}\n\n'
             else:
                 yield f'data: {_json.dumps({"status": "__done__", "success": False, "returncode": proc.returncode})}\n\n'
+
+        return _SR(_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/skills/run-command")
+    async def run_skill_command(body: dict):
+        """Stream output of a shell command as SSE (used for git clone / pip install -e steps)."""
+        import json as _json
+        from fastapi.responses import StreamingResponse as _SR
+
+        command: str = body.get("command", "").strip()
+        if not command:
+            return JSONResponse({"error": "no command specified"}, status_code=400)
+
+        async def _stream():
+            yield f'data: {_json.dumps({"line": f"$ {command}"})}\n\n'
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").rstrip()
+                if line:
+                    yield f'data: {_json.dumps({"line": line})}\n\n'
+            await proc.wait()
+            done = {"status": "__done__", "success": proc.returncode == 0, "returncode": proc.returncode}
+            yield f'data: {_json.dumps(done)}\n\n'
 
         return _SR(_stream(), media_type="text/event-stream",
                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

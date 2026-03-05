@@ -2468,15 +2468,33 @@ function showSkillInstallModal(skillId) {
     const packages = info.packages || [];
     const models = info.models || [];
     const powers = info.powers || [];
+    const commands = info.commands || [];
 
     const overlay = document.createElement('div');
     overlay.className = 'skill-modal-overlay';
     overlay.id = 'skillInstallOverlay';
 
-    const hasSteps = packages.length || models.length || powers.length;
+    const hasSteps = packages.length || models.length || powers.length || commands.length;
     const stepsHtml = !hasSteps
         ? `<p class="sim-empty">No automated install steps available. Check the skill requirements manually.</p>`
         : [
+            commands.length ? commands.map((cmd, i) => `
+            <div class="sim-step" id="sim-step-cmd-${i}">
+                <div class="sim-step-header">
+                    <span class="sim-step-icon">💻</span>
+                    <div class="sim-step-info">
+                        <strong>Step ${i + 1}</strong>
+                        <span class="sim-step-detail"><code>${escapeHtml(cmd)}</code></span>
+                    </div>
+                    <span class="sim-step-badge pending" id="sim-badge-cmd-${i}">Pending</span>
+                </div>
+                <div class="sim-step-body" id="sim-body-cmd-${i}" hidden>
+                    <div class="sim-output" id="sim-output-cmd-${i}"></div>
+                </div>
+                <button class="sim-btn" id="sim-btn-cmd-${i}" onclick="skillRunCommand('${skillId}', ${i})">
+                    Run
+                </button>
+            </div>`).join('') : '',
             packages.length ? `
             <div class="sim-step" id="sim-step-pkg">
                 <div class="sim-step-header">
@@ -2591,6 +2609,71 @@ async function skillInstallPackages(skillId) {
                         badge.className = 'sim-step-badge done';
                         badge.textContent = '✓ Done';
                         btn.textContent = '✓ Installed';
+                    } else {
+                        badge.className = 'sim-step-badge error';
+                        badge.textContent = '✗ Failed';
+                        btn.disabled = false;
+                        btn.textContent = 'Retry';
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        badge.className = 'sim-step-badge error';
+        badge.textContent = '✗ Error';
+        output.textContent += '\nError: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+    }
+}
+
+async function skillRunCommand(skillId, cmdIndex) {
+    const info = _skillsById[skillId];
+    const command = (info?.commands || [])[cmdIndex];
+    if (!command) return;
+
+    const btn = document.getElementById(`sim-btn-cmd-${cmdIndex}`);
+    const badge = document.getElementById(`sim-badge-cmd-${cmdIndex}`);
+    const body = document.getElementById(`sim-body-cmd-${cmdIndex}`);
+    const output = document.getElementById(`sim-output-cmd-${cmdIndex}`);
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    badge.className = 'sim-step-badge running';
+    badge.textContent = 'Running';
+    body.hidden = false;
+    output.textContent = '';
+
+    try {
+        const resp = await fetch('/api/skills/run-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command }),
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                let ev;
+                try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+                if (ev.line !== undefined) {
+                    output.textContent += ev.line + '\n';
+                    output.scrollTop = output.scrollHeight;
+                }
+                if (ev.status === '__done__') {
+                    if (ev.success) {
+                        badge.className = 'sim-step-badge done';
+                        badge.textContent = '✓ Done';
+                        btn.textContent = '✓ Done';
                     } else {
                         badge.className = 'sim-step-badge error';
                         badge.textContent = '✗ Failed';
