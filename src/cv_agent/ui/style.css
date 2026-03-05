@@ -4120,12 +4120,19 @@ body {
    SAM3 Playground
 ══════════════════════════════════════════════ */
 
-.sam3-scroll { padding: 0 !important; }
+/* Make view-scroll a flex column so children can fill height reliably */
+#view-sam3 .view-scroll {
+    padding: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
 
 .sam3-layout {
     display: grid;
     grid-template-columns: 1fr 300px;
-    height: 100%;
+    flex: 1;          /* fills the view-scroll flex container */
+    min-height: 0;    /* allows shrinking below content size */
     overflow: hidden;
 }
 
@@ -4133,10 +4140,10 @@ body {
 .sam3-canvas-panel {
     display: flex;
     flex-direction: column;
-    gap: 0;
     border-right: 1px solid var(--border);
     background: #0d0d0d;
     overflow: hidden;
+    min-height: 0;
 }
 
 .sam3-upload-zone {
@@ -4177,22 +4184,22 @@ body {
     margin-top: 6px;
 }
 
+/* Image wrap: flex item with relative positioning for absolute children */
 .sam3-img-wrap {
     flex: 1;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
     background: #111;
-    min-height: 300px;
+    overflow: hidden;
+    min-height: 0;    /* critical — allows flex item to shrink */
 }
 
+/* Image fills the wrap absolutely; object-fit keeps aspect ratio */
 .sam3-img {
-    max-width: 100%;
-    max-height: 100%;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    display: block;
     user-select: none;
     -webkit-user-drag: none;
 }
