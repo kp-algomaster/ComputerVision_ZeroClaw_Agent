@@ -2733,19 +2733,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             return JSONResponse({"error": f"Tool '{name}' not found"}, status_code=404)
             
         try:
-            # Attempt to execute the tool
-            func_to_call = target_tool
-            # Some tool wrappers have .invoke or a wrapped function
+            # LangChain BaseTool.invoke(input) takes a dict as its first positional
+            # arg — do NOT unpack with **args or it errors with "missing 'input'".
             if hasattr(target_tool, "invoke"):
-                func_to_call = target_tool.invoke
+                result = target_tool.invoke(args)
             elif hasattr(target_tool, "func"):
-                func_to_call = target_tool.func
-
-            if inspect.iscoroutinefunction(func_to_call):
-                result = await func_to_call(**args)
+                func = target_tool.func
+                result = await func(**args) if inspect.iscoroutinefunction(func) else func(**args)
             else:
-                result = func_to_call(**args)
-                
+                result = await target_tool(**args) if inspect.iscoroutinefunction(target_tool) else target_tool(**args)
+
             return JSONResponse({"result": result})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
