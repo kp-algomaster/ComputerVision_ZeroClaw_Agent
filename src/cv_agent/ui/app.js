@@ -799,6 +799,8 @@ function isSkillPinned(id) {
 function openPinnedSkill(skillId) {
     if (skillId === 'text_to_diagram') {
         openTextToDiagramSkill();
+    } else if (skillId === 'agentic_workflows') {
+        switchView('workflows');
     } else {
         switchView('skills');
     }
