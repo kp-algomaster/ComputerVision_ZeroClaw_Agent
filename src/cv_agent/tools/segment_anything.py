@@ -41,7 +41,8 @@ def _find_file(model_dir: Path, *globs: str) -> Path | None:
 
 
 def _find_checkpoint(model_dir: Path) -> Path | None:
-    return _find_file(model_dir, "*.safetensors", "*.pt", "*.pth")
+    # Prefer .pt (torch pickle) over .safetensors — sam3's loader uses torch.load, not safetensors
+    return _find_file(model_dir, "*.pt", "*.pth", "*.safetensors")
 
 
 def _find_bpe(model_dir: Path) -> Path | None:
@@ -76,7 +77,19 @@ def _load_sam3_image() -> tuple[Any, Any] | None:
         device = "cpu"
 
     ckpt = _find_checkpoint(model_dir)
-    bpe = _find_bpe(model_dir)
+
+    # Prefer the BPE vocab bundled with the sam3 package (under sam3/sam3/assets/).
+    # sam3.__file__ is None for namespace packages; use model_builder.__file__ instead.
+    bpe: Path | None = None
+    try:
+        import sam3.model_builder as _mb
+        _pkg_bpe = Path(_mb.__file__).parent / "assets" / "bpe_simple_vocab_16e6.txt.gz"
+        if _pkg_bpe.exists():
+            bpe = _pkg_bpe
+    except Exception:
+        pass
+    if bpe is None:
+        bpe = _find_file(model_dir, "bpe_simple_vocab*.txt.gz", "bpe_*.gz")
 
     try:
         model = build_sam3_image_model(
