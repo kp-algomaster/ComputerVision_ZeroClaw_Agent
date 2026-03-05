@@ -8,7 +8,9 @@ from fastapi.responses import JSONResponse
 app = FastAPI(title="CV OCR Server")
 
 _paddle_available = importlib.util.find_spec("paddleocr") is not None
-_monkey_path = os.path.join("output", ".models", "monkey-ocr")
+# Resolve model path relative to project root (4 levels up from servers/)
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+_monkey_path = os.path.join(_project_root, "output", ".models", "monkey-ocr")
 _monkey_available = os.path.isdir(_monkey_path) and bool(os.listdir(_monkey_path))
 
 
