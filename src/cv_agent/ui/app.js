@@ -1327,6 +1327,21 @@ async function loadModelCatalog() {
     try {
         const models = await fetch('/api/local-models/catalog').then(r => r.json());
         _renderModelCatalog(models);
+
+        // Auto-reconnect to any in-progress download that survived a tab switch/reload
+        if (!_localModelDownloadReader) {
+            const active = await fetch('/api/local-models/downloads/active').then(r => r.json()).catch(() => ({}));
+            const activeId = Object.keys(active)[0];
+            if (activeId) {
+                const state = active[activeId];
+                const progressFill = document.getElementById('localModelProgressFill');
+                const progressPct = document.getElementById('localModelProgressPct');
+                const pct = state.total_gb > 0 ? Math.min(100, Math.round(state.downloaded_gb / state.total_gb * 100)) : 0;
+                progressFill.style.width = pct + '%';
+                progressPct.textContent = pct + '%';
+                _streamLocalModelDownload(activeId, null);
+            }
+        }
     } catch (e) {
         document.getElementById('localModelCatalog').innerHTML = '<p class="placeholder">Failed to load catalog.</p>';
     }
@@ -1373,24 +1388,43 @@ function _renderModelCatalog(models) {
     }
 }
 
-async function downloadLocalModel(modelId, btn) {
+// Track the active download reader so we never start duplicates
+let _localModelDownloadReader = null;
+let _localModelDownloadId = null;
+
+async function restartLocalModelDownload() {
+    if (!_localModelDownloadId) return;
+    const modelId = _localModelDownloadId;
+    const restartBtn = document.getElementById('localModelRestartBtn');
+    const statusEl = document.getElementById('localModelStatus');
+    if (restartBtn) restartBtn.disabled = true;
+    if (_localModelDownloadReader) {
+        try { _localModelDownloadReader.cancel(); } catch {}
+        _localModelDownloadReader = null;
+    }
+    statusEl.textContent = 'Wiping partial files…';
+    await fetch(`/api/local-models/${modelId}/reset`, { method: 'POST' });
+    document.getElementById('localModelProgressFill').style.width = '0%';
+    document.getElementById('localModelProgressPct').textContent = '0%';
+    if (restartBtn) restartBtn.disabled = false;
+    _streamLocalModelDownload(modelId, null);
+}
+
+async function _streamLocalModelDownload(modelId, btn) {
     const statusEl = document.getElementById('localModelStatus');
     const progressWrap = document.getElementById('localModelProgressWrap');
     const progressFill = document.getElementById('localModelProgressFill');
     const progressPct = document.getElementById('localModelProgressPct');
 
-    btn.disabled = true;
-    btn.textContent = '⏳';
     statusEl.hidden = false;
     statusEl.className = 'pull-status';
-    statusEl.textContent = `Starting download…`;
     progressWrap.hidden = false;
-    progressFill.style.width = '0%';
-    progressPct.textContent = '0%';
+    _localModelDownloadId = modelId;
 
     try {
         const resp = await fetch(`/api/local-models/${modelId}/download`, { method: 'POST' });
         const reader = resp.body.getReader();
+        _localModelDownloadReader = reader;
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -1410,10 +1444,11 @@ async function downloadLocalModel(modelId, btn) {
                     const pct = Math.min(100, Math.round(ev.downloaded_gb / ev.total_gb * 100));
                     const dlStr = ev.downloaded_gb.toFixed(2);
                     const totStr = ev.total_gb.toFixed(2);
-                    statusEl.textContent = `Downloading… ${dlStr} / ${totStr} GB`;
+                    const speedStr = ev.speed_mbps > 0 ? ` · ${ev.speed_mbps.toFixed(1)} MB/s` : '';
+                    statusEl.textContent = `Downloading… ${dlStr} / ${totStr} GB${speedStr}`;
                     progressFill.style.width = pct + '%';
                     progressPct.textContent = pct + '%';
-                } else if (ev.status) {
+                } else if (ev.status && ev.status !== '__done__') {
                     statusEl.textContent = ev.status;
                 }
             }
@@ -1422,14 +1457,25 @@ async function downloadLocalModel(modelId, btn) {
         statusEl.textContent = 'Download complete!';
         progressFill.style.width = '100%';
         progressPct.textContent = '100%';
+        _localModelDownloadReader = null;
         await loadModelCatalog();
     } catch (e) {
+        _localModelDownloadReader = null;
         statusEl.className = 'pull-status error';
         statusEl.textContent = 'Error: ' + e.message;
         progressWrap.hidden = true;
-        btn.disabled = false;
-        btn.textContent = '⬇ Download';
+        if (btn) { btn.disabled = false; btn.textContent = '⬇ Download'; }
     }
+}
+
+async function downloadLocalModel(modelId, btn) {
+    if (_localModelDownloadReader) return; // already streaming
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    const progressFill = document.getElementById('localModelProgressFill');
+    const progressPct = document.getElementById('localModelProgressPct');
+    progressFill.style.width = '0%';
+    progressPct.textContent = '0%';
+    _streamLocalModelDownload(modelId, btn);
 }
 
 async function deleteLocalModel(modelId, btn) {

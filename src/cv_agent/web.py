@@ -1549,6 +1549,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     # ── Local Model Catalog ─────────────────────────────────────────────────
 
+    @app.get("/api/local-models/downloads/active")
+    async def active_local_downloads():
+        from cv_agent.local_model_manager import get_active_downloads
+        return JSONResponse(get_active_downloads())
+
     @app.get("/api/local-models/catalog")
     async def local_model_catalog():
         from cv_agent.local_model_manager import get_catalog_with_status
@@ -1563,6 +1568,14 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/local-models/{model_id}/reset")
+    async def reset_local_model_download(model_id: str):
+        from cv_agent.local_model_manager import reset_download, _ALL
+        if model_id not in _ALL:
+            return JSONResponse({"error": "Unknown model"}, status_code=404)
+        reset_download(model_id)
+        return JSONResponse({"ok": True, "reset": model_id})
 
     @app.delete("/api/local-models/{model_id}")
     async def delete_local_model(model_id: str):

@@ -2195,6 +2195,20 @@ body {
     text-align: right;
 }
 
+.btn-restart-download {
+    margin-left: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid var(--danger, #f85149);
+    background: transparent;
+    color: var(--danger, #f85149);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-restart-download:hover { background: rgba(248,81,73,0.12); }
+.btn-restart-download:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .llmfit-notice {
     font-size: 12px;
     color: var(--warning);
