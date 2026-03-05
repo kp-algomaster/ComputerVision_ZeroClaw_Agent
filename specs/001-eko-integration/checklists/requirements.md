@@ -31,6 +31,14 @@
 
 ## Notes
 
-All items pass. No [NEEDS CLARIFICATION] markers. Assumptions section documents
-technology choices (Node.js sidecar on :7862, Ollama default, file-based storage)
-keeping them out of requirements body. Spec is ready for `/speckit.plan`.
+All items pass. No [NEEDS CLARIFICATION] markers. Amended 2026-03-05 to add:
+- User Story 4 (BrowserAgent — headless Chromium via Playwright)
+- FR-011 through FR-014 (BrowserAgent step type, screenshots, Playwright check,
+  credential loading)
+- SC-007, SC-008 (BrowserAgent measurable outcomes)
+- Two new key entities (BrowserSession, Screenshot)
+- Expanded edge cases and assumptions for Playwright/anti-detection/credentials
+
+Assumptions section documents all technology choices (Node.js sidecar on :7862,
+Playwright Chromium, stealth mode, credential Powers) keeping them out of the
+requirements body. Spec is ready for `/speckit.plan`.
