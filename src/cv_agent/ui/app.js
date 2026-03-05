@@ -2383,6 +2383,9 @@ function buildSkillCard(id, info) {
     if (id === 'text_to_diagram') {
         actions.push(`<button class="btn-sm" onclick="openTextToDiagramSkill()">Open</button>`);
     }
+    if (id === 'agentic_workflows') {
+        actions.push(`<button class="btn-sm" onclick="switchView('workflows')">Open Workflows</button>`);
+    }
     if (info.status !== 'ready') {
         actions.push(`<button class="btn-install-skill" onclick="showSkillInstallModal('${id}')">⚙ Install Skill</button>`);
     }

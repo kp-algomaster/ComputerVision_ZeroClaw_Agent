@@ -1938,6 +1938,27 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 install=None if (_pkg("PIL") or _pkg("Pillow")) else "pip install Pillow datasets",
             ),
         }
+
+        # Dynamically check Eko sidecar for agentic_workflows skill
+        eko_ready = False
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{config.workflow.eko_sidecar_url.rstrip('/')}/health")
+                eko_ready = r.status_code == 200
+        except Exception:
+            pass
+
+        skills["agentic_workflows"] = _skill(
+            "Agentic Workflows", "🗺️", "research",
+            "Define and run multi-step autonomous research workflows orchestrated by the Eko engine. "
+            "Includes headless browser automation via Playwright, human-in-the-loop checkpoints, "
+            "and reusable template saving.",
+            "ready" if eko_ready else "needs-power",
+            ["browser_navigate", "browser_screenshot", "browser_extract_text", "browser_click"],
+            missing=[] if eko_ready else ["Eko Workflow Engine (start from Server Management)"],
+        )
+
         return JSONResponse(skills)
 
     @app.post("/api/skills/install-packages")
