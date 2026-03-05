@@ -2065,6 +2065,100 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         return _SR(_stream(), media_type="text/event-stream",
                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    # ── SAM3 Playground ────────────────────────────────────────────────────
+
+    @app.post("/api/sam3/upload")
+    async def sam3_upload_image(file):
+        """Accept an image upload, save to output/segments/uploads/, return path + dimensions."""
+        import uuid
+        from pathlib import Path as _P
+        try:
+            from PIL import Image as _PIL
+        except ImportError:
+            _PIL = None
+
+        upload_dir = _P("output/segments/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = _P(file.filename or "image.jpg").suffix.lower() or ".jpg"
+        fname = f"upload_{uuid.uuid4().hex[:12]}{ext}"
+        dest = upload_dir / fname
+
+        data = await file.read()
+        dest.write_bytes(data)
+
+        w, h = 0, 0
+        if _PIL:
+            try:
+                img = _PIL.open(dest)
+                w, h = img.size
+            except Exception:
+                pass
+
+        return JSONResponse({
+            "image_path": str(dest),
+            "url": f"/output/segments/uploads/{fname}",
+            "width": w,
+            "height": h,
+        })
+
+    @app.get("/api/sam3/status")
+    async def sam3_status():
+        """Check whether the SAM3 package and model weights are available."""
+        import importlib.util as _ilu
+        from cv_agent.local_model_manager import is_model_downloaded
+        has_pkg   = _ilu.find_spec("sam3") is not None
+        has_model = is_model_downloaded("sam3")
+        ready     = has_pkg and has_model
+        message   = (
+            "SAM3 ready" if ready
+            else ("SAM3 package installed — download model weights from the Models page" if has_pkg
+                  else "Install sam3 package and download model weights to use this skill")
+        )
+        return JSONResponse({"ready": ready, "has_pkg": has_pkg, "has_model": has_model, "message": message})
+
+    @app.post("/api/sam3/segment")
+    async def sam3_segment_endpoint(body: dict):
+        """Run SAM3 segmentation on an uploaded image. Supports text and box prompt modes."""
+        import json as _json
+        from pathlib import Path as _P
+        from cv_agent.tools.segment_anything import segment_with_text, segment_with_box
+
+        image_path = body.get("image_path", "")
+        mode       = body.get("mode", "text")
+
+        if not image_path:
+            return JSONResponse({"error": "image_path is required"}, status_code=400)
+        if not _P(image_path).exists():
+            return JSONResponse({"error": f"Image file not found: {image_path}"}, status_code=404)
+
+        if mode == "text":
+            prompt = body.get("prompt", "").strip()
+            if not prompt:
+                return JSONResponse({"error": "prompt is required for text mode"}, status_code=400)
+            result_json = await asyncio.to_thread(
+                segment_with_text.invoke,
+                {"image_path": image_path, "prompt": prompt, "output_path": ""},
+            )
+        elif mode == "box":
+            box = body.get("box")
+            if not box:
+                return JSONResponse({"error": "box is required for box mode"}, status_code=400)
+            result_json = await asyncio.to_thread(
+                segment_with_box.invoke,
+                {"image_path": image_path, "box_json": _json.dumps(box), "output_path": ""},
+            )
+        else:
+            return JSONResponse({"error": f"Unknown mode: {mode}"}, status_code=400)
+
+        result = _json.loads(result_json)
+
+        # Convert relative output path → web-accessible URL (/output/...)
+        if "output_path" in result and result["output_path"]:
+            result["output_url"] = "/" + result["output_path"].replace("\\", "/").lstrip("/")
+
+        return JSONResponse(result)
+
     # ── Overview ───────────────────────────────────────────────────────────
 
     @app.get("/api/overview")

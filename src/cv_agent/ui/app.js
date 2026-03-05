@@ -106,6 +106,7 @@ function switchView(view) {
         logs: loadLogs,
         agents: loadAgents,
         workflows: loadWorkflows,
+        sam3: loadSam3View,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -801,6 +802,8 @@ function openPinnedSkill(skillId) {
         openTextToDiagramSkill();
     } else if (skillId === 'agentic_workflows') {
         switchView('workflows');
+    } else if (skillId === 'segment_anything') {
+        switchView('sam3');
     } else {
         switchView('skills');
     }
@@ -2434,6 +2437,9 @@ function buildSkillCard(id, info) {
     if (id === 'agentic_workflows') {
         actions.push(`<button class="btn-sm" onclick="switchView('workflows')">Open Workflows</button>`);
     }
+    if (id === 'segment_anything') {
+        actions.push(`<button class="btn-sm" onclick="switchView('sam3')">Open Playground</button>`);
+    }
     if (info.status !== 'ready') {
         actions.push(`<button class="btn-install-skill" onclick="showSkillInstallModal('${id}')">⚙ Install Skill</button>`);
     }
@@ -3654,4 +3660,319 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SAM3 Playground
+// ═══════════════════════════════════════════════════════════════════════
+
+const _sam3 = {
+    imagePath: null,   // server-side path
+    mode: 'text',      // 'text' | 'box'
+    box: null,         // finalised box in IMAGE pixel coords {x1,y1,x2,y2}
+    draw: null,        // box being drawn in CANVAS coords {x1,y1,x2,y2}
+    isDrawing: false,
+    scale: { x: 1, y: 1 },    // canvas-display → image-pixel scale
+    imgRect: null,             // {x,y,w,h} of image inside the canvas element
+    inited: false,
+};
+
+function loadSam3View() {
+    if (!_sam3.inited) {
+        _sam3InitUpload();
+        _sam3.inited = true;
+    }
+    fetch('/api/sam3/status').then(r => r.json()).then(d => {
+        const badge = document.getElementById('sam3ModelBadge');
+        if (!badge) return;
+        if (d.ready) {
+            badge.textContent = '🟢 SAM3 ready';
+            badge.style.borderColor = '#1a5a2a';
+            badge.style.color = '#6abf8a';
+        } else {
+            badge.textContent = `⚠️ ${d.message}`;
+            badge.style.borderColor = '#5a4000';
+            badge.style.color = '#c8a040';
+        }
+    }).catch(() => {});
+}
+
+function _sam3InitUpload() {
+    const zone  = document.getElementById('sam3UploadZone');
+    const input = document.getElementById('sam3FileInput');
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (!zone || !input || !canvas) return;
+
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { if (input.files[0]) _sam3HandleFile(input.files[0]); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) _sam3HandleFile(e.dataTransfer.files[0]);
+    });
+
+    canvas.addEventListener('mousedown',  _sam3MouseDown);
+    canvas.addEventListener('mousemove',  _sam3MouseMove);
+    canvas.addEventListener('mouseup',    _sam3MouseUp);
+    canvas.addEventListener('mouseleave', _sam3MouseUp);
+
+    // Re-compute geometry on resize
+    const wrap = document.getElementById('sam3ImgWrap');
+    if (wrap && window.ResizeObserver) {
+        new ResizeObserver(() => { if (!wrap.hidden && _sam3.imagePath) _sam3SyncCanvas(); }).observe(wrap);
+    }
+}
+
+async function _sam3HandleFile(file) {
+    const content = document.getElementById('sam3UploadContent');
+    content.innerHTML = '<div class="sam3-upload-icon">⏳</div><p>Uploading…</p>';
+
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const resp = await fetch('/api/sam3/upload', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        _sam3.imagePath = data.image_path;
+
+        const img  = document.getElementById('sam3Img');
+        const wrap = document.getElementById('sam3ImgWrap');
+
+        img.onload = () => _sam3SyncCanvas();
+        img.src = data.url + '?t=' + Date.now();
+
+        document.getElementById('sam3UploadZone').hidden = true;
+        wrap.hidden = false;
+        document.getElementById('sam3ImgToolbar').hidden = false;
+        document.getElementById('sam3ImgInfo').textContent =
+            data.width && data.height ? `${data.width} × ${data.height} px` : '';
+
+        sam3ClearResult();
+    } catch (e) {
+        content.innerHTML =
+            `<div class="sam3-upload-icon">❌</div>` +
+            `<p style="color:var(--text-secondary)">Upload failed: ${escapeHtml(e.message)}</p>` +
+            `<p><button class="btn-sm" onclick="_sam3ResetUploadZone()">Try again</button></p>`;
+    }
+}
+
+function _sam3SyncCanvas() {
+    const img    = document.getElementById('sam3Img');
+    const canvas = document.getElementById('sam3BoxCanvas');
+    const wrap   = document.getElementById('sam3ImgWrap');
+    if (!img || !canvas || !wrap) return;
+
+    const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
+    canvas.width  = ww;
+    canvas.height = wh;
+
+    // Compute image display rect (object-fit: contain)
+    const ia = img.naturalWidth / img.naturalHeight;
+    const wa = ww / wh;
+    let dw, dh, ox, oy;
+    if (ia > wa) { dw = ww; dh = ww / ia; ox = 0; oy = (wh - dh) / 2; }
+    else         { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
+
+    _sam3.imgRect = { x: ox, y: oy, w: dw, h: dh };
+    _sam3.scale   = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
+
+    // Redraw any existing box
+    if (_sam3.draw) _sam3DrawBoxOnCanvas(_sam3.draw);
+}
+
+// ── Box drawing ─────────────────────────────────────────────────────────────
+
+function _sam3MouseDown(e) {
+    if (_sam3.mode !== 'box') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    _sam3.isDrawing = true;
+    _sam3.draw = { x1: x, y1: y, x2: x, y2: y };
+}
+
+function _sam3MouseMove(e) {
+    if (!_sam3.isDrawing || _sam3.mode !== 'box') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    _sam3.draw.x2 = e.clientX - r.left;
+    _sam3.draw.y2 = e.clientY - r.top;
+    _sam3DrawBoxOnCanvas(_sam3.draw);
+}
+
+function _sam3MouseUp(e) {
+    if (!_sam3.isDrawing || _sam3.mode !== 'box') return;
+    _sam3.isDrawing = false;
+    const d = _sam3.draw;
+    if (!d || Math.abs(d.x2 - d.x1) < 6 || Math.abs(d.y2 - d.y1) < 6) {
+        sam3ClearBox(); return;
+    }
+
+    // Clamp to image rect and convert to image-pixel coords
+    const r = _sam3.imgRect;
+    const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const cx1 = cl(Math.min(d.x1, d.x2), r.x, r.x + r.w) - r.x;
+    const cy1 = cl(Math.min(d.y1, d.y2), r.y, r.y + r.h) - r.y;
+    const cx2 = cl(Math.max(d.x1, d.x2), r.x, r.x + r.w) - r.x;
+    const cy2 = cl(Math.max(d.y1, d.y2), r.y, r.y + r.h) - r.y;
+
+    _sam3.box = {
+        x1: Math.round(cx1 * _sam3.scale.x), y1: Math.round(cy1 * _sam3.scale.y),
+        x2: Math.round(cx2 * _sam3.scale.x), y2: Math.round(cy2 * _sam3.scale.y),
+    };
+
+    const b = _sam3.box;
+    document.getElementById('sam3BoxInfo').textContent =
+        `(${b.x1}, ${b.y1}) → (${b.x2}, ${b.y2})   ${b.x2 - b.x1} × ${b.y2 - b.y1} px`;
+    document.getElementById('sam3BoxBtn').disabled = false;
+    document.getElementById('sam3ClearBoxBtn').hidden = false;
+}
+
+function _sam3DrawBoxOnCanvas(d) {
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2);
+    const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
+
+    ctx.fillStyle   = 'rgba(74,144,226,0.12)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#4a90e2';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(x, y, w, h);
+
+    // Corner handles
+    const hs = 7;
+    ctx.fillStyle = '#4a90e2';
+    [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cx, cy]) => {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    });
+}
+
+// ── Mode switching ───────────────────────────────────────────────────────────
+
+function setSam3Mode(mode) {
+    _sam3.mode = mode;
+    document.querySelectorAll('.sam3-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('sam3Tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+    document.getElementById('sam3TextPanel').hidden = mode !== 'text';
+    document.getElementById('sam3BoxPanel').hidden  = mode !== 'box';
+
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (canvas) canvas.style.pointerEvents = mode === 'box' ? 'auto' : 'none';
+}
+
+function sam3ClearBox() {
+    _sam3.box = null; _sam3.draw = null; _sam3.isDrawing = false;
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('sam3BoxInfo').textContent = 'No box drawn yet';
+    document.getElementById('sam3BoxBtn').disabled = true;
+    document.getElementById('sam3ClearBoxBtn').hidden = true;
+}
+
+// ── Segmentation ─────────────────────────────────────────────────────────────
+
+async function sam3SegmentText() {
+    if (!_sam3.imagePath) { _sam3ShowError('Upload an image first.'); return; }
+    const prompt = document.getElementById('sam3TextPrompt').value.trim();
+    if (!prompt) { document.getElementById('sam3TextPrompt').focus(); return; }
+    await _sam3RunSegment({ mode: 'text', prompt });
+}
+
+async function sam3SegmentBox() {
+    if (!_sam3.imagePath) { _sam3ShowError('Upload an image first.'); return; }
+    if (!_sam3.box) { _sam3ShowError('Draw a box on the image first.'); return; }
+    await _sam3RunSegment({ mode: 'box', box: _sam3.box });
+}
+
+async function _sam3RunSegment(extra) {
+    _sam3SetBusy(true);
+    _sam3ClearError();
+
+    try {
+        const resp = await fetch('/api/sam3/segment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_path: _sam3.imagePath, ...extra }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        // Show result overlay
+        const resultImg = document.getElementById('sam3ResultImg');
+        resultImg.src    = data.output_url + '?t=' + Date.now();
+        resultImg.hidden = false;
+
+        // Populate result panel
+        const scores = (data.scores || []).map(s => s.toFixed(3)).join('  ·  ');
+        document.getElementById('sam3ResultStats').innerHTML =
+            `<strong>Masks found:</strong> ${data.mask_count || 0}` +
+            (scores ? `<br><strong>Confidence:</strong> ${scores}` : '') +
+            `<br><small style="color:var(--text-muted)">Model: ${data.model || 'SAM3'}</small>`;
+
+        const link = document.getElementById('sam3DownloadLink');
+        link.href = data.output_url;
+        document.getElementById('sam3ResultPanel').hidden = false;
+    } catch (e) {
+        _sam3ShowError(e.message);
+    } finally {
+        _sam3SetBusy(false);
+    }
+}
+
+function _sam3SetBusy(busy) {
+    document.getElementById('sam3Spinner').hidden = !busy;
+    document.getElementById('sam3TextBtn').disabled = busy;
+    if (_sam3.box) document.getElementById('sam3BoxBtn').disabled = busy;
+}
+
+function _sam3ShowError(msg) {
+    const el = document.getElementById('sam3ErrorPanel');
+    el.textContent = '⚠️ ' + msg;
+    el.hidden = false;
+}
+
+function _sam3ClearError() {
+    document.getElementById('sam3ErrorPanel').hidden = true;
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function sam3ClearResult() {
+    const ri = document.getElementById('sam3ResultImg');
+    if (ri) { ri.src = ''; ri.hidden = true; }
+    const rp = document.getElementById('sam3ResultPanel');
+    if (rp) rp.hidden = true;
+    _sam3ClearError();
+}
+
+function sam3NewImage() {
+    _sam3.imagePath = null;
+    sam3ClearResult();
+    sam3ClearBox();
+
+    document.getElementById('sam3ImgWrap').hidden    = true;
+    document.getElementById('sam3ImgToolbar').hidden = true;
+    document.getElementById('sam3UploadZone').hidden = false;
+    _sam3ResetUploadZone();
+    document.getElementById('sam3FileInput').value = '';
+}
+
+function _sam3ResetUploadZone() {
+    const el = document.getElementById('sam3UploadContent');
+    if (el) el.innerHTML =
+        '<div class="sam3-upload-icon">🖼️</div>' +
+        '<p>Drop image here or <button class="btn-link" onclick="document.getElementById(\'sam3FileInput\').click()">browse</button></p>' +
+        '<p class="sam3-upload-hint">JPEG · PNG · WebP</p>';
+}
+
+function sam3UsePrompt(prompt) {
+    setSam3Mode('text');
+    document.getElementById('sam3TextPrompt').value = prompt;
+    document.getElementById('sam3TextPrompt').focus();
 }

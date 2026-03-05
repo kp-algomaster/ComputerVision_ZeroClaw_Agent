@@ -4115,3 +4115,337 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ══════════════════════════════════════════════
+   SAM3 Playground
+══════════════════════════════════════════════ */
+
+.sam3-scroll { padding: 0 !important; }
+
+.sam3-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Canvas panel */
+.sam3-canvas-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-right: 1px solid var(--border);
+    background: #0d0d0d;
+    overflow: hidden;
+}
+
+.sam3-upload-zone {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 2px dashed var(--border);
+    margin: 20px;
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    transition: border-color 0.2s, background 0.2s;
+    min-height: 300px;
+}
+
+.sam3-upload-zone.drag-over {
+    border-color: var(--accent);
+    background: #17314a;
+}
+
+.sam3-upload-content {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 24px;
+    pointer-events: none;
+}
+
+.sam3-upload-content .btn-link {
+    pointer-events: auto;
+}
+
+.sam3-upload-icon { font-size: 52px; margin-bottom: 14px; }
+
+.sam3-upload-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.sam3-img-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #111;
+    min-height: 300px;
+}
+
+.sam3-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.sam3-box-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* toggled in JS for box mode */
+}
+
+.sam3-result-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.sam3-img-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.sam3-img-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+/* Side panel */
+.sam3-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+}
+
+.sam3-model-badge {
+    font-size: 11px;
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Mode tabs */
+.sam3-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-secondary);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.sam3-tab {
+    flex: 1;
+    padding: 7px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+
+.sam3-tab.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Prompt panels */
+.sam3-prompt-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.sam3-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.sam3-input {
+    width: 100%;
+    padding: 8px 11px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 6px;
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+
+.sam3-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.btn-sam3-run {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.btn-sam3-run:hover { opacity: 0.88; }
+.btn-sam3-run:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.sam3-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.sam3-box-info {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 5px 9px;
+    border-radius: 4px;
+}
+
+.sam3-clear-box-btn { align-self: flex-start; }
+
+/* Spinner */
+.sam3-spinner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 13px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.sam3-spinner-ring {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: sam3spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes sam3spin { to { transform: rotate(360deg); } }
+
+/* Result panel */
+.sam3-result-panel {
+    background: var(--bg-secondary);
+    border: 1px solid #1a5a2a;
+    border-radius: var(--radius);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sam3-result-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.sam3-result-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Error panel */
+.sam3-error-panel {
+    background: #200f0f;
+    border: 1px solid #5a2a2a;
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #ff7070;
+    line-height: 1.5;
+}
+
+/* Quick prompt chips */
+.sam3-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.sam3-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sam3-chip {
+    padding: 4px 11px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    user-select: none;
+}
+
+.sam3-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sam3-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: 55vh auto;
+        overflow-y: auto;
+    }
+    .sam3-canvas-panel { border-right: none; border-bottom: 1px solid var(--border); }
+    .sam3-side-panel { max-height: none; }
+}
