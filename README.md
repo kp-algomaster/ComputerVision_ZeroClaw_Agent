@@ -2,6 +2,8 @@
 
 An autonomous Computer Vision research assistant — monitors arXiv, processes papers, builds knowledge graphs, generates specs, runs vision tasks locally via Ollama and MLX, manages local model weights, downloads training datasets, and fine-tunes models with HuggingFace Trainer. Powered by [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
+![Feature domains: research automation, local AI inference, knowledge management, ML training, agent ecosystem, integrations](docs/images/features.png)
+
 ---
 
 ## Architecture
@@ -33,7 +35,9 @@ flowchart LR
 
 ## Web UI
 
-Single-page app at `http://localhost:8420` with a collapsible sidebar containing 6 navigation groups and 16 views.
+Single-page app at `http://localhost:8420` with a collapsible sidebar containing 6 navigation groups and 17 views.
+
+![CV Assistant SPA — 6 navigation groups and 17 views](docs/images/webui.png)
 
 ---
 
@@ -201,6 +205,8 @@ Skills show three states in the UI:
 | 🏆 | Kaggle Competition | ML / Training | Kaggle API | ⚡ Needs Power (Kaggle) |
 | 🎯 | Model Fine-Tuning | ML / Training | HuggingFace Trainer (local) | ✅ Ready (with HF_TOKEN) |
 | 📊 | Dataset Analysis | ML / Training | shell · file_read · analyze_image | ✅ Ready |
+
+![Skills dependency map — 20 skills unlocked by Powers and Models](docs/images/skills_powers_models.png)
 
 ---
 
