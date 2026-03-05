@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import markdown
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -1928,6 +1928,15 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "Profile CV datasets, compute statistics, visualise class distributions and annotation quality.",
                 "ready", ["shell", "file_read", "analyze_image"],
             ),
+            "dataset_visualization": _skill(
+                "Dataset Visualization", "🔬", "ml",
+                "Browse and visualise downloaded datasets — images with annotation overlays for classification labels, "
+                "bounding boxes, and segmentation masks. Supports all HuggingFace dataset formats.",
+                "ready" if _pkg("PIL") or _pkg("Pillow") else "needs-install",
+                ["shell", "file_read"],
+                packages=[] if (_pkg("PIL") or _pkg("Pillow")) else ["Pillow", "datasets"],
+                install=None if (_pkg("PIL") or _pkg("Pillow")) else "pip install Pillow datasets",
+            ),
         }
         return JSONResponse(skills)
 
@@ -2403,6 +2412,205 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             return JSONResponse({"error": f"Unknown dataset: {dataset_id}"}, status_code=404)
         delete_dataset(dataset_id)
         return JSONResponse({"ok": True})
+
+    @app.get("/api/datasets/{dataset_id}/samples")
+    async def dataset_samples(dataset_id: str, split: str = "train", offset: int = 0, limit: int = 12):
+        """Return base64-encoded sample images with annotation overlays for visualization."""
+        import asyncio as _asyncio
+        from cv_agent.dataset_manager import _ALL, get_dataset_local_path, is_dataset_downloaded
+
+        # Accept external (search-downloaded) datasets too
+        entry = _ALL.get(dataset_id)
+        local_dir = get_dataset_local_path(dataset_id)
+
+        if not local_dir.exists():
+            return JSONResponse({"error": "Dataset not downloaded"}, status_code=400)
+
+        def _load():
+            import io, base64
+            try:
+                from PIL import Image, ImageDraw
+            except ImportError:
+                return {"error": "Pillow not installed — run: pip install Pillow"}
+            try:
+                import datasets as hf_ds
+            except ImportError:
+                return {"error": "datasets not installed — run: pip install datasets"}
+
+            # Check for old-style loading script (not supported by datasets >= 3.x)
+            loading_scripts = list(local_dir.glob("*.py"))
+            has_only_script = loading_scripts and not any(
+                f.suffix in {".parquet", ".arrow", ".json", ".csv", ".jsonl"}
+                for f in local_dir.rglob("*") if f.is_file() and not f.name.startswith(".")
+                and f.name not in {"README.md"} and ".gitattributes" not in f.name
+            )
+            if has_only_script:
+                return {
+                    "error": f"This dataset uses an old loading script ({loading_scripts[0].name}) "
+                             "that is no longer supported by the HuggingFace datasets library (v3+). "
+                             "Try a dataset in Parquet format such as Food-101, CIFAR-100, or Oxford Pets.",
+                    "script_based": True,
+                }
+
+            # Strategy 1: load parquet/imagefolder from local snapshot
+            # Strategy 2: load_from_disk (save_to_disk format)
+            # Strategy 3: raw image file scan
+            ds_split = None
+
+            try:
+                loaded = hf_ds.load_dataset(str(local_dir.resolve()), split=split)
+                ds_split = loaded
+            except Exception:
+                try:
+                    loaded = hf_ds.load_from_disk(str(local_dir.resolve()))
+                    ds_split = loaded[split] if split in loaded else next(iter(loaded.values()))
+                except Exception:
+                    pass
+
+            if ds_split is None:
+                # Final fallback: scan for local image files
+                exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+                imgs = sorted([f for f in local_dir.rglob("*") if f.suffix.lower() in exts])
+                if not imgs:
+                    return {"error": "Could not load dataset — no Parquet/Arrow/image files found. "
+                            "The dataset may need to be re-downloaded, or is in an unsupported format."}
+                total_imgs = len(imgs)
+                page_imgs = imgs[offset:offset + limit]
+                samples = []
+                for i, p in enumerate(page_imgs):
+                    try:
+                        img = Image.open(p).convert("RGB")
+                        img.thumbnail((320, 320), Image.LANCZOS)
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=82)
+                        b64 = base64.b64encode(buf.getvalue()).decode()
+                        samples.append({"idx": offset + i, "image": f"data:image/jpeg;base64,{b64}",
+                                        "label": p.parent.name, "filename": p.name})
+                    except Exception:
+                        continue
+                return {"samples": samples, "total": total_imgs, "split": split,
+                        "task": getattr(entry, "task", "") if entry else "", "fallback": True}
+
+            total = len(ds_split)
+            end = min(offset + limit, total)
+            subset_iter = ds_split.select(range(offset, end))
+            features = ds_split.features
+            image_col  = next((c for c in ["image", "img", "pixel_values", "jpg", "png"] if c in features), None)
+            label_col  = next((c for c in ["label", "labels", "class", "category", "scene_category", "fine_label", "coarse_label"] if c in features), None)
+            mask_col   = next((c for c in ["annotation", "mask", "segmentation"] if c in features), None)
+            bbox_col   = next((c for c in ["objects", "bbox", "bboxes"] if c in features), None)
+            label_names = None
+            if label_col and hasattr(features.get(label_col), "names"):
+                label_names = features[label_col].names
+            features = ds_split.features
+
+            # Detect columns
+            image_col  = next((c for c in ["image", "img", "pixel_values", "jpg", "png"] if c in features), None)
+            label_col  = next((c for c in ["label", "labels", "class", "category", "scene_category", "fine_label", "coarse_label"] if c in features), None)
+            mask_col   = next((c for c in ["annotation", "mask", "segmentation", "semantic_segmentation"] if c in features), None)
+            bbox_col   = next((c for c in ["objects", "bbox", "bboxes", "annotations"] if c in features), None)
+
+            import numpy as np
+
+            COLORS = [(255,99,71),(50,205,50),(30,144,255),(255,215,0),(238,130,238),(255,165,0),(0,206,209),(220,20,60)]
+
+            samples = []
+            for i, row in enumerate(subset_iter):
+                img = row.get(image_col) if image_col else None
+                if img is None:
+                    continue
+                if not isinstance(img, Image.Image):
+                    try:
+                        img = Image.fromarray(np.array(img))
+                    except Exception:
+                        continue
+                img = img.convert("RGB")
+
+                # Resize for display
+                img.thumbnail((320, 320), Image.LANCZOS)
+                w, h = img.size
+
+                # Segmentation mask overlay
+                if mask_col:
+                    raw_mask = row.get(mask_col)
+                    if raw_mask is not None:
+                        try:
+                            if not isinstance(raw_mask, Image.Image):
+                                raw_mask = Image.fromarray(np.array(raw_mask))
+                            raw_mask = raw_mask.resize((w, h), Image.NEAREST).convert("L")
+                            mask_arr = np.array(raw_mask)
+                            # Colorize: each class id → a distinct hue
+                            palette = np.zeros((256, 3), dtype=np.uint8)
+                            for idx in range(256):
+                                c = COLORS[idx % len(COLORS)]
+                                palette[idx] = c
+                            colored = palette[mask_arr]
+                            overlay = Image.fromarray(colored, "RGB")
+                            img = Image.blend(img, overlay, alpha=0.45)
+                        except Exception:
+                            pass
+
+                draw = ImageDraw.Draw(img)
+                label_text = ""
+
+                # Classification label
+                if label_col:
+                    val = row.get(label_col)
+                    if isinstance(val, int) and label_names and val < len(label_names):
+                        label_text = label_names[val]
+                    elif isinstance(val, str):
+                        label_text = val
+                    if label_text:
+                        tw = min(len(label_text) * 7 + 8, w)
+                        draw.rectangle([0, 0, tw, 18], fill=(0, 0, 0))
+                        draw.text((4, 2), label_text[:36], fill=(255, 255, 255))
+
+                # Bounding boxes
+                if bbox_col:
+                    objs = row.get(bbox_col)
+                    if isinstance(objs, dict):
+                        bboxes = objs.get("bbox") or objs.get("bboxes", [])
+                        obj_labels = objs.get("category", objs.get("label", []))
+                        for j, bb in enumerate(bboxes or []):
+                            col = COLORS[j % len(COLORS)]
+                            if len(bb) == 4:
+                                x0, y0, x1, y1 = bb
+                                draw.rectangle([x0, y0, x1, y1], outline=col, width=2)
+                                lbl = obj_labels[j] if obj_labels and j < len(obj_labels) else ""
+                                if isinstance(lbl, int) and label_names and lbl < len(label_names):
+                                    lbl = label_names[lbl]
+                                if lbl:
+                                    draw.rectangle([x0, y0 - 14, x0 + len(str(lbl)) * 6 + 4, y0], fill=col)
+                                    draw.text((x0 + 2, y0 - 13), str(lbl), fill=(255, 255, 255))
+
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=82)
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                samples.append({
+                    "idx": offset + i,
+                    "image": f"data:image/jpeg;base64,{b64}",
+                    "label": label_text,
+                    "has_mask": mask_col is not None,
+                    "has_bbox": bbox_col is not None,
+                })
+
+            return {
+                "samples": samples,
+                "total": total,
+                "split": split,
+                "task": getattr(entry, "task", "") if entry else "",
+                "label_names": (label_names[:30] if label_names else None),
+                "columns": {
+                    "image": image_col, "label": label_col,
+                    "mask": mask_col, "bbox": bbox_col,
+                },
+            }
+
+        loop = _asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _load)
+        if isinstance(result, dict) and "error" in result and "samples" not in result:
+            return JSONResponse(result, status_code=400)
+        return JSONResponse(result)
 
     # ── Debug ──────────────────────────────────────────────────────────────
 

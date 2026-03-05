@@ -1258,6 +1258,7 @@ function buildDatasetCard(d) {
 
     const rightCol = d.downloaded
         ? `<div class="ds-actions">
+               <button class="btn-viz" onclick="openDsViz('${d.id}', '${d.name.replace(/'/g,"\\'")}', ${JSON.stringify(d.splits || ['train'])})">🔬 Visualize</button>
                <span class="ready-label">Ready</span>
                <button class="btn-delete-sm" onclick="deleteDataset('${d.id}', this)" title="Delete">🗑</button>
            </div>`
@@ -1414,6 +1415,8 @@ async function downloadExternalDataset(fullId, name, btn) {
 
     btn.disabled = true;
     btn.textContent = '⏳ Starting…';
+    // Hide search results so the progress bar (above them) is visible
+    document.getElementById('dsSearchResults').hidden = true;
     statusEl.hidden = false;
     statusEl.className = 'pull-status';
     statusEl.textContent = 'Connecting…';
@@ -1478,6 +1481,116 @@ async function downloadExternalDataset(fullId, name, btn) {
 
 function openKaggleDownload(ref) {
     window.open(`https://www.kaggle.com/datasets/${ref}`, '_blank');
+}
+
+// ── Dataset Visualization ─────────────────────────────────────────────────
+
+const _dsViz = { id: null, name: null, splits: [], split: 'train', offset: 0, limit: 12, total: 0 };
+
+async function openDsViz(datasetId, name, splits) {
+    _dsViz.id = datasetId;
+    _dsViz.name = name;
+    _dsViz.splits = splits || ['train'];
+    _dsViz.split = splits[0] || 'train';
+    _dsViz.offset = 0;
+
+    document.getElementById('dsVizTitle').textContent = name;
+    document.getElementById('dsVizOverlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+
+    _renderSplitTabs();
+    await _loadVizPage();
+}
+
+function closeDsViz() {
+    document.getElementById('dsVizOverlay').hidden = true;
+    document.body.style.overflow = '';
+}
+
+function _renderSplitTabs() {
+    const el = document.getElementById('dsVizSplits');
+    el.innerHTML = _dsViz.splits.map(s =>
+        `<button class="dsviz-split-btn ${s === _dsViz.split ? 'active' : ''}"
+                 onclick="dsVizSetSplit('${s}')">${s}</button>`
+    ).join('');
+}
+
+async function dsVizSetSplit(split) {
+    _dsViz.split = split;
+    _dsViz.offset = 0;
+    _renderSplitTabs();
+    await _loadVizPage();
+}
+
+async function dsVizPage(dir) {
+    _dsViz.offset = Math.max(0, Math.min(_dsViz.offset + dir * _dsViz.limit, _dsViz.total - 1));
+    await _loadVizPage();
+}
+
+async function _loadVizPage() {
+    const grid = document.getElementById('dsVizGrid');
+    const legend = document.getElementById('dsVizLegend');
+    grid.innerHTML = '<p class="placeholder">Loading samples…</p>';
+    legend.hidden = true;
+
+    try {
+        const url = `/api/datasets/${_dsViz.id}/samples?split=${_dsViz.split}&offset=${_dsViz.offset}&limit=${_dsViz.limit}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (data.error) {
+            if (data.script_based) {
+                grid.innerHTML = `<div class="dsviz-script-notice">
+                    <p>⚠️ <strong>Legacy loading script detected</strong></p>
+                    <p>${data.error}</p>
+                </div>`;
+            } else {
+                grid.innerHTML = `<p class="placeholder error-text">⚠ ${data.error}</p>`;
+            }
+            return;
+        }
+
+        _dsViz.total = data.total || 0;
+        const page = Math.floor(_dsViz.offset / _dsViz.limit) + 1;
+        const pages = Math.ceil(_dsViz.total / _dsViz.limit);
+
+        document.getElementById('dsVizMeta').textContent =
+            `${_dsViz.total.toLocaleString()} samples · ${data.task || 'dataset'}`;
+        document.getElementById('dsVizPageInfo').textContent = `Page ${page} / ${pages}`;
+        document.getElementById('dsVizPrev').disabled = _dsViz.offset === 0;
+        document.getElementById('dsVizNext').disabled = _dsViz.offset + _dsViz.limit >= _dsViz.total;
+
+        // Legend: label names
+        if (data.label_names && data.label_names.length) {
+            const COLORS = ['#ff6347','#32cd32','#1e90ff','#ffd700','#ee82ee','#ffa500','#00ced1','#dc143c'];
+            legend.hidden = false;
+            legend.innerHTML = '<span class="dsviz-legend-title">Classes:</span> ' +
+                data.label_names.slice(0, 20).map((n, i) =>
+                    `<span class="dsviz-legend-chip" style="border-color:${COLORS[i % COLORS.length]}">${n}</span>`
+                ).join('') +
+                (data.label_names.length > 20 ? `<span class="dsviz-legend-chip">+${data.label_names.length - 20} more</span>` : '');
+        }
+
+        if (!data.samples || !data.samples.length) {
+            grid.innerHTML = '<p class="placeholder">No samples found for this split.</p>';
+            return;
+        }
+
+        grid.innerHTML = data.samples.map(s => `
+            <div class="dsviz-cell" onclick="dsVizLightbox('${s.image}', '${(s.label || '').replace(/'/g,"\\'")}')">
+                <img class="dsviz-img" src="${s.image}" alt="${s.label || ''}">
+                ${s.label ? `<div class="dsviz-img-label">${s.label}</div>` : ''}
+            </div>`).join('');
+    } catch (e) {
+        grid.innerHTML = `<p class="placeholder error-text">⚠ ${e.message}</p>`;
+    }
+}
+
+function dsVizLightbox(src, label) {
+    const lb = document.getElementById('dsVizLightbox');
+    document.getElementById('dsVizLightboxImg').src = src;
+    document.getElementById('dsVizLightboxLabel').textContent = label;
+    lb.hidden = false;
 }
 
 async function loadHardwareAndRecommended() {

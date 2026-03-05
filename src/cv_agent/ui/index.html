@@ -585,6 +585,40 @@
         </section>
 
     </main>
+
+    <!-- ═══ Dataset Visualization Modal ═══ -->
+    <div id="dsVizOverlay" class="dsviz-overlay" hidden onclick="if(event.target===this)closeDsViz()">
+        <div class="dsviz-modal">
+            <div class="dsviz-header">
+                <div>
+                    <h3 id="dsVizTitle">Dataset Visualization</h3>
+                    <span id="dsVizMeta" class="dsviz-meta"></span>
+                </div>
+                <button class="dsviz-close" onclick="closeDsViz()">✕</button>
+            </div>
+            <!-- Split + pagination controls -->
+            <div class="dsviz-controls">
+                <div class="dsviz-splits" id="dsVizSplits"></div>
+                <div class="dsviz-pager">
+                    <button class="btn-sm" id="dsVizPrev" onclick="dsVizPage(-1)" disabled>← Prev</button>
+                    <span id="dsVizPageInfo" class="dsviz-page-info"></span>
+                    <button class="btn-sm" id="dsVizNext" onclick="dsVizPage(1)" disabled>Next →</button>
+                </div>
+            </div>
+            <!-- Annotation legend -->
+            <div id="dsVizLegend" class="dsviz-legend" hidden></div>
+            <!-- Image grid -->
+            <div id="dsVizGrid" class="dsviz-grid">
+                <p class="placeholder">Loading samples…</p>
+            </div>
+            <!-- Lightbox -->
+            <div id="dsVizLightbox" class="dsviz-lightbox" hidden onclick="this.hidden=true">
+                <img id="dsVizLightboxImg" src="" alt="">
+                <div id="dsVizLightboxLabel" class="dsviz-lightbox-label"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="/app.js?v=20260304g"></script>
 </body>
 </html>
