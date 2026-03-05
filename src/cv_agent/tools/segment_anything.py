@@ -213,20 +213,23 @@ def _load_sam3_mlx_image() -> tuple[Any, Any] | None:
         from sam3.model_builder import build_sam3_image_model  # mlx version
         from sam3.model.sam3_image_processor import Sam3Processor
 
-        # BPE vocab is bundled with the mlx_sam3 package
+        # BPE vocab: mlx_sam3 stores it at <repo_root>/assets/ (one level above sam3/)
         bpe: Path | None = None
         try:
             import sam3.model_builder as _mb
-            _pkg_bpe = Path(_mb.__file__).parent / "assets" / "bpe_simple_vocab_16e6.txt.gz"
+            # parent = mlx_sam3/sam3/, parent.parent = mlx_sam3/
+            _pkg_bpe = Path(_mb.__file__).parent.parent / "assets" / "bpe_simple_vocab_16e6.txt.gz"
             if _pkg_bpe.exists():
                 bpe = _pkg_bpe
         except Exception:
             pass
 
+        # MLX build_sam3_image_model: checkpoint_path is a single safetensors file path.
+        # No load_from_HF param — omit it; local_weights_dir triggers HF download if needed.
         model = build_sam3_image_model(
             checkpoint_path=str(ckpt) if ckpt else None,
             bpe_path=str(bpe) if bpe else None,
-            load_from_HF=(ckpt is None),
+            local_weights_dir=str(model_dir) if ckpt is None else None,
         )
         processor = Sam3Processor(model)
         _MODEL_CACHE["sam3_mlx_image"] = (model, processor)
