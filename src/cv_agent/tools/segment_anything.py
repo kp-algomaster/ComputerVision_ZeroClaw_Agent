@@ -56,7 +56,7 @@ def _load_sam3_image() -> tuple[Any, Any] | None:
         return _MODEL_CACHE["sam3_image"]
 
     model_dir = _BASE_MODELS / "sam3"
-    if not (model_dir / ".complete").exists():
+    if not ((model_dir / ".complete").exists() or _find_checkpoint(model_dir)):
         return None
 
     try:
@@ -100,7 +100,7 @@ def _load_sam3_video() -> Any | None:
         return _MODEL_CACHE["sam3_video"]
 
     model_dir = _BASE_MODELS / "sam3"
-    if not (model_dir / ".complete").exists():
+    if not ((model_dir / ".complete").exists() or _find_checkpoint(model_dir)):
         return None
 
     try:
