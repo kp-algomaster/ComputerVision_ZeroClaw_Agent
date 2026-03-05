@@ -105,6 +105,7 @@ function switchView(view) {
         debug: loadDebug,
         logs: loadLogs,
         agents: loadAgents,
+        workflows: loadWorkflows,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -494,6 +495,249 @@ async function loadOverview() {
         el.innerHTML = '<p class="placeholder">Failed to load overview.</p>';
         console.error(e);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Workflows
+// ═══════════════════════════════════════════════════════════════════════
+
+let activeWorkflowSource = null;
+let currentCheckpointId = null;
+let currentWorkflowDesc = "";
+
+async function loadWorkflows() {
+    document.getElementById('wfInput').focus();
+    try {
+        const res = await fetch('/api/workflows/templates');
+        if (res.ok) {
+            const data = await res.json();
+            renderWorkflowTemplates(data.templates);
+        }
+    } catch (e) {
+        console.error("Failed to load templates", e);
+    }
+}
+
+function renderWorkflowTemplates(templates) {
+    const container = document.getElementById('wfTemplatesList');
+    if (!templates || templates.length === 0) {
+        container.innerHTML = '<p class="placeholder">No templates saved.</p>';
+        return;
+    }
+    container.innerHTML = '';
+    templates.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        const safeDesc = t.description ? t.description.replace(/</g, "&lt;").substring(0, 60) + "..." : "No description";
+        div.innerHTML = `
+            <div>
+                <strong>${t.name}</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">${safeDesc}</div>
+            </div>
+        `;
+        div.onclick = () => {
+            document.getElementById('wfInput').value = t.description;
+            document.getElementById('wfInput').focus();
+        };
+        container.appendChild(div);
+    });
+}
+
+async function saveWorkflowTemplate() {
+    const nameInput = document.getElementById('wfTemplateName');
+    const name = nameInput.value.trim();
+    if (!name || !currentWorkflowDesc) return;
+
+    nameInput.disabled = true;
+    try {
+        await fetch('/api/workflows/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description: currentWorkflowDesc })
+        });
+        nameInput.value = '';
+        document.getElementById('wfSaveTemplateContainer').hidden = true;
+        loadWorkflows();
+    } catch (e) {
+        console.error("Failed to save template", e);
+    } finally {
+        nameInput.disabled = false;
+    }
+}
+
+async function resolveCheckpoint(approved) {
+    if (!currentCheckpointId) return;
+
+    document.getElementById('wfCheckpointModal').hidden = true;
+    const cpId = currentCheckpointId;
+    currentCheckpointId = null;
+
+    const log = document.getElementById('wfStepsLog');
+    const stepEl = document.createElement('div');
+    stepEl.className = 'wf-step';
+    stepEl.innerHTML = `<strong>👤 User Action:</strong> <span class="step-detail">${approved ? '✅ Approved' : '❌ Rejected'}</span>`;
+    log.appendChild(stepEl);
+    log.scrollTop = log.scrollHeight;
+
+    try {
+        await fetch(`/api/workflows/checkpoint/${cpId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved, feedback: '' })
+        });
+    } catch (e) {
+        console.error("Failed to resolve checkpoint", e);
+    }
+}
+
+async function startWorkflow() {
+    const input = document.getElementById('wfInput');
+    const btn = document.getElementById('wfRunBtn');
+    const desc = input.value.trim();
+    if (!desc) return;
+
+    currentWorkflowDesc = desc;
+
+    btn.disabled = true;
+    input.disabled = true;
+    document.getElementById('wfSaveTemplateContainer').hidden = true;
+    const container = document.getElementById('wfProgressContainer');
+    const idle = document.getElementById('wfIdleState');
+    const header = document.getElementById('wfStatusHeader');
+    const log = document.getElementById('wfStepsLog');
+
+    idle.hidden = true;
+    container.hidden = false;
+    header.textContent = 'Submitting workflow...';
+    header.className = 'wf-status-header active';
+    log.innerHTML = '';
+
+    if (activeWorkflowSource) {
+        activeWorkflowSource.close();
+        activeWorkflowSource = null;
+    }
+
+    try {
+        const resp = await fetch('/api/workflows/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+            throw new Error(data.error || 'Failed to submit workflow');
+        }
+
+        header.textContent = `Workflow Run ID: ${data.runId} - Orchestrating...`;
+        connectWorkflowStream(data.runId);
+
+    } catch (e) {
+        header.textContent = `Error: ${e.message}`;
+        header.className = 'wf-status-header error';
+        btn.disabled = false;
+        input.disabled = false;
+    }
+}
+
+function connectWorkflowStream(runId) {
+    const header = document.getElementById('wfStatusHeader');
+    const log = document.getElementById('wfStepsLog');
+    const btn = document.getElementById('wfRunBtn');
+    const input = document.getElementById('wfInput');
+
+    activeWorkflowSource = new EventSource(`/api/workflows/${runId}/stream`);
+
+    activeWorkflowSource.onmessage = (e) => {
+        try {
+            const data = JSON.parse(e.data);
+
+            const stepEl = document.createElement('div');
+            stepEl.className = 'wf-step';
+
+            if (data.status === 'completed' || data.type === 'end') {
+                activeWorkflowSource.close();
+                header.textContent = `Workflow ${runId} Complete`;
+                header.className = 'wf-status-header success';
+                btn.disabled = false;
+                btn.textContent = '▶ Run Workflow';
+                input.disabled = false;
+
+                if (data.status === 'completed') {
+                    document.getElementById('wfSaveTemplateContainer').hidden = false;
+                }
+
+                stepEl.innerHTML = `<strong>✅ Final Result:</strong> <pre>${_escHtml(data.result || 'Success')}</pre>`;
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            if (data.error) {
+                header.textContent = `Workflow ${runId} Failed`;
+                header.className = 'wf-status-header error';
+                stepEl.innerHTML = `<strong>❌ Error:</strong> ${data.error}`;
+                stepEl.classList.add('error');
+                log.appendChild(stepEl);
+                btn.disabled = false;
+                input.disabled = false;
+                activeWorkflowSource.close();
+                return;
+            }
+
+            if (data.type === 'checkpoint') {
+                currentCheckpointId = data.checkpointId;
+                document.getElementById('wfCheckpointMsg').textContent = data.message || 'Approval needed';
+                document.getElementById('wfCheckpointData').textContent = data.data ? JSON.stringify(data.data, null, 2) : 'No additional contextual data provided.';
+                document.getElementById('wfCheckpointModal').hidden = false;
+
+                stepEl.innerHTML = `<strong>⏳ Paused:</strong> <span class="step-detail">Checkpoint - Waiting for user approval</span>`;
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            // Handle BrowserAgent screenshots
+            if (data.type === 'screenshot' || (data.action && data.action === 'Screenshot Taken')) {
+                const actionLabel = data.action || data.type || 'Screenshot';
+                stepEl.innerHTML = `<strong>📷 ${actionLabel}:</strong> <span class="step-detail">${_escHtml(data.detail || '')}</span>`;
+                if (data.url) {
+                    const imgContainer = document.createElement('div');
+                    imgContainer.className = 'wf-screenshot';
+                    imgContainer.innerHTML = `<a href="${data.url}" target="_blank"><img src="${data.url}" alt="Screenshot Thumbnail" /></a>`;
+                    stepEl.appendChild(imgContainer);
+                }
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            // Normal step logging from Eko
+            const actionLabel = data.action || data.type || 'Activity';
+            const detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data.content || '');
+            stepEl.innerHTML = `<strong>🔄 ${actionLabel}:</strong> <span class="step-detail">${_escHtml(detail)}</span>`;
+
+            // Add tool execution formatting if present
+            if (data.tool) {
+                stepEl.innerHTML += `<div class="tool-io"><pre>In: ${JSON.stringify(data.tool_input || {})}</pre></div>`;
+            }
+
+            log.appendChild(stepEl);
+            log.scrollTop = log.scrollHeight;
+
+        } catch (err) {
+            console.error('Error parsing workflow stream data:', err);
+        }
+    };
+
+    activeWorkflowSource.onerror = () => {
+        header.textContent = `Workflow Stream Disconnected`;
+        header.className = 'wf-status-header error';
+        btn.disabled = false;
+        input.disabled = false;
+        activeWorkflowSource.close();
+    };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1068,7 +1312,7 @@ async function serverAction(id, action) {
 async function setServerDevice(id, device) {
     try {
         await fetch(`/api/local-servers/${id}`, {
-            method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device }),
         });
         await loadLocalServers();
@@ -1131,7 +1375,7 @@ async function downloadLocalModel(modelId, btn) {
     const statusEl = document.getElementById('localModelStatus');
     const progressWrap = document.getElementById('localModelProgressWrap');
     const progressFill = document.getElementById('localModelProgressFill');
-    const progressPct  = document.getElementById('localModelProgressPct');
+    const progressPct = document.getElementById('localModelProgressPct');
 
     btn.disabled = true;
     btn.textContent = '⏳';
@@ -1203,11 +1447,11 @@ async function deleteLocalModel(modelId, btn) {
 // ═══════════════════════════════════════════════════════════════════════
 
 const _DS_CAT_ORDER = ['Image Classification', 'Object Detection', 'Segmentation', 'Document / OCR'];
-const _DS_CAT_ICON  = {
+const _DS_CAT_ICON = {
     'Image Classification': '🖼️',
-    'Object Detection':     '📦',
-    'Segmentation':         '🎨',
-    'Document / OCR':       '📄',
+    'Object Detection': '📦',
+    'Segmentation': '🎨',
+    'Document / OCR': '📄',
 };
 
 async function loadDatasets() {
@@ -1258,7 +1502,7 @@ function buildDatasetCard(d) {
 
     const rightCol = d.downloaded
         ? `<div class="ds-actions">
-               <button class="btn-viz" onclick="openDsViz('${d.id}', '${d.name.replace(/'/g,"\\'")}', ${JSON.stringify(d.splits || ['train'])})">🔬 Visualize</button>
+               <button class="btn-viz" onclick="openDsViz('${d.id}', '${d.name.replace(/'/g, "\\'")}', ${JSON.stringify(d.splits || ['train'])})">🔬 Visualize</button>
                <span class="ready-label">Ready</span>
                <button class="btn-delete-sm" onclick="deleteDataset('${d.id}', this)" title="Delete">🗑</button>
            </div>`
@@ -1387,8 +1631,8 @@ async function searchDatasets() {
 
 function buildSearchResultCard(r) {
     const tags = (r.tags || []).slice(0, 4).map(t => `<span class="ds-tag">${t}</span>`).join('');
-    const dlCount = r.downloads > 1000 ? `${(r.downloads/1000).toFixed(0)}k` : (r.downloads || 0);
-    const sizeStr = r.size_mb ? ` · ~${(r.size_mb/1024).toFixed(1)} GB` : '';
+    const dlCount = r.downloads > 1000 ? `${(r.downloads / 1000).toFixed(0)}k` : (r.downloads || 0);
+    const sizeStr = r.size_mb ? ` · ~${(r.size_mb / 1024).toFixed(1)} GB` : '';
     const source = r.source;
     return `
         <div class="ds-result-card">
@@ -1400,9 +1644,9 @@ function buildSearchResultCard(r) {
             <div class="ds-result-actions">
                 <a href="${r.url}" target="_blank" class="btn-sm btn-link">↗ View</a>
                 ${source === 'huggingface'
-                    ? `<button class="btn-primary-sm" onclick="downloadExternalDataset('${r.full_id}', '${r.name.replace(/'/g,"\\'")}', this)">⬇ Download</button>`
-                    : `<button class="btn-primary-sm" onclick="openKaggleDownload('${r.full_id}')">⬇ Kaggle</button>`
-                }
+            ? `<button class="btn-primary-sm" onclick="downloadExternalDataset('${r.full_id}', '${r.name.replace(/'/g, "\\'")}', this)">⬇ Download</button>`
+            : `<button class="btn-primary-sm" onclick="openKaggleDownload('${r.full_id}')">⬇ Kaggle</button>`
+        }
             </div>
         </div>`;
 }
@@ -1562,7 +1806,7 @@ async function _loadVizPage() {
 
         // Legend: label names
         if (data.label_names && data.label_names.length) {
-            const COLORS = ['#ff6347','#32cd32','#1e90ff','#ffd700','#ee82ee','#ffa500','#00ced1','#dc143c'];
+            const COLORS = ['#ff6347', '#32cd32', '#1e90ff', '#ffd700', '#ee82ee', '#ffa500', '#00ced1', '#dc143c'];
             legend.hidden = false;
             legend.innerHTML = '<span class="dsviz-legend-title">Classes:</span> ' +
                 data.label_names.slice(0, 20).map((n, i) =>
@@ -1577,7 +1821,7 @@ async function _loadVizPage() {
         }
 
         grid.innerHTML = data.samples.map(s => `
-            <div class="dsviz-cell" onclick="dsVizLightbox('${s.image}', '${(s.label || '').replace(/'/g,"\\'")}')">
+            <div class="dsviz-cell" onclick="dsVizLightbox('${s.image}', '${(s.label || '').replace(/'/g, "\\'")}')">
                 <img class="dsviz-img" src="${s.image}" alt="${s.label || ''}">
                 ${s.label ? `<div class="dsviz-img-label">${s.label}</div>` : ''}
             </div>`).join('');
@@ -1788,7 +2032,7 @@ async function quickPullCmd(modelTag, btn) {
     const status = document.getElementById('pullStatus');
     const progressWrap = document.getElementById('pullProgressWrap');
     const progressFill = document.getElementById('pullProgressFill');
-    const progressPct  = document.getElementById('pullProgressPct');
+    const progressPct = document.getElementById('pullProgressPct');
 
     btn.disabled = true;
     btn.textContent = '⏳';
@@ -1912,11 +2156,18 @@ async function loadCron() {
         let html = '<div class="cron-list">';
         for (const j of jobs) {
             const statusCls = j.enabled ? 'active' : 'inactive';
-            const actionsHtml = j.runnable
-                ? `<div class="cron-actions">
-                    <button class="btn-run-job" onclick="showFineTuneModal(${JSON.stringify(j).replace(/"/g, '&quot;')})">⚙ Configure &amp; Run</button>
-                   </div>`
-                : '';
+            let actionsHtml = '';
+            if (j.runnable) {
+                if (j.type === 'workflow') {
+                    actionsHtml = `<div class="cron-actions">
+                        <button class="btn-run-job" onclick="runWorkflowTemplateJob('${escapeHtml(j.description).replace(/'/g, "\\'")}')">▶ Run Workflow</button>
+                    </div>`;
+                } else {
+                    actionsHtml = `<div class="cron-actions">
+                        <button class="btn-run-job" onclick="showFineTuneModal(${JSON.stringify(j).replace(/"/g, '&quot;')})">⚙ Configure &amp; Run</button>
+                    </div>`;
+                }
+            }
             html += `<div class="cron-card${j.runnable ? ' cron-runnable' : ''}">
                 <div class="cron-head">
                     <span class="cron-icon">${j.icon || '⏰'}</span>
@@ -1940,6 +2191,12 @@ async function loadCron() {
         el.innerHTML = '<p class="placeholder">Failed to load jobs.</p>';
     }
 }
+
+window.runWorkflowTemplateJob = (description) => {
+    switchView('workflows');
+    document.getElementById('wfInput').value = description;
+    startWorkflow();
+};
 
 function showFineTuneModal(job) {
     const d = job.defaults || {};
@@ -2016,14 +2273,14 @@ async function runFineTuneJob() {
     const log = document.getElementById('ft-log');
 
     const config = {
-        model_id:     document.getElementById('ft-model-id').value.trim(),
-        dataset_id:   document.getElementById('ft-dataset-id').value.trim(),
+        model_id: document.getElementById('ft-model-id').value.trim(),
+        dataset_id: document.getElementById('ft-dataset-id').value.trim(),
         image_column: document.getElementById('ft-image-col').value.trim(),
         label_column: document.getElementById('ft-label-col').value.trim(),
-        epochs:       parseInt(document.getElementById('ft-epochs').value) || 3,
-        lr:           parseFloat(document.getElementById('ft-lr').value) || 5e-5,
-        batch_size:   parseInt(document.getElementById('ft-batch').value) || 16,
-        output_name:  document.getElementById('ft-output-name').value.trim() || 'my-fine-tuned-model',
+        epochs: parseInt(document.getElementById('ft-epochs').value) || 3,
+        lr: parseFloat(document.getElementById('ft-lr').value) || 5e-5,
+        batch_size: parseInt(document.getElementById('ft-batch').value) || 16,
+        output_name: document.getElementById('ft-output-name').value.trim() || 'my-fine-tuned-model',
     };
 
     btn.disabled = true;
@@ -2158,8 +2415,8 @@ function showSkillInstallModal(skillId) {
     if (!info) return;
 
     const packages = info.packages || [];
-    const models   = info.models   || [];
-    const powers   = info.powers   || [];
+    const models = info.models || [];
+    const powers = info.powers || [];
 
     const overlay = document.createElement('div');
     overlay.className = 'skill-modal-overlay';
@@ -2241,9 +2498,9 @@ function closeSkillInstallModal() {
 async function skillInstallPackages(skillId) {
     const info = _skillsById[skillId];
     const packages = info?.packages || [];
-    const btn    = document.getElementById('sim-btn-pkg');
-    const badge  = document.getElementById('sim-badge-pkg');
-    const body   = document.getElementById('sim-body-pkg');
+    const btn = document.getElementById('sim-btn-pkg');
+    const badge = document.getElementById('sim-badge-pkg');
+    const body = document.getElementById('sim-body-pkg');
     const output = document.getElementById('sim-output-pkg');
     if (!btn) return;
 
@@ -2257,7 +2514,7 @@ async function skillInstallPackages(skillId) {
     try {
         const resp = await fetch('/api/skills/install-packages', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ packages }),
         });
         const reader = resp.body.getReader();
@@ -2746,7 +3003,7 @@ async function pollTextToDiagramJob() {
                 window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
                 const node = document.getElementById(mermaidId);
                 if (node && typeof window.mermaid.run === 'function') {
-                    window.mermaid.run({ nodes: [node] }).catch(() => {});
+                    window.mermaid.run({ nodes: [node] }).catch(() => { });
                 }
             }
         } else if (data.final_image_url) {

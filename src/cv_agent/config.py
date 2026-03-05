@@ -160,6 +160,14 @@ class CacheConfig(BaseModel):
     max_history_chars: int = 32000  # ~8k tokens; trim context beyond this
 
 
+class WorkflowConfig(BaseModel):
+    enabled: bool = True
+    eko_sidecar_url: str = "http://localhost:7862"
+    storage_dir: str = "./output/.workflows"
+    max_execution_time_minutes: int = 30
+    default_model: str = "qwen2.5-vl:7b"
+
+
 class AgentInstanceConfig(BaseModel):
     enabled: bool = True
     model_override: str = ""  # empty = use global config.llm.model
@@ -189,7 +197,7 @@ class AgentConfig(BaseModel):
     remote: RemoteConnectionsConfig = Field(default_factory=RemoteConnectionsConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
-
+    workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
 
 def _resolve_env_vars(data: dict | list | str) -> dict | list | str:
     """Recursively resolve ${VAR:-default} patterns in config values."""

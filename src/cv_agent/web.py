@@ -2133,6 +2133,27 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 },
             },
         ]
+        
+        # Add workflow templates
+        from cv_agent.core.workflow_manager import workflow_manager
+        try:
+            templates = await workflow_manager.get_workflow_templates()
+            for t in templates:
+                jobs.append({
+                    "id": t.get("id"),
+                    "name": f"Workflow: {t.get('name', 'Unnamed')}",
+                    "icon": "🗺️",
+                    "description": t.get("description", ""),
+                    "schedule": "On demand",
+                    "enabled": True,
+                    "next_run": "Manual",
+                    "last_run": None,
+                    "type": "workflow",
+                    "runnable": True
+                })
+        except Exception as e:
+            logger.warning(f"Failed to load workflow templates for cron view: {e}")
+
         return JSONResponse({"jobs": jobs})
 
     @app.post("/api/jobs/fine-tune/run")
@@ -2611,6 +2632,155 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         if isinstance(result, dict) and "error" in result and "samples" not in result:
             return JSONResponse(result, status_code=400)
         return JSONResponse(result)
+
+    # ── Workflows ──────────────────────────────────────────────────────────
+
+    @app.post("/api/workflows/run")
+    async def run_workflow(body: dict):
+        """Submit a workflow to the Eko sidecar."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        desc = body.get("description")
+        if not desc:
+            return JSONResponse({"error": "Description is required"}, status_code=400)
+        try:
+            result = await workflow_manager.submit_workflow(desc)
+            return JSONResponse(result, status_code=202)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/tools")
+    async def list_tools():
+        """List all available tools and their JSON schemas for Eko sidecar."""
+        from cv_agent.agent import build_tools
+        from cv_agent.config import load_config
+        config = load_config()
+        tools = build_tools(config)
+        tool_list = []
+        for t in tools:
+            name = getattr(t, "name", getattr(t, "__name__", "unknown"))
+            desc = getattr(t, "description", getattr(t, "__doc__", ""))
+            
+            # Simple schema extraction for zeroclaw / smolagents tools
+            parameters = {"type": "object", "properties": {}}
+            if hasattr(t, "args_schema") and t.args_schema:
+                schema = t.args_schema.schema()
+                parameters = {
+                    "type": "object",
+                    "properties": schema.get("properties", {}),
+                    "required": schema.get("required", [])
+                }
+            elif hasattr(t, "inputs"):
+                # smolagents style
+                props = {}
+                req = []
+                for k, v in t.inputs.items():
+                    props[k] = {"type": v.get("type", "string"), "description": v.get("description", "")}
+                    req.append(k)
+                parameters = {"type": "object", "properties": props, "required": req}
+                
+            tool_list.append({
+                "name": name,
+                "description": desc,
+                "parameters": parameters
+            })
+        return JSONResponse({"tools": tool_list})
+
+    @app.post("/api/tools/execute")
+    async def execute_tool(body: dict):
+        """Execute a Python tool on behalf of the Eko sidecar."""
+        from cv_agent.agent import build_tools
+        from cv_agent.config import load_config
+        import inspect
+        
+        name = body.get("name")
+        args = body.get("arguments", {})
+        
+        if not name:
+            return JSONResponse({"error": "Tool name is required"}, status_code=400)
+            
+        config = load_config()
+        tools = build_tools(config)
+        
+        target_tool = None
+        for t in tools:
+            t_name = getattr(t, "name", getattr(t, "__name__", None))
+            if t_name == name:
+                target_tool = t
+                break
+                
+        if not target_tool:
+            return JSONResponse({"error": f"Tool '{name}' not found"}, status_code=404)
+            
+        try:
+            # Attempt to execute the tool
+            func_to_call = target_tool
+            # Some tool wrappers have .invoke or a wrapped function
+            if hasattr(target_tool, "invoke"):
+                func_to_call = target_tool.invoke
+            elif hasattr(target_tool, "func"):
+                func_to_call = target_tool.func
+
+            if inspect.iscoroutinefunction(func_to_call):
+                result = await func_to_call(**args)
+            else:
+                result = func_to_call(**args)
+                
+            return JSONResponse({"result": result})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/workflows/{run_id}/stream")
+    async def stream_workflow(run_id: str):
+        """Proxy the SSE execution stream from the Eko sidecar to the frontend."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        from fastapi.responses import StreamingResponse as _SR
+        import json
+
+        async def _proxy_stream():
+            async for data in workflow_manager.stream_workflow_status(run_id):
+                yield f"data: {json.dumps(data)}\n\n"
+
+        return _SR(_proxy_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/workflows/checkpoint/{checkpoint_id}")
+    async def resolve_workflow_checkpoint(checkpoint_id: str, body: dict):
+        """Resolve a paused workflow checkpoint."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        approved = body.get("approved", True)
+        feedback = body.get("feedback", "")
+        try:
+            result = await workflow_manager.resolve_checkpoint(checkpoint_id, approved, feedback)
+            return JSONResponse(result)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/workflows/templates")
+    async def list_workflow_templates():
+        """Retrieve all saved workflow templates."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        try:
+            templates = await workflow_manager.get_workflow_templates()
+            return JSONResponse({"templates": templates})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/workflows/templates")
+    async def save_workflow_template(body: dict):
+        """Save a new workflow template."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        name = body.get("name")
+        description = body.get("description")
+        steps = body.get("steps", [])
+        
+        if not name or not description:
+            return JSONResponse({"error": "Name and description are required"}, status_code=400)
+            
+        try:
+            result = await workflow_manager.save_workflow_template(name, description, steps)
+            return JSONResponse(result)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     # ── Debug ──────────────────────────────────────────────────────────────
 
