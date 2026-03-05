@@ -65,7 +65,8 @@ app.get('/workflow/:runId/stream', (req, res) => {
     const onUpdate = (data) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
         if (data.status === 'completed' || data.status === 'failed' || data.error) {
-            res.end();
+            // Delay close so the browser has time to process the final message
+            setTimeout(() => res.end(), 200);
         }
     };
 
@@ -108,12 +109,12 @@ app.post('/workflow/run', async (req, res) => {
         });
 
         // Fetch tools from Python backend
-        let ekoTools = [];
+        let pythonTools = [];
         try {
             const toolsRes = await fetch(`${PYTHON_BACKEND}/api/tools`);
             if (toolsRes.ok) {
                 const toolsData = await toolsRes.json();
-                ekoTools = toolsData.tools.map(t => ({
+                pythonTools = toolsData.tools.map(t => ({
                     name: t.name,
                     description: t.description,
                     parameters: t.parameters,
@@ -135,10 +136,11 @@ app.post('/workflow/run', async (req, res) => {
             console.error("Failed to fetch python tools:", e.message);
         }
 
-        // Add Playwright BrowserAgent Tools
+        // Collect Playwright BrowserAgent Tools
+        let browserTools = [];
         try {
             const bTools = getBrowserTools(runId, runEmitter);
-            ekoTools.push(...bTools.map(t => ({
+            browserTools = bTools.map(t => ({
                 name: t.name,
                 description: t.description,
                 parameters: t.parameters,
@@ -153,7 +155,7 @@ app.post('/workflow/run', async (req, res) => {
                         throw err;
                     }
                 }
-            })));
+            }));
         } catch (e) {
             console.error("Failed to add browser tools:", e.message);
         }
@@ -166,7 +168,26 @@ app.post('/workflow/run', async (req, res) => {
             try {
                 runEmitter.emit('update', { status: 'running', action: 'Workflow Started', detail: description });
 
-                const { Eko } = await import('@eko-ai/eko');
+                const { Eko, Agent } = await import('@eko-ai/eko');
+
+                // Wrap raw tool lists into proper Eko Agent instances
+                const ekoAgents = [];
+                if (pythonTools.length > 0) {
+                    ekoAgents.push(new Agent({
+                        name: 'CVResearch',
+                        description: 'Computer vision research agent with access to specialized CV analysis, hardware probing, dataset management, and ML model tools.',
+                        planDescription: 'CV research agent for analysis, dataset operations, and ML model management tasks.',
+                        tools: pythonTools,
+                    }));
+                }
+                if (browserTools.length > 0) {
+                    ekoAgents.push(new Agent({
+                        name: 'Browser',
+                        description: 'Browser automation agent for web research: navigating websites, extracting page content, clicking elements, and taking screenshots.',
+                        planDescription: 'Browser automation agent for web research and internet-based information gathering.',
+                        tools: browserTools,
+                    }));
+                }
 
                 const ekoConfig = {
                     llms: {
@@ -176,20 +197,21 @@ app.post('/workflow/run', async (req, res) => {
                             apiKey: 'ollama',           // Ollama doesn't need a real key
                             config: {
                                 baseURL: OLLAMA_BASE,
-                                temperature: 0.7,
-                                maxOutputTokens: 4096,
                             },
                         },
                     },
-                    agents: ekoTools,
+                    agents: ekoAgents,
                     callback: {
                         onMessage: async (message) => {
                             if (message.type === 'workflow') {
-                                runEmitter.emit('update', {
-                                    action: 'Workflow Plan',
-                                    detail: message.streamDone ? 'Planning complete' : 'Planning...',
-                                    workflow: message.workflow,
-                                });
+                                // Only emit the final plan, not every streaming token
+                                if (message.streamDone) {
+                                    runEmitter.emit('update', {
+                                        action: 'Workflow Plan',
+                                        detail: 'Planning complete',
+                                        workflow: message.workflow,
+                                    });
+                                }
                             } else if (message.type === 'agent_start') {
                                 runEmitter.emit('update', {
                                     action: `Agent: ${message.agentName}`,
@@ -216,10 +238,10 @@ app.post('/workflow/run', async (req, res) => {
                                         : JSON.stringify(message.toolResult).substring(0, 200),
                                 });
                             } else if (message.type === 'text') {
-                                if (message.streamDone) {
+                                if (message.streamDone && message.text) {
                                     runEmitter.emit('update', {
                                         action: 'LLM Response',
-                                        detail: message.text.substring(0, 300),
+                                        detail: String(message.text).substring(0, 300),
                                     });
                                 }
                             } else if (message.type === 'error') {
