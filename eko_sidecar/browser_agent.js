@@ -1,6 +1,9 @@
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
+import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let browser = null;
 let page = null;
@@ -14,7 +17,7 @@ async function ensureBrowser() {
     return page;
 }
 
-function getBrowserTools(runId, runEmitter) {
+export function getBrowserTools(runId, runEmitter) {
     return [
         {
             name: 'browser_navigate',
@@ -72,7 +75,6 @@ function getBrowserTools(runId, runEmitter) {
                 const filepath = path.join(outputDir, filename);
                 await p.screenshot({ path: filepath, fullPage: true });
 
-                // Emit an event that the proxy can forward to the UI
                 if (runEmitter) {
                     runEmitter.emit('update', {
                         type: 'screenshot',
@@ -88,13 +90,10 @@ function getBrowserTools(runId, runEmitter) {
     ];
 }
 
-module.exports = {
-    getBrowserTools,
-    closeBrowser: async () => {
-        if (browser) {
-            await browser.close();
-            browser = null;
-            page = null;
-        }
+export async function closeBrowser() {
+    if (browser) {
+        await browser.close();
+        browser = null;
+        page = null;
     }
-};
+}
