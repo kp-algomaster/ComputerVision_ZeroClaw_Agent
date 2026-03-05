@@ -2,8 +2,8 @@
 
 **Feature Branch**: `001-eko-integration`
 **Created**: 2026-03-05
-**Status**: Draft
-**Input**: Add https://github.com/FellouAI/eko for the agentic workflow
+**Status**: Draft (amended 2026-03-05 — BrowserAgent added as US4)
+**Input**: Add https://github.com/FellouAI/eko for the agentic workflow + BrowserAgent
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -101,6 +101,51 @@ executes identically to the original.
 
 ---
 
+### User Story 4 — Browser-Automated Research with BrowserAgent (Priority: P4)
+
+A user wants to research a topic that has no API — for example, browsing a CVPR
+proceedings page to collect all paper titles and links, scraping a benchmark
+leaderboard table from Papers With Code, or navigating to a specific GitHub repo
+to extract model architecture details. With BrowserAgent, the user describes the
+task in natural language ("Collect all CVPR 2025 paper titles tagged with
+'segmentation' and add them to the knowledge graph") and the system autonomously
+navigates, clicks, reads, and screenshots the target pages — all headlessly on
+the server, with live status streamed to the UI.
+
+**Why this priority**: Extends research reach to sites with no public API — the
+long tail of academic sources, conference pages, leaderboards, and repositories.
+Builds on US1 (workflow orchestration) and adds the browser as a first-class
+research tool. Lower priority than US1–3 because it requires Playwright installation
+and introduces more surface area for anti-scraping failures.
+
+**Independent Test**: A user submits a workflow that includes a BrowserAgent step
+(e.g., "navigate to arxiv.org/search, filter by 'video segmentation', collect
+the top 10 paper links"). The step executes headlessly, returns a list of URLs
+and titles, and those are passed to subsequent steps (fetch PDF, generate spec)
+in the same workflow — all without manual browser interaction.
+
+**Acceptance Scenarios**:
+
+1. **Given** a workflow includes a step requiring browser navigation, **When** that
+   step executes, **Then** BrowserAgent opens a headless Chromium instance, performs
+   the navigation and extraction, and returns structured results to the next step
+   within a reasonable time (no hard timeout for complex pages, but progress
+   heartbeats appear every 30 seconds).
+2. **Given** a BrowserAgent step captures a screenshot (e.g., a benchmark
+   leaderboard), **When** the step completes, **Then** the screenshot is saved to
+   `output/.workflows/<run-id>/screenshots/` and a thumbnail is shown in the
+   Workflows UI alongside the step output.
+3. **Given** a BrowserAgent step requires interacting with a page that blocks
+   headless browsers, **When** the blocking is detected, **Then** the step reports
+   a clear failure message ("Page blocked automated access") and the workflow
+   offers to retry in headed mode or skip the step.
+4. **Given** the user has stored site credentials as a Power (username/password or
+   cookies), **When** a BrowserAgent step navigates to that site, **Then**
+   BrowserAgent auto-loads the stored credentials so the session is authenticated
+   without user intervention.
+
+---
+
 ### Edge Cases
 
 - What happens when the Eko service is not running when a workflow is submitted?
@@ -118,6 +163,13 @@ executes identically to the original.
 - What happens when a workflow step produces an artifact that already exists
   (e.g., a spec for a paper already in the vault)? The system MUST warn the user
   and skip overwriting by default, with an explicit override option.
+- What happens when a BrowserAgent step navigates to a page that requires
+  JavaScript-heavy rendering? BrowserAgent MUST wait for the page's load state
+  before extracting content; a configurable wait timeout applies.
+- What happens when Playwright (Chromium) is not installed on the host? The system
+  MUST detect this at Eko sidecar startup and show an actionable error ("Run
+  `playwright install chromium` to enable BrowserAgent") rather than failing
+  silently at runtime.
 
 ## Requirements *(mandatory)*
 
@@ -143,6 +195,17 @@ executes identically to the original.
   produced by running each equivalent step manually through the main agent.
 - **FR-010**: Workflow runs MUST survive browser disconnection — execution continues
   server-side and full progress is recoverable on reconnect.
+- **FR-011**: The system MUST support BrowserAgent as a workflow step type, enabling
+  headless Chromium-based navigation, content extraction, and screenshot capture
+  within any workflow.
+- **FR-012**: Screenshots captured by BrowserAgent MUST be saved to
+  `output/.workflows/<run-id>/screenshots/` and displayed as thumbnails in the
+  Workflows UI alongside the step that produced them.
+- **FR-013**: The system MUST detect whether Playwright Chromium is installed at
+  Eko sidecar startup and surface a clear, actionable error if it is missing.
+- **FR-014**: Site credentials (cookies or username/password) stored as a Power
+  MUST be automatically loaded by BrowserAgent when navigating to the matching
+  site, enabling authenticated scraping without per-run manual login.
 
 ### Key Entities
 
@@ -159,6 +222,12 @@ executes identically to the original.
 - **Eko Sidecar**: The managed Node.js process hosting the Eko engine. Exposes a
   local HTTP API consumed by the Python server. Started and stopped alongside other
   managed local servers.
+- **BrowserSession**: A headless Chromium instance managed by BrowserAgent for the
+  duration of a workflow step. Attributes: active page, open tabs, stored cookies,
+  screenshots captured.
+- **Screenshot**: A JPEG image captured by BrowserAgent during a step. Stored at
+  `output/.workflows/<run-id>/screenshots/<step-name>.jpg`. Displayed as a
+  thumbnail in the Workflows UI.
 
 ## Success Criteria *(mandatory)*
 
@@ -176,6 +245,11 @@ executes identically to the original.
   the UI without a page reload.
 - **SC-006**: A workflow that was in progress at browser close is fully resumable
   on reconnect — correct step count, statuses, and partial outputs are all shown.
+- **SC-007**: A BrowserAgent step that navigates, extracts content, and captures a
+  screenshot completes and returns structured results to the next workflow step
+  without any manual user interaction.
+- **SC-008**: Screenshots produced by BrowserAgent steps are visible as thumbnails
+  in the Workflows UI within 3 seconds of the step completing.
 
 ## Assumptions
 
@@ -191,5 +265,15 @@ executes identically to the original.
   replacement for individual tool implementations.
 - Workflow persistence (templates, run history) is stored as JSON files in
   `output/.workflows/` following the project's file-based storage pattern.
-- Browser-based Eko agents (BrowserAgent, browser extensions) are out of scope for
-  this feature; only the Node.js server-side orchestration layer is integrated.
+- BrowserAgent runs headlessly in the same Node.js sidecar via Playwright Chromium.
+  Headed mode is available as a fallback for sites that block headless automation
+  but is not the default.
+- Browser extensions and client-side (in-browser) Eko agents are out of scope;
+  only the server-side Node.js BrowserAgent is integrated.
+- Anti-detection features (stealth plugin, randomised mouse, disabled automation
+  flags) are enabled by default to maximise compatibility with research sites.
+- Site credential storage (cookies / username-password) reuses the existing Powers
+  infrastructure — a new "Browser Credentials" Power type is added, storing
+  credentials in `.env` encrypted at rest.
+- Playwright Chromium is installed separately via `playwright install chromium`;
+  the sidecar startup check enforces this before accepting workflow requests.
