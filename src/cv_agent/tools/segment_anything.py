@@ -90,13 +90,17 @@ def _load_sam3_image() -> tuple[Any, Any] | None:
         bpe = _find_file(model_dir, "bpe_simple_vocab*.txt.gz", "bpe_*.gz")
 
     try:
-        model = build_sam3_image_model(
-            checkpoint_path=str(ckpt) if ckpt else None,
-            bpe_path=str(bpe) if bpe else None,
-            load_from_HF=(ckpt is None),  # only hit HF if no local checkpoint
-            device=device,
-        )
-        processor = Sam3Processor(model, device=device)
+        # Wrap in torch.device("cpu") context to prevent any sub-module from
+        # accidentally creating tensors on MPS (Apple Silicon) during __init__.
+        import torch
+        with torch.device(device):
+            model = build_sam3_image_model(
+                checkpoint_path=str(ckpt) if ckpt else None,
+                bpe_path=str(bpe) if bpe else None,
+                load_from_HF=(ckpt is None),  # only hit HF if no local checkpoint
+                device=device,
+            )
+            processor = Sam3Processor(model, device=device)
         _MODEL_CACHE["sam3_image"] = (model, processor)
         logger.info("SAM3 image model loaded from %s on %s", ckpt or "HF", device)
         return (model, processor)
@@ -464,9 +468,11 @@ def segment_with_text(
 
     model, processor = loaded
     try:
+        import torch
         image = Image.open(image_path).convert("RGB")
-        state = processor.set_image(image)
-        output = processor.set_text_prompt(prompt=prompt, state=state)
+        with torch.device(processor.device):
+            state = processor.set_image(image)
+            output = processor.set_text_prompt(prompt=prompt, state=state)
     except Exception as exc:
         return json.dumps({"error": f"SAM3 inference failed: {exc}"})
 
@@ -522,9 +528,11 @@ def segment_with_box(
 
     model, processor = loaded
     try:
+        import torch
         image = Image.open(image_path).convert("RGB")
-        state = processor.set_image(image)
-        output = processor.add_geometric_prompt(box=box, label=True, state=state)
+        with torch.device(processor.device):
+            state = processor.set_image(image)
+            output = processor.add_geometric_prompt(box=box, label=True, state=state)
     except Exception as exc:
         return json.dumps({"error": f"SAM3 inference failed: {exc}"})
 
