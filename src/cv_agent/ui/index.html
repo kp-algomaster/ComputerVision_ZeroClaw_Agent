@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 </head>
+
 <body>
     <!-- Sidebar -->
     <nav id="sidebar">
@@ -31,7 +33,8 @@
                 <div class="nav-group-title" data-toggle="grp-agents">Agents <span class="toggle-icon">−</span></div>
                 <ul class="nav-list" id="grp-agents">
                     <li class="nav-item" data-view="agents"><span class="nav-icon">🤖</span>All Agents</li>
-                    <li class="nav-item" data-view="agent-chat" id="nav-agent-chat" style="display:none"><span class="nav-icon">💬</span><span id="agentChatLabel">Agent Chat</span></li>
+                    <li class="nav-item" data-view="agent-chat" id="nav-agent-chat" style="display:none"><span
+                            class="nav-icon">💬</span><span id="agentChatLabel">Agent Chat</span></li>
                 </ul>
             </div>
             <!-- Control -->
@@ -56,17 +59,20 @@
             </div>
             <!-- Research -->
             <div class="nav-group">
-                <div class="nav-group-title" data-toggle="grp-research">Research <span class="toggle-icon">−</span></div>
+                <div class="nav-group-title" data-toggle="grp-research">Research <span class="toggle-icon">−</span>
+                </div>
                 <ul class="nav-list" id="grp-research">
                     <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
+                    <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
                     <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
                     <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
                 </ul>
             </div>
             <!-- Settings -->
             <div class="nav-group">
-                <div class="nav-group-title" data-toggle="grp-settings">Settings <span class="toggle-icon">−</span></div>
+                <div class="nav-group-title" data-toggle="grp-settings">Settings <span class="toggle-icon">−</span>
+                </div>
                 <ul class="nav-list" id="grp-settings">
                     <li class="nav-item" data-view="config"><span class="nav-icon">⚙️</span>Config</li>
                     <li class="nav-item" data-view="cache"><span class="nav-icon">💾</span>Cache</li>
@@ -90,7 +96,8 @@
                     <div class="message system">
                         <div class="message-content">
                             <p><strong>CV Assistant 👁️</strong> — ready to assist with computer vision research.</p>
-                            <p>Try: <em>"Search for recent papers on vision transformers"</em> or <em>"Generate a spec from arxiv.org/abs/2312.00785"</em></p>
+                            <p>Try: <em>"Search for recent papers on vision transformers"</em> or <em>"Generate a spec
+                                    from arxiv.org/abs/2312.00785"</em></p>
                         </div>
                     </div>
                 </div>
@@ -99,7 +106,8 @@
                     <span class="status-text" id="typingText">Thinking…</span>
                 </div>
                 <form class="chat-input" id="chatForm">
-                    <textarea id="chatInput" placeholder="Ask about CV research, analyze papers, generate specs..." rows="1"></textarea>
+                    <textarea id="chatInput" placeholder="Ask about CV research, analyze papers, generate specs..."
+                        rows="1"></textarea>
                     <button type="submit" id="sendBtn">Send</button>
                 </form>
             </div>
@@ -110,12 +118,16 @@
             <div class="view-header">
                 <div>
                     <h2>🤖 Sub-Agents</h2>
-                    <p class="view-hint">Specialized agents, each focused on a specific task. Click <strong>Chat</strong> to open a dedicated conversation.</p>
+                    <p class="view-hint">Specialized agents, each focused on a specific task. Click
+                        <strong>Chat</strong> to open a dedicated conversation.
+                    </p>
                 </div>
                 <button class="btn-sm" onclick="loadAgents()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="agentsGrid" class="agents-grid"><p class="placeholder">Loading…</p></div>
+                <div id="agentsGrid" class="agents-grid">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -162,7 +174,8 @@
             <div class="view-header">
                 <div>
                     <h2>Channels</h2>
-                    <p class="view-hint">Connect the assistant to messaging platforms. Push research updates, digests, and alerts to your preferred channel.</p>
+                    <p class="view-hint">Connect the assistant to messaging platforms. Push research updates, digests,
+                        and alerts to your preferred channel.</p>
                 </div>
                 <button class="btn-sm" onclick="loadChannels()">↻ Refresh</button>
             </div>
@@ -178,7 +191,8 @@
             <div class="view-header">
                 <div>
                     <h2>Models</h2>
-                    <p class="view-hint">Manage local model servers and download non-Ollama models for image generation, video, and OCR.</p>
+                    <p class="view-hint">Manage local model servers and download non-Ollama models for image generation,
+                        video, and OCR.</p>
                 </div>
                 <button class="btn-sm" onclick="loadInstances()">↻ Refresh</button>
             </div>
@@ -191,16 +205,26 @@
                 </div>
                 <div class="srv-layout">
                     <div class="inst-card srv-management-card">
-                        <div id="serverManagementList"><p class="placeholder">Loading…</p></div>
+                        <div id="serverManagementList">
+                            <p class="placeholder">Loading…</p>
+                        </div>
                     </div>
                     <div class="srv-right-col">
                         <div class="inst-card srv-status-card">
-                            <div class="inst-card-header"><h3>Server Status</h3></div>
-                            <div id="serverStatusList" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                            <div class="inst-card-header">
+                                <h3>Server Status</h3>
+                            </div>
+                            <div id="serverStatusList" class="inst-card-body">
+                                <p class="placeholder">Loading…</p>
+                            </div>
                         </div>
                         <div class="inst-card">
-                            <div class="inst-card-header"><h3>Hardware</h3></div>
-                            <div id="hardwareInfo" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                            <div class="inst-card-header">
+                                <h3>Hardware</h3>
+                            </div>
+                            <div id="hardwareInfo" class="inst-card-body">
+                                <p class="placeholder">Loading…</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -213,10 +237,15 @@
                 <div class="inst-card model-catalog-card">
                     <div id="localModelStatus" class="pull-status" hidden></div>
                     <div id="localModelProgressWrap" class="pull-progress-wrap" hidden>
-                        <div class="pull-progress-bar"><div id="localModelProgressFill" class="pull-progress-fill" style="width:0%"></div></div>
+                        <div class="pull-progress-bar">
+                            <div id="localModelProgressFill" class="pull-progress-fill" style="width:0%"></div>
+                        </div>
                         <span id="localModelProgressPct" class="pull-progress-pct">0%</span>
+                        <button id="localModelRestartBtn" class="btn-restart-download" onclick="restartLocalModelDownload()" title="Wipe partial files and restart from 0">↺ Restart</button>
                     </div>
-                    <div id="localModelCatalog"><p class="placeholder">Loading…</p></div>
+                    <div id="localModelCatalog">
+                        <p class="placeholder">Loading…</p>
+                    </div>
                 </div>
 
                 <!-- ── Ollama (Hardware + Models + Pull) ── -->
@@ -227,29 +256,43 @@
                 <div class="instances-layout">
                     <div class="inst-col">
                         <div class="inst-card">
-                            <div class="inst-card-header"><h3>Ollama Models</h3><span id="pulledCount" class="badge-count"></span></div>
-                            <div id="pulledModelsList" class="inst-card-body model-list"><p class="placeholder">Loading…</p></div>
+                            <div class="inst-card-header">
+                                <h3>Ollama Models</h3><span id="pulledCount" class="badge-count"></span>
+                            </div>
+                            <div id="pulledModelsList" class="inst-card-body model-list">
+                                <p class="placeholder">Loading…</p>
+                            </div>
                         </div>
                     </div>
                     <div class="inst-col">
                         <div class="inst-card">
-                            <div class="inst-card-header"><h3>Pull a Model</h3></div>
+                            <div class="inst-card-header">
+                                <h3>Pull a Model</h3>
+                            </div>
                             <div class="inst-card-body">
-                                <p class="config-hint">Enter an Ollama model tag (e.g. <code>qwen2.5-vl:7b</code>) or leave blank to auto-select the best fit for your hardware.</p>
+                                <p class="config-hint">Enter an Ollama model tag (e.g. <code>qwen2.5-vl:7b</code>) or
+                                    leave blank to auto-select the best fit for your hardware.</p>
                                 <div class="pull-form">
-                                    <input id="pullModelInput" type="text" placeholder="e.g. qwen2.5-vl:7b  (blank = auto)" />
+                                    <input id="pullModelInput" type="text"
+                                        placeholder="e.g. qwen2.5-vl:7b  (blank = auto)" />
                                     <button id="pullModelBtn" class="btn-pull" onclick="pullModel()">⬇ Pull</button>
                                 </div>
                                 <div id="pullStatus" class="pull-status" hidden></div>
                                 <div id="pullProgressWrap" class="pull-progress-wrap" hidden>
-                                    <div class="pull-progress-bar"><div id="pullProgressFill" class="pull-progress-fill" style="width:0%"></div></div>
+                                    <div class="pull-progress-bar">
+                                        <div id="pullProgressFill" class="pull-progress-fill" style="width:0%"></div>
+                                    </div>
                                     <span id="pullProgressPct" class="pull-progress-pct">0%</span>
                                 </div>
                             </div>
                         </div>
                         <div class="inst-card">
-                            <div class="inst-card-header"><h3>llmfit Recommendations</h3><span id="llmfitBadge" class="badge-count"></span></div>
-                            <div id="recommendedList" class="inst-card-body model-list"><p class="placeholder">Loading…</p></div>
+                            <div class="inst-card-header">
+                                <h3>llmfit Recommendations</h3><span id="llmfitBadge" class="badge-count"></span>
+                            </div>
+                            <div id="recommendedList" class="inst-card-body model-list">
+                                <p class="placeholder">Loading…</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -264,7 +307,9 @@
                 <button class="btn-sm" onclick="loadSessions()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="sessionsContent"><p class="placeholder">Loading…</p></div>
+                <div id="sessionsContent">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -275,7 +320,9 @@
                 <button class="btn-sm" onclick="loadCron()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="cronContent"><p class="placeholder">Loading…</p></div>
+                <div id="cronContent">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -284,12 +331,15 @@
             <div class="view-header">
                 <div>
                     <h2>⚡ Skills</h2>
-                    <p class="view-hint">Specialized capabilities the assistant can perform. Skills marked <em>Needs Power</em> require an active power to unlock.</p>
+                    <p class="view-hint">Specialized capabilities the assistant can perform. Skills marked <em>Needs
+                            Power</em> require an active power to unlock.</p>
                 </div>
                 <button class="btn-sm" onclick="loadSkills()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="skillsGrid" class="skills-grid"><p class="placeholder">Loading…</p></div>
+                <div id="skillsGrid" class="skills-grid">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -298,17 +348,21 @@
             <div class="view-header">
                 <div>
                     <h2>🧭 Text to Diagram</h2>
-                    <p class="view-hint">Paste context, choose type, and generate diagrams with live Paperbanana status and iteration previews.</p>
+                    <p class="view-hint">Paste context, choose type, and generate diagrams with live Paperbanana status
+                        and iteration previews.</p>
                 </div>
                 <button class="btn-sm" onclick="switchView('skills')">← Back to Skills</button>
             </div>
             <div class="view-scroll">
                 <div class="t2d-layout">
-                    <div id="t2dReadiness" class="t2d-panel t2d-readiness"><p class="placeholder">Checking readiness…</p></div>
+                    <div id="t2dReadiness" class="t2d-panel t2d-readiness">
+                        <p class="placeholder">Checking readiness…</p>
+                    </div>
                     <div class="t2d-panel t2d-source-panel">
                         <textarea id="t2dSourceText" placeholder="Paste paper/method text here..."></textarea>
                         <div class="t2d-source-bar">
-                            <button id="t2dGenerateBtn" class="btn-generate" onclick="startTextToDiagramJob()">▶ Generate Diagram</button>
+                            <button id="t2dGenerateBtn" class="btn-generate" onclick="startTextToDiagramJob()">▶
+                                Generate Diagram</button>
                             <span id="t2dJobStatus" class="status-badge inactive">idle</span>
                         </div>
                     </div>
@@ -316,7 +370,8 @@
                         <div class="config-grid">
                             <div class="config-row">
                                 <label>Caption / Intent</label>
-                                <input id="t2dCaption" type="text" placeholder="Architecture overview of proposed method" />
+                                <input id="t2dCaption" type="text"
+                                    placeholder="Architecture overview of proposed method" />
                             </div>
                             <div class="config-row">
                                 <label>Diagram Type</label>
@@ -378,17 +433,195 @@
 
                     <div class="t2d-panel">
                         <h3 class="section-title">Live Status</h3>
-                        <div id="t2dEvents" class="t2d-events"><p class="placeholder">No job yet.</p></div>
+                        <div id="t2dEvents" class="t2d-events">
+                            <p class="placeholder">No job yet.</p>
+                        </div>
                     </div>
 
                     <div class="t2d-panel">
                         <h3 class="section-title">Iteration Outputs</h3>
-                        <div id="t2dIterationsList" class="t2d-iters"><p class="placeholder">No iterations yet.</p></div>
+                        <div id="t2dIterationsList" class="t2d-iters">
+                            <p class="placeholder">No iterations yet.</p>
+                        </div>
                     </div>
 
                     <div class="t2d-panel">
                         <h3 class="section-title">Final Output</h3>
-                        <div id="t2dFinal" class="t2d-final"><p class="placeholder">Final image will appear here.</p></div>
+                        <div id="t2dFinal" class="t2d-final">
+                            <p class="placeholder">Final image will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ SAM3 Playground ═══ -->
+        <section id="view-sam3" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>✂️ SAM3 Playground</h2>
+                    <p class="view-hint">Upload an image and segment any object using text or bounding-box prompts.</p>
+                </div>
+                <button class="btn-sm" onclick="switchView('skills')">← Back to Skills</button>
+            </div>
+            <div class="view-scroll sam3-scroll">
+                <div class="sam3-layout">
+
+                    <!-- ── Left: image canvas ── -->
+                    <div class="sam3-canvas-panel">
+                        <div class="sam3-upload-zone" id="sam3UploadZone">
+                            <input type="file" id="sam3FileInput" accept="image/*" hidden>
+                            <div class="sam3-upload-content" id="sam3UploadContent">
+                                <div class="sam3-upload-icon">🖼️</div>
+                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); document.getElementById('sam3FileInput').click()">browse</button></p>
+                                <p class="sam3-upload-hint">JPEG · PNG · WebP</p>
+                            </div>
+                        </div>
+                        <div class="sam3-img-wrap" id="sam3ImgWrap" hidden>
+                            <img id="sam3Img" class="sam3-img" draggable="false" alt="">
+                            <canvas id="sam3BoxCanvas" class="sam3-box-canvas"></canvas>
+                            <img id="sam3ResultImg" class="sam3-result-img" hidden alt="segmentation result">
+                        </div>
+                        <div class="sam3-img-toolbar" id="sam3ImgToolbar" hidden>
+                            <button class="btn-sm" onclick="sam3NewImage()">📁 New Image</button>
+                            <span id="sam3ImgInfo" class="sam3-img-info"></span>
+                        </div>
+                    </div>
+
+                    <!-- ── Right: controls ── -->
+                    <div class="sam3-side-panel">
+                        <div id="sam3ModelBadge" class="sam3-model-badge">Checking SAM3…</div>
+
+                        <div class="sam3-model-row" id="sam3ModelRow" hidden>
+                            <label class="sam3-label" for="sam3ModelSelect">Model</label>
+                            <select id="sam3ModelSelect" class="sam3-select"></select>
+                        </div>
+
+                        <div class="sam3-tabs">
+                            <button class="sam3-tab active" id="sam3TabText" onclick="setSam3Mode('text')">✏️ Text</button>
+                            <button class="sam3-tab" id="sam3TabBox" onclick="setSam3Mode('box')">▭ Box</button>
+                        </div>
+
+                        <!-- Text prompt mode -->
+                        <div id="sam3TextPanel" class="sam3-prompt-panel">
+                            <label class="sam3-label">Describe what to segment</label>
+                            <input id="sam3TextPrompt" type="text" class="sam3-input"
+                                   placeholder="e.g. person, the red car, cat on the left"
+                                   onkeydown="if(event.key==='Enter') sam3SegmentText()">
+                            <button class="btn-sam3-run" id="sam3TextBtn" onclick="sam3SegmentText()">
+                                ✂️ Segment
+                            </button>
+                        </div>
+
+                        <!-- Box prompt mode -->
+                        <div id="sam3BoxPanel" class="sam3-prompt-panel" hidden>
+                            <p class="sam3-hint">Click and drag on the image to draw a bounding box around the object.</p>
+                            <div id="sam3BoxInfo" class="sam3-box-info">No box drawn yet</div>
+                            <button class="btn-sam3-run" id="sam3BoxBtn" onclick="sam3SegmentBox()" disabled>
+                                ✂️ Segment Selection
+                            </button>
+                            <button class="btn-sm sam3-clear-box-btn" id="sam3ClearBoxBtn" onclick="sam3ClearBox()" hidden>
+                                ✕ Clear Box
+                            </button>
+                        </div>
+
+                        <!-- Spinner -->
+                        <div id="sam3Spinner" class="sam3-spinner" hidden>
+                            <div class="sam3-spinner-ring"></div>
+                            <span>Segmenting…</span>
+                        </div>
+
+                        <!-- Result panel -->
+                        <div id="sam3ResultPanel" class="sam3-result-panel" hidden>
+                            <div class="sam3-result-stats" id="sam3ResultStats"></div>
+                            <div class="sam3-result-actions">
+                                <a id="sam3DownloadLink" class="btn-sm" download="sam3_result.png">⬇ Download</a>
+                                <button class="btn-sm" onclick="sam3ClearResult()">✕ Clear</button>
+                            </div>
+                        </div>
+
+                        <!-- Error panel -->
+                        <div id="sam3ErrorPanel" class="sam3-error-panel" hidden></div>
+
+                        <!-- Example prompt chips -->
+                        <div class="sam3-examples">
+                            <p class="sam3-label">Quick prompts:</p>
+                            <div class="sam3-chips">
+                                <span class="sam3-chip" onclick="sam3UsePrompt('person')">person</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('car')">car</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('cat')">cat</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('dog')">dog</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('hand')">hand</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('face')">face</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('building')">building</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('tree')">tree</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('bird')">bird</span>
+                                <span class="sam3-chip" onclick="sam3UsePrompt('sky')">sky</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ OCR Playground ═══ -->
+        <section id="view-ocr" class="view">
+            <div class="view-header">
+                <div><h2>📄 OCR · Text Extraction</h2><p class="view-sub">PaddleOCR — 80+ languages · auto-downloads models</p></div>
+            </div>
+            <div class="view-scroll sam3-scroll">
+                <div class="sam3-layout">
+                    <!-- Canvas panel -->
+                    <div class="sam3-canvas-panel">
+                        <div class="sam3-upload-zone" id="ocrUploadZone">
+                            <input type="file" id="ocrFileInput" accept="image/*" hidden>
+                            <div class="sam3-upload-content" id="ocrUploadContent">
+                                <div class="sam3-upload-icon">🖼️</div>
+                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); document.getElementById('ocrFileInput').click()">browse</button></p>
+                                <p class="sam3-upload-hint">JPEG · PNG · WebP · BMP</p>
+                            </div>
+                        </div>
+                        <div class="sam3-img-wrap" id="ocrImgWrap" hidden>
+                            <img id="ocrImg" class="sam3-img" draggable="false" alt="">
+                            <img id="ocrResultImg" class="sam3-result-img" hidden alt="OCR overlay">
+                        </div>
+                        <div class="sam3-img-toolbar" id="ocrImgToolbar" hidden>
+                            <button class="btn-sm" onclick="ocrNewImage()">📁 New Image</button>
+                            <span id="ocrImgInfo" class="sam3-img-info"></span>
+                        </div>
+                    </div>
+                    <!-- Side panel -->
+                    <div class="sam3-side-panel">
+                        <div id="ocrStatusBadge" class="sam3-model-badge">Checking…</div>
+
+                        <div class="sam3-section">
+                            <label class="sam3-label" for="ocrLangSelect">Language</label>
+                            <select id="ocrLangSelect" class="sam3-select" style="width:100%">
+                                <option value="en">English</option>
+                                <option value="ch">Chinese (Simplified)</option>
+                                <option value="french">French</option>
+                                <option value="german">German</option>
+                                <option value="japan">Japanese</option>
+                                <option value="korean">Korean</option>
+                                <option value="es">Spanish</option>
+                                <option value="arabic">Arabic</option>
+                                <option value="ru">Russian</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="it">Italian</option>
+                            </select>
+                        </div>
+
+                        <button class="btn-primary sam3-run-btn" id="ocrRunBtn" onclick="_ocrRun()" disabled>
+                            Extract Text
+                        </button>
+                        <div id="ocrError" class="sam3-error" hidden></div>
+                        <div id="ocrStatus" class="sam3-status" hidden></div>
+
+                        <div id="ocrResults" hidden>
+                            <div class="sam3-section-title">Extracted Text</div>
+                            <textarea id="ocrTextOut" class="ocr-text-out" readonly rows="12"></textarea>
+                            <div id="ocrStats" class="ocr-stats"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -399,12 +632,15 @@
             <div class="view-header">
                 <div>
                     <h2>🔌 Powers</h2>
-                    <p class="view-hint">External resources and integrations available to the assistant. Active powers unlock additional skills.</p>
+                    <p class="view-hint">External resources and integrations available to the assistant. Active powers
+                        unlock additional skills.</p>
                 </div>
                 <button class="btn-sm" onclick="loadPowers()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="powersGrid" class="powers-grid"><p class="placeholder">Loading…</p></div>
+                <div id="powersGrid" class="powers-grid">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -413,7 +649,9 @@
             <div class="view-header">
                 <div>
                     <h2>🗂️ Datasets</h2>
-                    <p class="view-hint">Download and manage datasets for model training and evaluation. Stored in <code>output/.datasets/</code>.</p>
+                    <p class="view-hint">Download and manage datasets for model training and evaluation. Stored in
+                        <code>output/.datasets/</code>.
+                    </p>
                 </div>
                 <button class="btn-sm" onclick="loadDatasets()">↻ Refresh</button>
             </div>
@@ -422,7 +660,9 @@
                 <div class="ds-search-bar">
                     <div class="ds-search-input-wrap">
                         <span class="ds-search-icon">🔍</span>
-                        <input id="dsSearchInput" type="text" class="ds-search-input" placeholder="Search HuggingFace &amp; Kaggle datasets…" onkeydown="if(event.key==='Enter')searchDatasets()">
+                        <input id="dsSearchInput" type="text" class="ds-search-input"
+                            placeholder="Search HuggingFace &amp; Kaggle datasets…"
+                            onkeydown="if(event.key==='Enter')searchDatasets()">
                         <select id="dsSearchSource" class="ds-search-source">
                             <option value="huggingface">HuggingFace</option>
                             <option value="kaggle">Kaggle</option>
@@ -435,11 +675,15 @@
                 <!-- Status + progress for active download -->
                 <div id="datasetStatus" class="pull-status" hidden></div>
                 <div id="datasetProgressWrap" class="pull-progress-wrap" hidden>
-                    <div class="pull-progress-bar"><div id="datasetProgressFill" class="pull-progress-fill" style="width:0%"></div></div>
+                    <div class="pull-progress-bar">
+                        <div id="datasetProgressFill" class="pull-progress-fill" style="width:0%"></div>
+                    </div>
                     <span id="datasetProgressPct" class="pull-progress-pct">0%</span>
                 </div>
                 <!-- Installed catalog -->
-                <div id="datasetCatalog"><p class="placeholder">Loading…</p></div>
+                <div id="datasetCatalog">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -500,6 +744,75 @@
             </div>
         </section>
 
+        <!-- ═══ Workflows ═══ -->
+        <section id="view-workflows" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🗺️ Workflows</h2>
+                    <p class="view-hint">Define and run multi-step agentic research workflows orchestrated by Eko.</p>
+                </div>
+                <button class="btn-sm" onclick="loadWorkflows()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <div class="workflows-layout">
+                    <!-- left column: new workflow form -->
+                    <div class="wf-panel">
+                        <div class="wf-form">
+                            <textarea id="wfInput"
+                                placeholder="Describe a multi-step research task (e.g. 'Search arxiv for vision transformers, generate specs for the top 3, and add to graph')..."
+                                rows="4"></textarea>
+                            <div class="wf-actions">
+                                <button id="wfRunBtn" class="btn-generate" onclick="startWorkflow()">▶ Run
+                                    Workflow</button>
+                            </div>
+                        </div>
+
+                        <!-- Saved Templates -->
+                        <div class="wf-templates-section" style="margin-top: 24px;">
+                            <h3 class="section-title">Saved Templates</h3>
+                            <div id="wfTemplatesList" class="file-list" style="margin-top: 8px;">
+                                <p class="placeholder">No templates saved.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- right column: live execution view -->
+                    <div class="wf-panel" style="position: relative;">
+                        <h3 class="section-title">Execution Plan & Progress</h3>
+                        <div id="wfProgressContainer" class="wf-progress-container" hidden>
+                            <div id="wfStatusHeader" class="wf-status-header">Initializing...</div>
+                            <div id="wfStepsLog" class="wf-steps-log"></div>
+
+                            <!-- Save Template Action -->
+                            <div id="wfSaveTemplateContainer" class="wf-actions"
+                                style="margin-top: 12px; padding: 12px; border-top: 1px solid var(--border);" hidden>
+                                <input type="text" id="wfTemplateName" placeholder="Template Name"
+                                    style="flex:1; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px;">
+                                <button class="btn-sm" onclick="saveWorkflowTemplate()">💾 Save Template</button>
+                            </div>
+                        </div>
+                        <div id="wfIdleState" class="wf-idle-state">
+                            <p class="placeholder">No workflow is currently running.</p>
+                        </div>
+
+                        <!-- Checkpoint Overlay -->
+                        <div id="wfCheckpointModal" class="wf-checkpoint-modal" hidden>
+                            <div class="wf-checkpoint-content">
+                                <h3>⏳ Action Required</h3>
+                                <p id="wfCheckpointMsg" class="cp-msg"></p>
+                                <pre id="wfCheckpointData" class="cp-data"></pre>
+                                <div class="wf-checkpoint-actions">
+                                    <button class="btn-run-wf" onclick="resolveCheckpoint(true)">✓ Approve</button>
+                                    <button class="btn-run-wf" style="background:var(--danger);"
+                                        onclick="resolveCheckpoint(false)">✕ Reject</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- ═══ Digests ═══ -->
         <section id="view-digests" class="view">
             <div class="split-view">
@@ -530,12 +843,20 @@
             <div class="view-scroll">
                 <div class="config-panels">
                     <div class="inst-card">
-                        <div class="inst-card-header"><h3>ZeroClaw Status</h3></div>
-                        <div id="zeroClawStatus" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                        <div class="inst-card-header">
+                            <h3>ZeroClaw Status</h3>
+                        </div>
+                        <div id="zeroClawStatus" class="inst-card-body">
+                            <p class="placeholder">Loading…</p>
+                        </div>
                     </div>
                     <div class="inst-card">
-                        <div class="inst-card-header"><h3>Agent Configuration</h3></div>
-                        <div id="agentConfigView" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                        <div class="inst-card-header">
+                            <h3>Agent Configuration</h3>
+                        </div>
+                        <div id="agentConfigView" class="inst-card-body">
+                            <p class="placeholder">Loading…</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -546,7 +867,8 @@
             <div class="view-header">
                 <div>
                     <h2>💾 Cache</h2>
-                    <p class="view-hint">Disk-backed LLM response and tool result cache. Reduces redundant API calls and speeds up repeated queries.</p>
+                    <p class="view-hint">Disk-backed LLM response and tool result cache. Reduces redundant API calls and
+                        speeds up repeated queries.</p>
                 </div>
                 <div style="display:flex;gap:8px">
                     <button class="btn-sm" onclick="clearCache()">🗑 Clear Expired</button>
@@ -554,7 +876,9 @@
                 </div>
             </div>
             <div class="view-scroll">
-                <div id="cacheContent"><p class="placeholder">Loading…</p></div>
+                <div id="cacheContent">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -565,7 +889,9 @@
                 <button class="btn-sm" onclick="loadDebug()">↻ Refresh</button>
             </div>
             <div class="view-scroll">
-                <div id="debugContent"><p class="placeholder">Loading…</p></div>
+                <div id="debugContent">
+                    <p class="placeholder">Loading…</p>
+                </div>
             </div>
         </section>
 
@@ -574,7 +900,8 @@
             <div class="view-header">
                 <h2>Logs</h2>
                 <div class="log-controls">
-                    <label class="log-auto-scroll"><input type="checkbox" id="logAutoScroll" checked> Auto-scroll</label>
+                    <label class="log-auto-scroll"><input type="checkbox" id="logAutoScroll" checked>
+                        Auto-scroll</label>
                     <button class="btn-sm" onclick="clearLogs()">Clear</button>
                     <button class="btn-sm" onclick="loadLogs()">↻ Refresh</button>
                 </div>
@@ -621,4 +948,5 @@
 
     <script src="/app.js?v=20260304g"></script>
 </body>
+
 </html>

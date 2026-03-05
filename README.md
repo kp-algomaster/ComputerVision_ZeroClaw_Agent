@@ -6,62 +6,13 @@ An autonomous Computer Vision research assistant — monitors arXiv, processes p
 
 ## Architecture
 
-```mermaid
-graph TD
-    UI["🌐 Web UI\n(FastAPI · port 8420)"]
-    CLI["⌨️ CLI\ncv-agent"]
-    WS["WebSocket\n/ws/chat"]
-
-    ORCH["🧠 Agent Orchestrator\nagent.py · LangGraph ReAct"]
-    ZC["⚙️ ZeroClaw\ncreate_agent · @tool"]
-
-    subgraph Tools["🔧 Tools"]
-        T1["search_arxiv\nfetch_paper"]
-        T2["analyze_image\ndescribe_image"]
-        T3["extract_equations\ngenerate_spec"]
-        T4["add_to_graph\nquery_graph"]
-        T5["shell · file_read\nfile_write · web_search"]
-        T6["pull_vision_model\nprobe_hardware"]
-    end
-
-    subgraph Backends["⚡ Backends"]
-        OL["Ollama\nlocalhost:11434"]
-        MLX["MLX\nApple Silicon"]
-        HF["HuggingFace Hub\nsnapshot_download"]
-        AX["ArXiv API"]
-        SS["Semantic Scholar"]
-        FS["Local Filesystem\n& Obsidian Vault"]
-    end
-
-    UI --> WS --> ORCH
-    CLI --> ORCH
-    ORCH --> ZC --> Tools
-    T1 --> AX & SS
-    T2 --> OL & MLX
-    T3 & T4 --> FS
-    T5 --> FS
-    T6 --> OL & HF
-```
+![CV Assistant architecture — Web/CLI → LangGraph ReAct agent → ZeroClaw tool layer → local AI backends](docs/images/architecture.png)
 
 ---
 
 ## Research → Knowledge Pipeline
 
-```mermaid
-flowchart LR
-    A["📡 Sources\nArXiv · PWC\nSemantic Scholar"]
-    B["📄 Paper Fetch\nAbstract + PDF"]
-    C["∑ Extract\nEquations · Arch\nDatasets · Metrics"]
-    D["📋 Spec File\nspec.md"]
-    E["🕸️ Knowledge Graph\nObsidian Vault"]
-    F["📰 Weekly Digest\nMarkdown Blog"]
-
-    A -->|monitor| B
-    B -->|parse| C
-    C -->|generate| D
-    C -->|index| E
-    E -->|summarise| F
-```
+![Research pipeline — paper discovery → multi-faceted extraction → spec generation → knowledge graph → weekly digest](docs/images/pipeline.png)
 
 ---
 

@@ -105,6 +105,9 @@ function switchView(view) {
         debug: loadDebug,
         logs: loadLogs,
         agents: loadAgents,
+        workflows: loadWorkflows,
+        sam3: loadSam3View,
+        ocr: loadOcrView,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -497,6 +500,249 @@ async function loadOverview() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Workflows
+// ═══════════════════════════════════════════════════════════════════════
+
+let activeWorkflowSource = null;
+let currentCheckpointId = null;
+let currentWorkflowDesc = "";
+
+async function loadWorkflows() {
+    document.getElementById('wfInput').focus();
+    try {
+        const res = await fetch('/api/workflows/templates');
+        if (res.ok) {
+            const data = await res.json();
+            renderWorkflowTemplates(data.templates);
+        }
+    } catch (e) {
+        console.error("Failed to load templates", e);
+    }
+}
+
+function renderWorkflowTemplates(templates) {
+    const container = document.getElementById('wfTemplatesList');
+    if (!templates || templates.length === 0) {
+        container.innerHTML = '<p class="placeholder">No templates saved.</p>';
+        return;
+    }
+    container.innerHTML = '';
+    templates.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        const safeDesc = t.description ? t.description.replace(/</g, "&lt;").substring(0, 60) + "..." : "No description";
+        div.innerHTML = `
+            <div>
+                <strong>${t.name}</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">${safeDesc}</div>
+            </div>
+        `;
+        div.onclick = () => {
+            document.getElementById('wfInput').value = t.description;
+            document.getElementById('wfInput').focus();
+        };
+        container.appendChild(div);
+    });
+}
+
+async function saveWorkflowTemplate() {
+    const nameInput = document.getElementById('wfTemplateName');
+    const name = nameInput.value.trim();
+    if (!name || !currentWorkflowDesc) return;
+
+    nameInput.disabled = true;
+    try {
+        await fetch('/api/workflows/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description: currentWorkflowDesc })
+        });
+        nameInput.value = '';
+        document.getElementById('wfSaveTemplateContainer').hidden = true;
+        loadWorkflows();
+    } catch (e) {
+        console.error("Failed to save template", e);
+    } finally {
+        nameInput.disabled = false;
+    }
+}
+
+async function resolveCheckpoint(approved) {
+    if (!currentCheckpointId) return;
+
+    document.getElementById('wfCheckpointModal').hidden = true;
+    const cpId = currentCheckpointId;
+    currentCheckpointId = null;
+
+    const log = document.getElementById('wfStepsLog');
+    const stepEl = document.createElement('div');
+    stepEl.className = 'wf-step';
+    stepEl.innerHTML = `<strong>👤 User Action:</strong> <span class="step-detail">${approved ? '✅ Approved' : '❌ Rejected'}</span>`;
+    log.appendChild(stepEl);
+    log.scrollTop = log.scrollHeight;
+
+    try {
+        await fetch(`/api/workflows/checkpoint/${cpId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved, feedback: '' })
+        });
+    } catch (e) {
+        console.error("Failed to resolve checkpoint", e);
+    }
+}
+
+async function startWorkflow() {
+    const input = document.getElementById('wfInput');
+    const btn = document.getElementById('wfRunBtn');
+    const desc = input.value.trim();
+    if (!desc) return;
+
+    currentWorkflowDesc = desc;
+
+    btn.disabled = true;
+    input.disabled = true;
+    document.getElementById('wfSaveTemplateContainer').hidden = true;
+    const container = document.getElementById('wfProgressContainer');
+    const idle = document.getElementById('wfIdleState');
+    const header = document.getElementById('wfStatusHeader');
+    const log = document.getElementById('wfStepsLog');
+
+    idle.hidden = true;
+    container.hidden = false;
+    header.textContent = 'Submitting workflow...';
+    header.className = 'wf-status-header active';
+    log.innerHTML = '';
+
+    if (activeWorkflowSource) {
+        activeWorkflowSource.close();
+        activeWorkflowSource = null;
+    }
+
+    try {
+        const resp = await fetch('/api/workflows/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: desc }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+            throw new Error(data.error || 'Failed to submit workflow');
+        }
+
+        header.textContent = `Workflow Run ID: ${data.runId} - Orchestrating...`;
+        connectWorkflowStream(data.runId);
+
+    } catch (e) {
+        header.textContent = `Error: ${e.message}`;
+        header.className = 'wf-status-header error';
+        btn.disabled = false;
+        input.disabled = false;
+    }
+}
+
+function connectWorkflowStream(runId) {
+    const header = document.getElementById('wfStatusHeader');
+    const log = document.getElementById('wfStepsLog');
+    const btn = document.getElementById('wfRunBtn');
+    const input = document.getElementById('wfInput');
+
+    activeWorkflowSource = new EventSource(`/api/workflows/${runId}/stream`);
+
+    activeWorkflowSource.onmessage = (e) => {
+        try {
+            const data = JSON.parse(e.data);
+
+            const stepEl = document.createElement('div');
+            stepEl.className = 'wf-step';
+
+            if (data.status === 'completed' || data.type === 'end') {
+                activeWorkflowSource.close();
+                header.textContent = `Workflow ${runId} Complete`;
+                header.className = 'wf-status-header success';
+                btn.disabled = false;
+                btn.textContent = '▶ Run Workflow';
+                input.disabled = false;
+
+                if (data.status === 'completed') {
+                    document.getElementById('wfSaveTemplateContainer').hidden = false;
+                }
+
+                stepEl.innerHTML = `<strong>✅ Final Result:</strong> <pre>${_escHtml(data.result || 'Success')}</pre>`;
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            if (data.error) {
+                header.textContent = `Workflow ${runId} Failed`;
+                header.className = 'wf-status-header error';
+                stepEl.innerHTML = `<strong>❌ Error:</strong> ${data.error}`;
+                stepEl.classList.add('error');
+                log.appendChild(stepEl);
+                btn.disabled = false;
+                input.disabled = false;
+                activeWorkflowSource.close();
+                return;
+            }
+
+            if (data.type === 'checkpoint') {
+                currentCheckpointId = data.checkpointId;
+                document.getElementById('wfCheckpointMsg').textContent = data.message || 'Approval needed';
+                document.getElementById('wfCheckpointData').textContent = data.data ? JSON.stringify(data.data, null, 2) : 'No additional contextual data provided.';
+                document.getElementById('wfCheckpointModal').hidden = false;
+
+                stepEl.innerHTML = `<strong>⏳ Paused:</strong> <span class="step-detail">Checkpoint - Waiting for user approval</span>`;
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            // Handle BrowserAgent screenshots
+            if (data.type === 'screenshot' || (data.action && data.action === 'Screenshot Taken')) {
+                const actionLabel = data.action || data.type || 'Screenshot';
+                stepEl.innerHTML = `<strong>📷 ${actionLabel}:</strong> <span class="step-detail">${_escHtml(data.detail || '')}</span>`;
+                if (data.url) {
+                    const imgContainer = document.createElement('div');
+                    imgContainer.className = 'wf-screenshot';
+                    imgContainer.innerHTML = `<a href="${data.url}" target="_blank"><img src="${data.url}" alt="Screenshot Thumbnail" /></a>`;
+                    stepEl.appendChild(imgContainer);
+                }
+                log.appendChild(stepEl);
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            // Normal step logging from Eko
+            const actionLabel = data.action || data.type || 'Activity';
+            const detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data.content || '');
+            stepEl.innerHTML = `<strong>🔄 ${actionLabel}:</strong> <span class="step-detail">${_escHtml(detail)}</span>`;
+
+            // Add tool execution formatting if present
+            if (data.tool) {
+                stepEl.innerHTML += `<div class="tool-io"><pre>In: ${JSON.stringify(data.tool_input || {})}</pre></div>`;
+            }
+
+            log.appendChild(stepEl);
+            log.scrollTop = log.scrollHeight;
+
+        } catch (err) {
+            console.error('Error parsing workflow stream data:', err);
+        }
+    };
+
+    activeWorkflowSource.onerror = () => {
+        header.textContent = `Workflow Stream Disconnected`;
+        header.className = 'wf-status-header error';
+        btn.disabled = false;
+        input.disabled = false;
+        activeWorkflowSource.close();
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Agents
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -555,8 +801,13 @@ function isSkillPinned(id) {
 function openPinnedSkill(skillId) {
     if (skillId === 'text_to_diagram') {
         openTextToDiagramSkill();
+    } else if (skillId === 'agentic_workflows') {
+        switchView('workflows');
+    } else if (skillId === 'segment_anything') {
+        switchView('sam3');
     } else {
-        switchView('skills');
+        const info = _skillsById[skillId] || {};
+        switchView(info.view || 'skills');
     }
     document.querySelectorAll('.pinned-skill-item').forEach(el => el.classList.remove('active'));
     const pinnedItem = document.getElementById(`pinned-skill-nav-${skillId}`);
@@ -1068,7 +1319,7 @@ async function serverAction(id, action) {
 async function setServerDevice(id, device) {
     try {
         await fetch(`/api/local-servers/${id}`, {
-            method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device }),
         });
         await loadLocalServers();
@@ -1081,6 +1332,21 @@ async function loadModelCatalog() {
     try {
         const models = await fetch('/api/local-models/catalog').then(r => r.json());
         _renderModelCatalog(models);
+
+        // Auto-reconnect to any in-progress download that survived a tab switch/reload
+        if (!_localModelDownloadReader) {
+            const active = await fetch('/api/local-models/downloads/active').then(r => r.json()).catch(() => ({}));
+            const activeId = Object.keys(active)[0];
+            if (activeId) {
+                const state = active[activeId];
+                const progressFill = document.getElementById('localModelProgressFill');
+                const progressPct = document.getElementById('localModelProgressPct');
+                const pct = state.total_gb > 0 ? Math.min(100, Math.round(state.downloaded_gb / state.total_gb * 100)) : 0;
+                progressFill.style.width = pct + '%';
+                progressPct.textContent = pct + '%';
+                _streamLocalModelDownload(activeId, null);
+            }
+        }
     } catch (e) {
         document.getElementById('localModelCatalog').innerHTML = '<p class="placeholder">Failed to load catalog.</p>';
     }
@@ -1127,24 +1393,43 @@ function _renderModelCatalog(models) {
     }
 }
 
-async function downloadLocalModel(modelId, btn) {
+// Track the active download reader so we never start duplicates
+let _localModelDownloadReader = null;
+let _localModelDownloadId = null;
+
+async function restartLocalModelDownload() {
+    if (!_localModelDownloadId) return;
+    const modelId = _localModelDownloadId;
+    const restartBtn = document.getElementById('localModelRestartBtn');
+    const statusEl = document.getElementById('localModelStatus');
+    if (restartBtn) restartBtn.disabled = true;
+    if (_localModelDownloadReader) {
+        try { _localModelDownloadReader.cancel(); } catch {}
+        _localModelDownloadReader = null;
+    }
+    statusEl.textContent = 'Wiping partial files…';
+    await fetch(`/api/local-models/${modelId}/reset`, { method: 'POST' });
+    document.getElementById('localModelProgressFill').style.width = '0%';
+    document.getElementById('localModelProgressPct').textContent = '0%';
+    if (restartBtn) restartBtn.disabled = false;
+    _streamLocalModelDownload(modelId, null);
+}
+
+async function _streamLocalModelDownload(modelId, btn) {
     const statusEl = document.getElementById('localModelStatus');
     const progressWrap = document.getElementById('localModelProgressWrap');
     const progressFill = document.getElementById('localModelProgressFill');
-    const progressPct  = document.getElementById('localModelProgressPct');
+    const progressPct = document.getElementById('localModelProgressPct');
 
-    btn.disabled = true;
-    btn.textContent = '⏳';
     statusEl.hidden = false;
     statusEl.className = 'pull-status';
-    statusEl.textContent = `Starting download…`;
     progressWrap.hidden = false;
-    progressFill.style.width = '0%';
-    progressPct.textContent = '0%';
+    _localModelDownloadId = modelId;
 
     try {
         const resp = await fetch(`/api/local-models/${modelId}/download`, { method: 'POST' });
         const reader = resp.body.getReader();
+        _localModelDownloadReader = reader;
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -1164,10 +1449,11 @@ async function downloadLocalModel(modelId, btn) {
                     const pct = Math.min(100, Math.round(ev.downloaded_gb / ev.total_gb * 100));
                     const dlStr = ev.downloaded_gb.toFixed(2);
                     const totStr = ev.total_gb.toFixed(2);
-                    statusEl.textContent = `Downloading… ${dlStr} / ${totStr} GB`;
+                    const speedStr = ev.speed_mbps > 0 ? ` · ${ev.speed_mbps.toFixed(1)} MB/s` : '';
+                    statusEl.textContent = `Downloading… ${dlStr} / ${totStr} GB${speedStr}`;
                     progressFill.style.width = pct + '%';
                     progressPct.textContent = pct + '%';
-                } else if (ev.status) {
+                } else if (ev.status && ev.status !== '__done__') {
                     statusEl.textContent = ev.status;
                 }
             }
@@ -1176,14 +1462,25 @@ async function downloadLocalModel(modelId, btn) {
         statusEl.textContent = 'Download complete!';
         progressFill.style.width = '100%';
         progressPct.textContent = '100%';
+        _localModelDownloadReader = null;
         await loadModelCatalog();
     } catch (e) {
+        _localModelDownloadReader = null;
         statusEl.className = 'pull-status error';
         statusEl.textContent = 'Error: ' + e.message;
         progressWrap.hidden = true;
-        btn.disabled = false;
-        btn.textContent = '⬇ Download';
+        if (btn) { btn.disabled = false; btn.textContent = '⬇ Download'; }
     }
+}
+
+async function downloadLocalModel(modelId, btn) {
+    if (_localModelDownloadReader) return; // already streaming
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    const progressFill = document.getElementById('localModelProgressFill');
+    const progressPct = document.getElementById('localModelProgressPct');
+    progressFill.style.width = '0%';
+    progressPct.textContent = '0%';
+    _streamLocalModelDownload(modelId, btn);
 }
 
 async function deleteLocalModel(modelId, btn) {
@@ -1203,11 +1500,11 @@ async function deleteLocalModel(modelId, btn) {
 // ═══════════════════════════════════════════════════════════════════════
 
 const _DS_CAT_ORDER = ['Image Classification', 'Object Detection', 'Segmentation', 'Document / OCR'];
-const _DS_CAT_ICON  = {
+const _DS_CAT_ICON = {
     'Image Classification': '🖼️',
-    'Object Detection':     '📦',
-    'Segmentation':         '🎨',
-    'Document / OCR':       '📄',
+    'Object Detection': '📦',
+    'Segmentation': '🎨',
+    'Document / OCR': '📄',
 };
 
 async function loadDatasets() {
@@ -1258,7 +1555,7 @@ function buildDatasetCard(d) {
 
     const rightCol = d.downloaded
         ? `<div class="ds-actions">
-               <button class="btn-viz" onclick="openDsViz('${d.id}', '${d.name.replace(/'/g,"\\'")}', ${JSON.stringify(d.splits || ['train'])})">🔬 Visualize</button>
+               <button class="btn-viz" onclick="openDsViz('${d.id}', '${d.name.replace(/'/g, "\\'")}', ${JSON.stringify(d.splits || ['train'])})">🔬 Visualize</button>
                <span class="ready-label">Ready</span>
                <button class="btn-delete-sm" onclick="deleteDataset('${d.id}', this)" title="Delete">🗑</button>
            </div>`
@@ -1387,8 +1684,8 @@ async function searchDatasets() {
 
 function buildSearchResultCard(r) {
     const tags = (r.tags || []).slice(0, 4).map(t => `<span class="ds-tag">${t}</span>`).join('');
-    const dlCount = r.downloads > 1000 ? `${(r.downloads/1000).toFixed(0)}k` : (r.downloads || 0);
-    const sizeStr = r.size_mb ? ` · ~${(r.size_mb/1024).toFixed(1)} GB` : '';
+    const dlCount = r.downloads > 1000 ? `${(r.downloads / 1000).toFixed(0)}k` : (r.downloads || 0);
+    const sizeStr = r.size_mb ? ` · ~${(r.size_mb / 1024).toFixed(1)} GB` : '';
     const source = r.source;
     return `
         <div class="ds-result-card">
@@ -1400,9 +1697,9 @@ function buildSearchResultCard(r) {
             <div class="ds-result-actions">
                 <a href="${r.url}" target="_blank" class="btn-sm btn-link">↗ View</a>
                 ${source === 'huggingface'
-                    ? `<button class="btn-primary-sm" onclick="downloadExternalDataset('${r.full_id}', '${r.name.replace(/'/g,"\\'")}', this)">⬇ Download</button>`
-                    : `<button class="btn-primary-sm" onclick="openKaggleDownload('${r.full_id}')">⬇ Kaggle</button>`
-                }
+            ? `<button class="btn-primary-sm" onclick="downloadExternalDataset('${r.full_id}', '${r.name.replace(/'/g, "\\'")}', this)">⬇ Download</button>`
+            : `<button class="btn-primary-sm" onclick="openKaggleDownload('${r.full_id}')">⬇ Kaggle</button>`
+        }
             </div>
         </div>`;
 }
@@ -1562,7 +1859,7 @@ async function _loadVizPage() {
 
         // Legend: label names
         if (data.label_names && data.label_names.length) {
-            const COLORS = ['#ff6347','#32cd32','#1e90ff','#ffd700','#ee82ee','#ffa500','#00ced1','#dc143c'];
+            const COLORS = ['#ff6347', '#32cd32', '#1e90ff', '#ffd700', '#ee82ee', '#ffa500', '#00ced1', '#dc143c'];
             legend.hidden = false;
             legend.innerHTML = '<span class="dsviz-legend-title">Classes:</span> ' +
                 data.label_names.slice(0, 20).map((n, i) =>
@@ -1577,7 +1874,7 @@ async function _loadVizPage() {
         }
 
         grid.innerHTML = data.samples.map(s => `
-            <div class="dsviz-cell" onclick="dsVizLightbox('${s.image}', '${(s.label || '').replace(/'/g,"\\'")}')">
+            <div class="dsviz-cell" onclick="dsVizLightbox('${s.image}', '${(s.label || '').replace(/'/g, "\\'")}')">
                 <img class="dsviz-img" src="${s.image}" alt="${s.label || ''}">
                 ${s.label ? `<div class="dsviz-img-label">${s.label}</div>` : ''}
             </div>`).join('');
@@ -1788,7 +2085,7 @@ async function quickPullCmd(modelTag, btn) {
     const status = document.getElementById('pullStatus');
     const progressWrap = document.getElementById('pullProgressWrap');
     const progressFill = document.getElementById('pullProgressFill');
-    const progressPct  = document.getElementById('pullProgressPct');
+    const progressPct = document.getElementById('pullProgressPct');
 
     btn.disabled = true;
     btn.textContent = '⏳';
@@ -1912,11 +2209,18 @@ async function loadCron() {
         let html = '<div class="cron-list">';
         for (const j of jobs) {
             const statusCls = j.enabled ? 'active' : 'inactive';
-            const actionsHtml = j.runnable
-                ? `<div class="cron-actions">
-                    <button class="btn-run-job" onclick="showFineTuneModal(${JSON.stringify(j).replace(/"/g, '&quot;')})">⚙ Configure &amp; Run</button>
-                   </div>`
-                : '';
+            let actionsHtml = '';
+            if (j.runnable) {
+                if (j.type === 'workflow') {
+                    actionsHtml = `<div class="cron-actions">
+                        <button class="btn-run-job" onclick="runWorkflowTemplateJob('${escapeHtml(j.description).replace(/'/g, "\\'")}')">▶ Run Workflow</button>
+                    </div>`;
+                } else {
+                    actionsHtml = `<div class="cron-actions">
+                        <button class="btn-run-job" onclick="showFineTuneModal(${JSON.stringify(j).replace(/"/g, '&quot;')})">⚙ Configure &amp; Run</button>
+                    </div>`;
+                }
+            }
             html += `<div class="cron-card${j.runnable ? ' cron-runnable' : ''}">
                 <div class="cron-head">
                     <span class="cron-icon">${j.icon || '⏰'}</span>
@@ -1940,6 +2244,12 @@ async function loadCron() {
         el.innerHTML = '<p class="placeholder">Failed to load jobs.</p>';
     }
 }
+
+window.runWorkflowTemplateJob = (description) => {
+    switchView('workflows');
+    document.getElementById('wfInput').value = description;
+    startWorkflow();
+};
 
 function showFineTuneModal(job) {
     const d = job.defaults || {};
@@ -2016,14 +2326,14 @@ async function runFineTuneJob() {
     const log = document.getElementById('ft-log');
 
     const config = {
-        model_id:     document.getElementById('ft-model-id').value.trim(),
-        dataset_id:   document.getElementById('ft-dataset-id').value.trim(),
+        model_id: document.getElementById('ft-model-id').value.trim(),
+        dataset_id: document.getElementById('ft-dataset-id').value.trim(),
         image_column: document.getElementById('ft-image-col').value.trim(),
         label_column: document.getElementById('ft-label-col').value.trim(),
-        epochs:       parseInt(document.getElementById('ft-epochs').value) || 3,
-        lr:           parseFloat(document.getElementById('ft-lr').value) || 5e-5,
-        batch_size:   parseInt(document.getElementById('ft-batch').value) || 16,
-        output_name:  document.getElementById('ft-output-name').value.trim() || 'my-fine-tuned-model',
+        epochs: parseInt(document.getElementById('ft-epochs').value) || 3,
+        lr: parseFloat(document.getElementById('ft-lr').value) || 5e-5,
+        batch_size: parseInt(document.getElementById('ft-batch').value) || 16,
+        output_name: document.getElementById('ft-output-name').value.trim() || 'my-fine-tuned-model',
     };
 
     btn.disabled = true;
@@ -2126,6 +2436,15 @@ function buildSkillCard(id, info) {
     if (id === 'text_to_diagram') {
         actions.push(`<button class="btn-sm" onclick="openTextToDiagramSkill()">Open</button>`);
     }
+    if (id === 'agentic_workflows') {
+        actions.push(`<button class="btn-sm" onclick="switchView('workflows')">Open Workflows</button>`);
+    }
+    if (id === 'segment_anything') {
+        actions.push(`<button class="btn-sm" onclick="switchView('sam3')">Open Playground</button>`);
+    }
+    if (info.view && id !== 'text_to_diagram' && id !== 'agentic_workflows' && id !== 'segment_anything') {
+        actions.push(`<button class="btn-sm" onclick="switchView('${info.view}')">Open</button>`);
+    }
     if (info.status !== 'ready') {
         actions.push(`<button class="btn-install-skill" onclick="showSkillInstallModal('${id}')">⚙ Install Skill</button>`);
     }
@@ -2158,17 +2477,35 @@ function showSkillInstallModal(skillId) {
     if (!info) return;
 
     const packages = info.packages || [];
-    const models   = info.models   || [];
-    const powers   = info.powers   || [];
+    const models = info.models || [];
+    const powers = info.powers || [];
+    const commands = info.commands || [];
 
     const overlay = document.createElement('div');
     overlay.className = 'skill-modal-overlay';
     overlay.id = 'skillInstallOverlay';
 
-    const hasSteps = packages.length || models.length || powers.length;
+    const hasSteps = packages.length || models.length || powers.length || commands.length;
     const stepsHtml = !hasSteps
         ? `<p class="sim-empty">No automated install steps available. Check the skill requirements manually.</p>`
         : [
+            commands.length ? commands.map((cmd, i) => `
+            <div class="sim-step" id="sim-step-cmd-${i}">
+                <div class="sim-step-header">
+                    <span class="sim-step-icon">💻</span>
+                    <div class="sim-step-info">
+                        <strong>Step ${i + 1}</strong>
+                        <span class="sim-step-detail"><code>${escapeHtml(cmd)}</code></span>
+                    </div>
+                    <span class="sim-step-badge pending" id="sim-badge-cmd-${i}">Pending</span>
+                </div>
+                <div class="sim-step-body" id="sim-body-cmd-${i}" hidden>
+                    <div class="sim-output" id="sim-output-cmd-${i}"></div>
+                </div>
+                <button class="sim-btn" id="sim-btn-cmd-${i}" onclick="skillRunCommand('${skillId}', ${i})">
+                    Run
+                </button>
+            </div>`).join('') : '',
             packages.length ? `
             <div class="sim-step" id="sim-step-pkg">
                 <div class="sim-step-header">
@@ -2241,9 +2578,9 @@ function closeSkillInstallModal() {
 async function skillInstallPackages(skillId) {
     const info = _skillsById[skillId];
     const packages = info?.packages || [];
-    const btn    = document.getElementById('sim-btn-pkg');
-    const badge  = document.getElementById('sim-badge-pkg');
-    const body   = document.getElementById('sim-body-pkg');
+    const btn = document.getElementById('sim-btn-pkg');
+    const badge = document.getElementById('sim-badge-pkg');
+    const body = document.getElementById('sim-body-pkg');
     const output = document.getElementById('sim-output-pkg');
     if (!btn) return;
 
@@ -2257,7 +2594,7 @@ async function skillInstallPackages(skillId) {
     try {
         const resp = await fetch('/api/skills/install-packages', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ packages }),
         });
         const reader = resp.body.getReader();
@@ -2283,6 +2620,71 @@ async function skillInstallPackages(skillId) {
                         badge.className = 'sim-step-badge done';
                         badge.textContent = '✓ Done';
                         btn.textContent = '✓ Installed';
+                    } else {
+                        badge.className = 'sim-step-badge error';
+                        badge.textContent = '✗ Failed';
+                        btn.disabled = false;
+                        btn.textContent = 'Retry';
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        badge.className = 'sim-step-badge error';
+        badge.textContent = '✗ Error';
+        output.textContent += '\nError: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+    }
+}
+
+async function skillRunCommand(skillId, cmdIndex) {
+    const info = _skillsById[skillId];
+    const command = (info?.commands || [])[cmdIndex];
+    if (!command) return;
+
+    const btn = document.getElementById(`sim-btn-cmd-${cmdIndex}`);
+    const badge = document.getElementById(`sim-badge-cmd-${cmdIndex}`);
+    const body = document.getElementById(`sim-body-cmd-${cmdIndex}`);
+    const output = document.getElementById(`sim-output-cmd-${cmdIndex}`);
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    badge.className = 'sim-step-badge running';
+    badge.textContent = 'Running';
+    body.hidden = false;
+    output.textContent = '';
+
+    try {
+        const resp = await fetch('/api/skills/run-command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command }),
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                let ev;
+                try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+                if (ev.line !== undefined) {
+                    output.textContent += ev.line + '\n';
+                    output.scrollTop = output.scrollHeight;
+                }
+                if (ev.status === '__done__') {
+                    if (ev.success) {
+                        badge.className = 'sim-step-badge done';
+                        badge.textContent = '✓ Done';
+                        btn.textContent = '✓ Done';
                     } else {
                         badge.className = 'sim-step-badge error';
                         badge.textContent = '✗ Failed';
@@ -2746,7 +3148,7 @@ async function pollTextToDiagramJob() {
                 window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
                 const node = document.getElementById(mermaidId);
                 if (node && typeof window.mermaid.run === 'function') {
-                    window.mermaid.run({ nodes: [node] }).catch(() => {});
+                    window.mermaid.run({ nodes: [node] }).catch(() => { });
                 }
             }
         } else if (data.final_image_url) {
@@ -3263,4 +3665,468 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SAM3 Playground
+// ═══════════════════════════════════════════════════════════════════════
+
+const _sam3 = {
+    imagePath: null,   // server-side path
+    mode: 'text',      // 'text' | 'box'
+    box: null,         // finalised box in IMAGE pixel coords {x1,y1,x2,y2}
+    draw: null,        // box being drawn in CANVAS coords {x1,y1,x2,y2}
+    isDrawing: false,
+    scale: { x: 1, y: 1 },    // canvas-display → image-pixel scale
+    imgRect: null,             // {x,y,w,h} of image inside the canvas element
+    inited: false,
+};
+
+function loadSam3View() {
+    if (!_sam3.inited) {
+        _sam3InitUpload();
+        _sam3.inited = true;
+    }
+    fetch('/api/sam3/status').then(r => r.json()).then(d => {
+        const badge = document.getElementById('sam3ModelBadge');
+        if (!badge) return;
+        if (d.ready) {
+            badge.textContent = '🟢 SAM3 ready';
+            badge.style.borderColor = '#1a5a2a';
+            badge.style.color = '#6abf8a';
+        } else {
+            badge.textContent = `⚠️ ${d.message}`;
+            badge.style.borderColor = '#5a4000';
+            badge.style.color = '#c8a040';
+        }
+
+        // Populate model selector from available_models list
+        const sel = document.getElementById('sam3ModelSelect');
+        const row = document.getElementById('sam3ModelRow');
+        if (sel && row) {
+            const models = d.available_models || [];
+            if (models.length > 0) {
+                sel.innerHTML = '';
+                for (const m of models) {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.label + (m.ready ? '' : ' ⚠️');
+                    opt.disabled = !m.ready;
+                    sel.appendChild(opt);
+                }
+                // Prefer sam3-mlx as default if available
+                const mlxOpt = [...sel.options].find(o => o.value === 'sam3-mlx' && !o.disabled);
+                if (mlxOpt) sel.value = 'sam3-mlx';
+                row.hidden = models.length < 2; // only show selector when there's a choice
+            }
+        }
+    }).catch(() => {});
+}
+
+function _sam3InitUpload() {
+    const zone  = document.getElementById('sam3UploadZone');
+    const input = document.getElementById('sam3FileInput');
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (!zone || !input || !canvas) return;
+
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { if (input.files[0]) _sam3HandleFile(input.files[0]); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) _sam3HandleFile(e.dataTransfer.files[0]);
+    });
+
+    canvas.addEventListener('mousedown',  _sam3MouseDown);
+    canvas.addEventListener('mousemove',  _sam3MouseMove);
+    canvas.addEventListener('mouseup',    _sam3MouseUp);
+    canvas.addEventListener('mouseleave', _sam3MouseUp);
+
+    // Re-compute geometry on resize
+    const wrap = document.getElementById('sam3ImgWrap');
+    if (wrap && window.ResizeObserver) {
+        new ResizeObserver(() => { if (!wrap.hidden && _sam3.imagePath) _sam3SyncCanvas(); }).observe(wrap);
+    }
+}
+
+async function _sam3HandleFile(file) {
+    const content = document.getElementById('sam3UploadContent');
+    content.innerHTML = '<div class="sam3-upload-icon">⏳</div><p>Uploading…</p>';
+
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const resp = await fetch('/api/sam3/upload', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        _sam3.imagePath = data.image_path;
+
+        const img  = document.getElementById('sam3Img');
+        const wrap = document.getElementById('sam3ImgWrap');
+
+        // Show wrap BEFORE setting src — so dimensions are available when onload fires
+        document.getElementById('sam3UploadZone').hidden = true;
+        wrap.hidden = false;
+        document.getElementById('sam3ImgToolbar').hidden = false;
+        document.getElementById('sam3ImgInfo').textContent =
+            data.width && data.height ? `${data.width} × ${data.height} px` : '';
+
+        img.onload = () => _sam3SyncCanvas();
+        img.src = data.url + '?t=' + Date.now();
+        // Fallback: if the image was already decoded before onload wired up
+        requestAnimationFrame(() => { if (img.complete && img.naturalWidth > 0) _sam3SyncCanvas(); });
+
+        sam3ClearResult();
+    } catch (e) {
+        content.innerHTML =
+            `<div class="sam3-upload-icon">❌</div>` +
+            `<p style="color:var(--text-secondary)">Upload failed: ${escapeHtml(e.message)}</p>` +
+            `<p><button class="btn-sm" onclick="_sam3ResetUploadZone()">Try again</button></p>`;
+    }
+}
+
+function _sam3SyncCanvas() {
+    const img    = document.getElementById('sam3Img');
+    const canvas = document.getElementById('sam3BoxCanvas');
+    const wrap   = document.getElementById('sam3ImgWrap');
+    if (!img || !canvas || !wrap) return;
+
+    const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
+    canvas.width  = ww;
+    canvas.height = wh;
+
+    // Compute image display rect (object-fit: contain)
+    const ia = img.naturalWidth / img.naturalHeight;
+    const wa = ww / wh;
+    let dw, dh, ox, oy;
+    if (ia > wa) { dw = ww; dh = ww / ia; ox = 0; oy = (wh - dh) / 2; }
+    else         { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
+
+    _sam3.imgRect = { x: ox, y: oy, w: dw, h: dh };
+    _sam3.scale   = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
+
+    // Redraw any existing box
+    if (_sam3.draw) _sam3DrawBoxOnCanvas(_sam3.draw);
+}
+
+// ── Box drawing ─────────────────────────────────────────────────────────────
+
+function _sam3MouseDown(e) {
+    if (_sam3.mode !== 'box') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    _sam3.isDrawing = true;
+    _sam3.draw = { x1: x, y1: y, x2: x, y2: y };
+}
+
+function _sam3MouseMove(e) {
+    if (!_sam3.isDrawing || _sam3.mode !== 'box') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    _sam3.draw.x2 = e.clientX - r.left;
+    _sam3.draw.y2 = e.clientY - r.top;
+    _sam3DrawBoxOnCanvas(_sam3.draw);
+}
+
+function _sam3MouseUp(e) {
+    if (!_sam3.isDrawing || _sam3.mode !== 'box') return;
+    _sam3.isDrawing = false;
+    const d = _sam3.draw;
+    if (!d || Math.abs(d.x2 - d.x1) < 6 || Math.abs(d.y2 - d.y1) < 6) {
+        sam3ClearBox(); return;
+    }
+
+    // Clamp to image rect and convert to image-pixel coords
+    const r = _sam3.imgRect;
+    const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const cx1 = cl(Math.min(d.x1, d.x2), r.x, r.x + r.w) - r.x;
+    const cy1 = cl(Math.min(d.y1, d.y2), r.y, r.y + r.h) - r.y;
+    const cx2 = cl(Math.max(d.x1, d.x2), r.x, r.x + r.w) - r.x;
+    const cy2 = cl(Math.max(d.y1, d.y2), r.y, r.y + r.h) - r.y;
+
+    _sam3.box = {
+        x1: Math.round(cx1 * _sam3.scale.x), y1: Math.round(cy1 * _sam3.scale.y),
+        x2: Math.round(cx2 * _sam3.scale.x), y2: Math.round(cy2 * _sam3.scale.y),
+    };
+
+    const b = _sam3.box;
+    document.getElementById('sam3BoxInfo').textContent =
+        `(${b.x1}, ${b.y1}) → (${b.x2}, ${b.y2})   ${b.x2 - b.x1} × ${b.y2 - b.y1} px`;
+    document.getElementById('sam3BoxBtn').disabled = false;
+    document.getElementById('sam3ClearBoxBtn').hidden = false;
+}
+
+function _sam3DrawBoxOnCanvas(d) {
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2);
+    const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
+
+    ctx.fillStyle   = 'rgba(74,144,226,0.12)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#4a90e2';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(x, y, w, h);
+
+    // Corner handles
+    const hs = 7;
+    ctx.fillStyle = '#4a90e2';
+    [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cx, cy]) => {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    });
+}
+
+// ── Mode switching ───────────────────────────────────────────────────────────
+
+function setSam3Mode(mode) {
+    _sam3.mode = mode;
+    document.querySelectorAll('.sam3-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('sam3Tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+    document.getElementById('sam3TextPanel').hidden = mode !== 'text';
+    document.getElementById('sam3BoxPanel').hidden  = mode !== 'box';
+
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (canvas) canvas.style.pointerEvents = mode === 'box' ? 'auto' : 'none';
+}
+
+function sam3ClearBox() {
+    _sam3.box = null; _sam3.draw = null; _sam3.isDrawing = false;
+    const canvas = document.getElementById('sam3BoxCanvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('sam3BoxInfo').textContent = 'No box drawn yet';
+    document.getElementById('sam3BoxBtn').disabled = true;
+    document.getElementById('sam3ClearBoxBtn').hidden = true;
+}
+
+// ── Segmentation ─────────────────────────────────────────────────────────────
+
+async function sam3SegmentText() {
+    if (!_sam3.imagePath) { _sam3ShowError('Upload an image first.'); return; }
+    const prompt = document.getElementById('sam3TextPrompt').value.trim();
+    if (!prompt) { document.getElementById('sam3TextPrompt').focus(); return; }
+    await _sam3RunSegment({ mode: 'text', prompt });
+}
+
+async function sam3SegmentBox() {
+    if (!_sam3.imagePath) { _sam3ShowError('Upload an image first.'); return; }
+    if (!_sam3.box) { _sam3ShowError('Draw a box on the image first.'); return; }
+    await _sam3RunSegment({ mode: 'box', box: _sam3.box });
+}
+
+async function _sam3RunSegment(extra) {
+    _sam3SetBusy(true);
+    _sam3ClearError();
+
+    try {
+        const sel = document.getElementById('sam3ModelSelect');
+        const model = sel && !sel.hidden && sel.value ? sel.value : 'sam3';
+        const resp = await fetch('/api/sam3/segment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_path: _sam3.imagePath, model, ...extra }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        // Show result overlay
+        const resultImg = document.getElementById('sam3ResultImg');
+        resultImg.src    = data.output_url + '?t=' + Date.now();
+        resultImg.hidden = false;
+
+        // Populate result panel
+        const scores = (data.scores || []).map(s => s.toFixed(3)).join('  ·  ');
+        document.getElementById('sam3ResultStats').innerHTML =
+            `<strong>Masks found:</strong> ${data.mask_count || 0}` +
+            (scores ? `<br><strong>Confidence:</strong> ${scores}` : '') +
+            `<br><small style="color:var(--text-muted)">Model: ${data.model || 'SAM3'}</small>`;
+
+        const link = document.getElementById('sam3DownloadLink');
+        link.href = data.output_url;
+        document.getElementById('sam3ResultPanel').hidden = false;
+    } catch (e) {
+        _sam3ShowError(e.message);
+    } finally {
+        _sam3SetBusy(false);
+    }
+}
+
+function _sam3SetBusy(busy) {
+    document.getElementById('sam3Spinner').hidden = !busy;
+    document.getElementById('sam3TextBtn').disabled = busy;
+    if (_sam3.box) document.getElementById('sam3BoxBtn').disabled = busy;
+}
+
+function _sam3ShowError(msg) {
+    const el = document.getElementById('sam3ErrorPanel');
+    el.textContent = '⚠️ ' + msg;
+    el.hidden = false;
+}
+
+function _sam3ClearError() {
+    document.getElementById('sam3ErrorPanel').hidden = true;
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function sam3ClearResult() {
+    const ri = document.getElementById('sam3ResultImg');
+    if (ri) { ri.src = ''; ri.hidden = true; }
+    const rp = document.getElementById('sam3ResultPanel');
+    if (rp) rp.hidden = true;
+    _sam3ClearError();
+}
+
+function sam3NewImage() {
+    _sam3.imagePath = null;
+    sam3ClearResult();
+    sam3ClearBox();
+
+    document.getElementById('sam3ImgWrap').hidden    = true;
+    document.getElementById('sam3ImgToolbar').hidden = true;
+    document.getElementById('sam3UploadZone').hidden = false;
+    _sam3ResetUploadZone();
+    document.getElementById('sam3FileInput').value = '';
+}
+
+function _sam3ResetUploadZone() {
+    const el = document.getElementById('sam3UploadContent');
+    if (el) el.innerHTML =
+        '<div class="sam3-upload-icon">🖼️</div>' +
+        '<p>Drop image here or <button class="btn-link" onclick="document.getElementById(\'sam3FileInput\').click()">browse</button></p>' +
+        '<p class="sam3-upload-hint">JPEG · PNG · WebP</p>';
+}
+
+function sam3UsePrompt(prompt) {
+    setSam3Mode('text');
+    document.getElementById('sam3TextPrompt').value = prompt;
+    document.getElementById('sam3TextPrompt').focus();
+}
+
+// ── OCR Playground ────────────────────────────────────────────────────────────
+
+const _ocr = { imagePath: null, inited: false };
+
+function loadOcrView() {
+    if (!_ocr.inited) {
+        _ocrInitUpload();
+        _ocr.inited = true;
+    }
+    fetch('/api/ocr/status').then(r => r.json()).then(d => {
+        const badge = document.getElementById('ocrStatusBadge');
+        if (!badge) return;
+        if (d.ready) {
+            badge.textContent = '✓ PaddleOCR ready';
+            badge.style.background = '#1a3320';
+            badge.style.borderColor = '#1a5c30';
+            badge.style.color = '#4caf7a';
+        } else {
+            badge.textContent = '⚠️ PaddleOCR not installed';
+            badge.style.background = '#332200';
+            badge.style.borderColor = '#5a4000';
+            badge.style.color = '#c8a040';
+        }
+    }).catch(() => {});
+}
+
+function _ocrInitUpload() {
+    const zone  = document.getElementById('ocrUploadZone');
+    const input = document.getElementById('ocrFileInput');
+    if (!zone || !input) return;
+
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag-over');
+        const f = e.dataTransfer.files[0];
+        if (f) _ocrLoadFile(f);
+    });
+    input.addEventListener('change', () => {
+        if (input.files[0]) _ocrLoadFile(input.files[0]);
+    });
+}
+
+async function _ocrLoadFile(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch('/api/upload-image', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    _ocr.imagePath = data.path;
+
+    const img    = document.getElementById('ocrImg');
+    const wrap   = document.getElementById('ocrImgWrap');
+    const toolbar = document.getElementById('ocrImgToolbar');
+    const zone   = document.getElementById('ocrUploadZone');
+    const info   = document.getElementById('ocrImgInfo');
+    img.src = data.url;
+    img.onload = () => { if (info) info.textContent = `${img.naturalWidth} × ${img.naturalHeight}`; };
+    zone.hidden  = true;
+    wrap.hidden  = false;
+    toolbar.hidden = false;
+    document.getElementById('ocrRunBtn').disabled = false;
+    document.getElementById('ocrResults').hidden   = true;
+    document.getElementById('ocrResultImg').hidden = true;
+    document.getElementById('ocrError').hidden      = true;
+}
+
+async function _ocrRun() {
+    if (!_ocr.imagePath) return;
+    const btn   = document.getElementById('ocrRunBtn');
+    const errEl = document.getElementById('ocrError');
+    const statEl = document.getElementById('ocrStatus');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    errEl.hidden  = true;
+    statEl.hidden = false;
+    statEl.textContent = 'Running OCR… (first run downloads models ~0.5 GB)';
+
+    const lang = document.getElementById('ocrLangSelect')?.value || 'en';
+    try {
+        const resp = await fetch('/api/ocr/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_path: _ocr.imagePath, lang }),
+        });
+        const d = await resp.json();
+        statEl.hidden = true;
+        if (d.error) {
+            errEl.textContent = '⚠️ ' + d.error;
+            errEl.hidden = false;
+        } else {
+            document.getElementById('ocrTextOut').value = d.full_text || '';
+            document.getElementById('ocrStats').textContent =
+                `${d.line_count} line${d.line_count !== 1 ? 's' : ''} detected · lang: ${d.lang}`;
+            document.getElementById('ocrResults').hidden = false;
+            if (d.overlay_url) {
+                const ri = document.getElementById('ocrResultImg');
+                ri.src = d.overlay_url + '?t=' + Date.now();
+                ri.hidden = false;
+            }
+        }
+    } catch (err) {
+        statEl.hidden = true;
+        errEl.textContent = '⚠️ ' + err.message;
+        errEl.hidden = false;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Extract Text';
+    }
+}
+
+function ocrNewImage() {
+    _ocr.imagePath = null;
+    document.getElementById('ocrImgWrap').hidden    = true;
+    document.getElementById('ocrImgToolbar').hidden = true;
+    document.getElementById('ocrUploadZone').hidden = false;
+    document.getElementById('ocrResults').hidden    = true;
+    document.getElementById('ocrResultImg').hidden  = true;
+    document.getElementById('ocrRunBtn').disabled   = true;
+    document.getElementById('ocrFileInput').value   = '';
 }

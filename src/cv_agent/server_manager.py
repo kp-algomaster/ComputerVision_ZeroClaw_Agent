@@ -50,6 +50,16 @@ SERVER_REGISTRY: list[ServerSpec] = [
         device="cpu",
         start_cmd=[sys.executable, "-m", "cv_agent.servers.ocr_server"],
     ),
+    ServerSpec(
+        id="eko-sidecar",
+        name="Eko Workflow Engine",
+        description="Node.js sidecar for autonomous agentic workflows",
+        url="http://localhost:7862",
+        health_path="/health",
+        managed=True,
+        device="cpu",
+        start_cmd=["sh", "-c", "cd eko_sidecar && npm install && npx playwright install chromium && node index.js"],
+    ),
 ]
 
 _BY_ID: dict[str, ServerSpec] = {s.id: s for s in SERVER_REGISTRY}

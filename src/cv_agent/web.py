@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import markdown
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -1549,6 +1549,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     # ── Local Model Catalog ─────────────────────────────────────────────────
 
+    @app.get("/api/local-models/downloads/active")
+    async def active_local_downloads():
+        from cv_agent.local_model_manager import get_active_downloads
+        return JSONResponse(get_active_downloads())
+
     @app.get("/api/local-models/catalog")
     async def local_model_catalog():
         from cv_agent.local_model_manager import get_catalog_with_status
@@ -1563,6 +1568,14 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/api/local-models/{model_id}/reset")
+    async def reset_local_model_download(model_id: str):
+        from cv_agent.local_model_manager import reset_download, _ALL
+        if model_id not in _ALL:
+            return JSONResponse({"error": "Unknown model"}, status_code=404)
+        reset_download(model_id)
+        return JSONResponse({"ok": True, "reset": model_id})
 
     @app.delete("/api/local-models/{model_id}")
     async def delete_local_model(model_id: str):
@@ -1770,10 +1783,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_monkey_ocr = is_model_downloaded("monkey-ocr")
         has_paddle_ocr = _pkg("paddleocr")
         has_any_ocr    = has_monkey_ocr or has_paddle_ocr
+        has_sam3_pkg   = _pkg("sam3")
+        has_sam3_model = is_model_downloaded("sam3")
+
+        import sys as _sys
+        _py = _sys.executable
 
         def _skill(label, icon, category, description, status, tools,
                    missing=None, packages=None, models=None, powers=None,
-                   model=None, model_label=None, install=None):
+                   model=None, model_label=None, install=None, commands=None,
+                   view=None):
             return {
                 "label": label, "icon": icon, "category": category,
                 "description": description, "status": status, "tools": tools,
@@ -1781,8 +1800,10 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "packages": packages or [],   # list of pip package names to install
                 "models": models or [],        # list of {id, label} model dicts to download
                 "powers": powers or [],        # list of {id, label} power dicts to configure
+                "commands": commands or [],    # list of shell commands to run in order
                 "model": model, "model_label": model_label,
                 "install": install,
+                "view": view,
             }
 
         skills = {
@@ -1849,6 +1870,35 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 packages=[] if _pkg("supervision") else ["supervision"],
                 install=None if _pkg("supervision") else "pip install supervision",
             ),
+            "segment_anything": _skill(
+                "Segment Anything (SAM3)", "✂️", "vision",
+                "Segment any object in images or videos using SAM3 (848M params). "
+                "Supports natural-language text prompts, bounding-box prompts, and video object tracking. "
+                "PyTorch model is gated — request access at hf.co/facebook/sam3. "
+                "MLX model (Apple Silicon, ~2× faster) available without gating.",
+                "ready" if (has_sam3_pkg and has_sam3_model)
+                    else ("needs-model" if has_sam3_pkg else "needs-install"),
+                ["segment_with_text", "segment_with_box", "segment_video"],
+                missing=(
+                    [] if (has_sam3_pkg and has_sam3_model)
+                    else (["SAM3 model weights (~6.9 GB, gated)"] if has_sam3_pkg
+                          else ["sam3 package", "SAM3 model weights"])
+                ),
+                packages=[],
+                models=([] if has_sam3_model else [{"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"}])
+                      + [{"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"}],
+                commands=([] if has_sam3_pkg else [
+                    "git clone https://github.com/facebookresearch/sam3",
+                    f'"{_py}" -m pip install -e sam3/',
+                ]) + [
+                    "git clone https://github.com/Deekshith-Dade/mlx_sam3.git",
+                    f'"{_py}" -m pip install mlx',
+                ],
+                install=(
+                    None if has_sam3_pkg
+                    else "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
+                ),
+            ),
             "text_to_image": _skill(
                 "Text → Image", "🖼️", "vision",
                 "Generate images from text prompts using diffusers (Apache 2.0) — SD-Turbo, SDXL-Turbo. Runs locally on MPS / CUDA / CPU.",
@@ -1877,13 +1927,13 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 install=None if (_pkg("kornia") or _pkg("skimage")) else "pip install kornia",
             ),
             "document_extraction": _skill(
-                "Image Document Extraction", "📄", "vision",
-                "Extract structured text, tables, and layout from document images using Monkey OCR 1.5 (default) or PaddleOCR.",
-                "ready" if has_any_ocr else "needs-model", ["shell", "file_read", "file_write"],
-                missing=[] if has_any_ocr else ["Monkey OCR 1.5 model"],
-                models=[] if has_monkey_ocr else [{"id": "monkey-ocr", "label": "Monkey OCR 1.5 (~8 GB)"}],
-                model="monkey-ocr" if has_monkey_ocr else ("paddleocr" if has_paddle_ocr else "monkey-ocr"),
-                model_label="Monkey OCR 1.5" if has_monkey_ocr else ("PaddleOCR" if has_paddle_ocr else "Monkey OCR 1.5 (not downloaded)"),
+                "OCR · Text Extraction", "📄", "vision",
+                "Extract text from images and documents in 80+ languages using PaddleOCR (Apache 2.0). Auto-downloads models on first use.",
+                "ready" if has_paddle_ocr else "needs-install", ["shell", "file_read", "file_write"],
+                missing=[] if has_paddle_ocr else ["paddleocr"],
+                packages=[] if has_paddle_ocr else ["paddleocr", "paddlepaddle"],
+                install=None if has_paddle_ocr else "pip install paddleocr paddlepaddle",
+                view="ocr",
             ),
             "paper_to_spec": _skill(
                 "Paper → Spec", "📋", "research",
@@ -1938,6 +1988,27 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 install=None if (_pkg("PIL") or _pkg("Pillow")) else "pip install Pillow datasets",
             ),
         }
+
+        # Dynamically check Eko sidecar for agentic_workflows skill
+        eko_ready = False
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{config.workflow.eko_sidecar_url.rstrip('/')}/health")
+                eko_ready = r.status_code == 200
+        except Exception:
+            pass
+
+        skills["agentic_workflows"] = _skill(
+            "Agentic Workflows", "🗺️", "research",
+            "Define and run multi-step autonomous research workflows orchestrated by the Eko engine. "
+            "Includes headless browser automation via Playwright, human-in-the-loop checkpoints, "
+            "and reusable template saving.",
+            "ready" if eko_ready else "needs-power",
+            ["browser_navigate", "browser_screenshot", "browser_extract_text", "browser_click"],
+            missing=[] if eko_ready else ["Eko Workflow Engine (start from Server Management)"],
+        )
+
         return JSONResponse(skills)
 
     @app.post("/api/skills/install-packages")
@@ -1972,6 +2043,216 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
         return _SR(_stream(), media_type="text/event-stream",
                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/skills/run-command")
+    async def run_skill_command(body: dict):
+        """Stream output of a shell command as SSE (used for git clone / pip install -e steps)."""
+        import json as _json
+        from fastapi.responses import StreamingResponse as _SR
+
+        command: str = body.get("command", "").strip()
+        if not command:
+            return JSONResponse({"error": "no command specified"}, status_code=400)
+
+        async def _stream():
+            yield f'data: {_json.dumps({"line": f"$ {command}"})}\n\n'
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").rstrip()
+                if line:
+                    yield f'data: {_json.dumps({"line": line})}\n\n'
+            await proc.wait()
+            done = {"status": "__done__", "success": proc.returncode == 0, "returncode": proc.returncode}
+            yield f'data: {_json.dumps(done)}\n\n'
+
+        return _SR(_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ── SAM3 Playground ────────────────────────────────────────────────────
+
+    @app.post("/api/sam3/upload")
+    async def sam3_upload_image(file: UploadFile = File(...)):
+        """Accept an image upload, save to output/segments/uploads/, return path + dimensions."""
+        import uuid
+        from pathlib import Path as _P
+        try:
+            from PIL import Image as _PIL
+        except ImportError:
+            _PIL = None
+
+        upload_dir = _P("output/segments/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = _P(file.filename or "image.jpg").suffix.lower() or ".jpg"
+        fname = f"upload_{uuid.uuid4().hex[:12]}{ext}"
+        dest = upload_dir / fname
+
+        data = await file.read()
+        dest.write_bytes(data)
+
+        w, h = 0, 0
+        if _PIL:
+            try:
+                img = _PIL.open(dest)
+                w, h = img.size
+            except Exception:
+                pass
+
+        return JSONResponse({
+            "image_path": str(dest),
+            "url": f"/output/segments/uploads/{fname}",
+            "width": w,
+            "height": h,
+        })
+
+    @app.get("/api/sam3/status")
+    async def sam3_status():
+        """Check whether the SAM3 package and model weights are available."""
+        import importlib.util as _ilu
+        from cv_agent.local_model_manager import is_model_downloaded
+        from cv_agent.tools.segment_anything import available_segment_models
+        has_pkg   = _ilu.find_spec("sam3") is not None
+        has_model = is_model_downloaded("sam3")
+        ready     = has_pkg and has_model
+        message   = (
+            "SAM3 ready" if ready
+            else ("SAM3 package installed — download model weights from the Models page" if has_pkg
+                  else "Install sam3 package and download model weights to use this skill")
+        )
+        models = available_segment_models()
+        return JSONResponse({
+            "ready": ready,
+            "has_pkg": has_pkg,
+            "has_model": has_model,
+            "message": message,
+            "available_models": models,
+        })
+
+    @app.post("/api/sam3/segment")
+    async def sam3_segment_endpoint(body: dict):
+        """Run SAM3 segmentation on an uploaded image. Supports text and box prompt modes."""
+        import json as _json
+        from pathlib import Path as _P
+        from cv_agent.tools.segment_anything import (
+            segment_with_text, segment_with_box,
+            _load_sam3_image, _load_sam3_mlx_image,
+            _overlay_masks, _save_overlay, _extract_masks_scores_boxes,
+        )
+
+        image_path  = body.get("image_path", "")
+        mode        = body.get("mode", "text")
+        model_id    = body.get("model", "sam3")
+
+        if not image_path:
+            return JSONResponse({"error": "image_path is required"}, status_code=400)
+        if not _P(image_path).exists():
+            return JSONResponse({"error": f"Image file not found: {image_path}"}, status_code=404)
+
+        # Dispatch to correct loader based on model_id
+        if model_id == "sam3-mlx":
+            def _run_mlx_sync() -> str:
+                from PIL import Image as _Img
+                loaded = _load_sam3_mlx_image()
+                if loaded is None:
+                    return _json.dumps({"error": "SAM3-MLX not available. Download the 'sam3-mlx' model and install mlx (pip install mlx)."})
+                _model, processor = loaded
+                try:
+                    image = _Img.open(image_path).convert("RGB")
+                    state = processor.set_image(image)
+                    if mode == "text":
+                        prompt = body.get("prompt", "").strip()
+                        if not prompt:
+                            return _json.dumps({"error": "prompt is required for text mode"})
+                        output = processor.set_text_prompt(prompt=prompt, state=state)
+                    elif mode == "box":
+                        box_raw = body.get("box")
+                        if not box_raw:
+                            return _json.dumps({"error": "box is required for box mode"})
+                        b = box_raw if isinstance(box_raw, dict) else _json.loads(box_raw)
+                        output = processor.add_geometric_prompt(
+                            box=[b["x1"], b["y1"], b["x2"], b["y2"]], label=True, state=state
+                        )
+                    else:
+                        return _json.dumps({"error": f"Unknown mode: {mode}"})
+                    masks, scores, boxes_out = _extract_masks_scores_boxes(output)
+                    _lbl = prompt if mode == "text" else ""
+                    overlay = _overlay_masks(image, masks, scores=scores, boxes=boxes_out, label=_lbl)
+                    out_file = _save_overlay(image_path, overlay)
+                    return _json.dumps({
+                        "output_path": out_file,
+                        "mask_count": len(masks),
+                        "scores": [round(s, 4) for s in scores],
+                        "boxes": [b.tolist() if hasattr(b, "tolist") else b for b in boxes_out],
+                        "model": "SAM3-MLX",
+                    })
+                except Exception as exc:
+                    return _json.dumps({"error": f"SAM3-MLX inference failed: {exc}"})
+
+            result_json = await asyncio.to_thread(_run_mlx_sync)
+        else:
+            # Default: PyTorch SAM3
+            if mode == "text":
+                prompt = body.get("prompt", "").strip()
+                if not prompt:
+                    return JSONResponse({"error": "prompt is required for text mode"}, status_code=400)
+                result_json = await asyncio.to_thread(
+                    segment_with_text.invoke,
+                    {"image_path": image_path, "prompt": prompt, "output_path": ""},
+                )
+            elif mode == "box":
+                box = body.get("box")
+                if not box:
+                    return JSONResponse({"error": "box is required for box mode"}, status_code=400)
+                result_json = await asyncio.to_thread(
+                    segment_with_box.invoke,
+                    {"image_path": image_path, "box_json": _json.dumps(box), "output_path": ""},
+                )
+            else:
+                return JSONResponse({"error": f"Unknown mode: {mode}"}, status_code=400)
+
+        result = _json.loads(result_json)
+
+        # Convert relative output path → web-accessible URL (/output/...)
+        if "output_path" in result and result["output_path"]:
+            result["output_url"] = "/" + result["output_path"].replace("\\", "/").lstrip("/")
+
+        return JSONResponse(result)
+
+    # ── PaddleOCR ──────────────────────────────────────────────────────────
+
+    @app.get("/api/ocr/status")
+    async def ocr_status():
+        import importlib.util as _ilu
+        has_pkg = _ilu.find_spec("paddleocr") is not None
+        return JSONResponse({"ready": has_pkg, "message": "PaddleOCR ready" if has_pkg else "paddleocr not installed"})
+
+    @app.post("/api/ocr/run")
+    async def ocr_run(body: dict):
+        """Run PaddleOCR on an uploaded image."""
+        import json as _json
+        from pathlib import Path as _P
+        from cv_agent.tools.ocr import run_ocr
+
+        image_path = body.get("image_path", "")
+        lang = body.get("lang", "en")
+
+        if not image_path:
+            return JSONResponse({"error": "image_path is required"}, status_code=400)
+        if not _P(image_path).exists():
+            return JSONResponse({"error": f"Image not found: {image_path}"}, status_code=404)
+
+        result_json = await asyncio.to_thread(
+            run_ocr.invoke,
+            {"image_path": image_path, "lang": lang, "render_overlay": True},
+        )
+        result = _json.loads(result_json)
+        if "overlay_path" in result and result["overlay_path"]:
+            result["overlay_url"] = "/" + result["overlay_path"].replace("\\", "/").lstrip("/")
+        return JSONResponse(result)
 
     # ── Overview ───────────────────────────────────────────────────────────
 
@@ -2133,6 +2414,27 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 },
             },
         ]
+        
+        # Add workflow templates
+        from cv_agent.core.workflow_manager import workflow_manager
+        try:
+            templates = await workflow_manager.get_workflow_templates()
+            for t in templates:
+                jobs.append({
+                    "id": t.get("id"),
+                    "name": f"Workflow: {t.get('name', 'Unnamed')}",
+                    "icon": "🗺️",
+                    "description": t.get("description", ""),
+                    "schedule": "On demand",
+                    "enabled": True,
+                    "next_run": "Manual",
+                    "last_run": None,
+                    "type": "workflow",
+                    "runnable": True
+                })
+        except Exception as e:
+            logger.warning(f"Failed to load workflow templates for cron view: {e}")
+
         return JSONResponse({"jobs": jobs})
 
     @app.post("/api/jobs/fine-tune/run")
@@ -2611,6 +2913,152 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         if isinstance(result, dict) and "error" in result and "samples" not in result:
             return JSONResponse(result, status_code=400)
         return JSONResponse(result)
+
+    # ── Workflows ──────────────────────────────────────────────────────────
+
+    @app.post("/api/workflows/run")
+    async def run_workflow(body: dict):
+        """Submit a workflow to the Eko sidecar."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        desc = body.get("description")
+        if not desc:
+            return JSONResponse({"error": "Description is required"}, status_code=400)
+        try:
+            result = await workflow_manager.submit_workflow(desc)
+            return JSONResponse(result, status_code=202)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/tools")
+    async def list_tools():
+        """List all available tools and their JSON schemas for Eko sidecar."""
+        from cv_agent.agent import build_tools
+        from cv_agent.config import load_config
+        config = load_config()
+        tools = build_tools(config)
+        tool_list = []
+        for t in tools:
+            name = getattr(t, "name", getattr(t, "__name__", "unknown"))
+            desc = getattr(t, "description", getattr(t, "__doc__", ""))
+            
+            # Simple schema extraction for zeroclaw / smolagents tools
+            parameters = {"type": "object", "properties": {}}
+            if hasattr(t, "args_schema") and t.args_schema:
+                schema = t.args_schema.schema()
+                parameters = {
+                    "type": "object",
+                    "properties": schema.get("properties", {}),
+                    "required": schema.get("required", [])
+                }
+            elif hasattr(t, "inputs"):
+                # smolagents style
+                props = {}
+                req = []
+                for k, v in t.inputs.items():
+                    props[k] = {"type": v.get("type", "string"), "description": v.get("description", "")}
+                    req.append(k)
+                parameters = {"type": "object", "properties": props, "required": req}
+                
+            tool_list.append({
+                "name": name,
+                "description": desc,
+                "parameters": parameters
+            })
+        return JSONResponse({"tools": tool_list})
+
+    @app.post("/api/tools/execute")
+    async def execute_tool(body: dict):
+        """Execute a Python tool on behalf of the Eko sidecar."""
+        from cv_agent.agent import build_tools
+        from cv_agent.config import load_config
+        import inspect
+        
+        name = body.get("name")
+        args = body.get("arguments", {})
+        
+        if not name:
+            return JSONResponse({"error": "Tool name is required"}, status_code=400)
+            
+        config = load_config()
+        tools = build_tools(config)
+        
+        target_tool = None
+        for t in tools:
+            t_name = getattr(t, "name", getattr(t, "__name__", None))
+            if t_name == name:
+                target_tool = t
+                break
+                
+        if not target_tool:
+            return JSONResponse({"error": f"Tool '{name}' not found"}, status_code=404)
+            
+        try:
+            # LangChain BaseTool.invoke(input) takes a dict as its first positional
+            # arg — do NOT unpack with **args or it errors with "missing 'input'".
+            if hasattr(target_tool, "invoke"):
+                result = target_tool.invoke(args)
+            elif hasattr(target_tool, "func"):
+                func = target_tool.func
+                result = await func(**args) if inspect.iscoroutinefunction(func) else func(**args)
+            else:
+                result = await target_tool(**args) if inspect.iscoroutinefunction(target_tool) else target_tool(**args)
+
+            return JSONResponse({"result": result})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/workflows/{run_id}/stream")
+    async def stream_workflow(run_id: str):
+        """Proxy the SSE execution stream from the Eko sidecar to the frontend."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        from fastapi.responses import StreamingResponse as _SR
+        import json
+
+        async def _proxy_stream():
+            async for data in workflow_manager.stream_workflow_status(run_id):
+                yield f"data: {json.dumps(data)}\n\n"
+
+        return _SR(_proxy_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/workflows/checkpoint/{checkpoint_id}")
+    async def resolve_workflow_checkpoint(checkpoint_id: str, body: dict):
+        """Resolve a paused workflow checkpoint."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        approved = body.get("approved", True)
+        feedback = body.get("feedback", "")
+        try:
+            result = await workflow_manager.resolve_checkpoint(checkpoint_id, approved, feedback)
+            return JSONResponse(result)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.get("/api/workflows/templates")
+    async def list_workflow_templates():
+        """Retrieve all saved workflow templates."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        try:
+            templates = await workflow_manager.get_workflow_templates()
+            return JSONResponse({"templates": templates})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/workflows/templates")
+    async def save_workflow_template(body: dict):
+        """Save a new workflow template."""
+        from cv_agent.core.workflow_manager import workflow_manager
+        name = body.get("name")
+        description = body.get("description")
+        steps = body.get("steps", [])
+        
+        if not name or not description:
+            return JSONResponse({"error": "Name and description are required"}, status_code=400)
+            
+        try:
+            result = await workflow_manager.save_workflow_template(name, description, steps)
+            return JSONResponse(result)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     # ── Debug ──────────────────────────────────────────────────────────────
 
