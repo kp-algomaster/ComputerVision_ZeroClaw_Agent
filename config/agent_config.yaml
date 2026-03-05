@@ -5,6 +5,10 @@ agent:
   description: "Autonomous computer vision research agent"
   log_level: INFO
 
+# Disable automatic model selection — use LLM_MODEL from .env
+llmfit:
+  auto_select_model: false
+
 # Vision model configuration
 vision:
   # Primary: Ollama
