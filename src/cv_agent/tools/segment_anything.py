@@ -250,14 +250,7 @@ def available_segment_models() -> list[dict]:
     import importlib.util as _ilu
 
     models = []
-    has_sam3_pkg = _ilu.find_spec("sam3") is not None
-    if is_model_downloaded("sam3"):
-        models.append({
-            "id": "sam3",
-            "label": "SAM 3 (PyTorch · CPU)",
-            "ready": has_sam3_pkg,
-            "needs": [] if has_sam3_pkg else ["sam3 package (pip install -e sam3/)"],
-        })
+    # MLX first so it is the default selection in the UI
     if is_model_downloaded("sam3-mlx"):
         has_mlx = _ilu.find_spec("mlx") is not None
         has_src  = _mlx_sam3_src_available()
@@ -271,6 +264,14 @@ def available_segment_models() -> list[dict]:
             "label": "SAM 3 MLX (Apple Silicon)",
             "ready": has_mlx and has_src,
             "needs": needs,
+        })
+    has_sam3_pkg = _ilu.find_spec("sam3") is not None
+    if is_model_downloaded("sam3"):
+        models.append({
+            "id": "sam3",
+            "label": "SAM 3 (PyTorch · CPU)",
+            "ready": has_sam3_pkg,
+            "needs": [] if has_sam3_pkg else ["sam3 package (pip install -e sam3/)"],
         })
     return models
 

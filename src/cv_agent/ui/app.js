@@ -3709,6 +3709,9 @@ function loadSam3View() {
                     opt.disabled = !m.ready;
                     sel.appendChild(opt);
                 }
+                // Prefer sam3-mlx as default if available
+                const mlxOpt = [...sel.options].find(o => o.value === 'sam3-mlx' && !o.disabled);
+                if (mlxOpt) sel.value = 'sam3-mlx';
                 row.hidden = models.length < 2; // only show selector when there's a choice
             }
         }
