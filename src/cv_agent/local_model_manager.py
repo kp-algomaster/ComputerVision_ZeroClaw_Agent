@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,13 +21,16 @@ class ModelEntry:
     size_gb: float
     hf_repo: str | None = None      # None → pip package only
     pip_pkg: str | None = None      # e.g. "paddleocr"
+    ignore_patterns: list[str] = field(default_factory=list)  # skip on snapshot_download
     category: str = ""
 
 
 MODEL_CATALOG: dict[str, list[ModelEntry]] = {
     "Image Generation": [
-        ModelEntry(id="sd-turbo",   name="SD-Turbo",   hf_repo="stabilityai/sd-turbo",   size_gb=4.8, desc="Fast text-to-image (512×512)"),
-        ModelEntry(id="sdxl-turbo", name="SDXL-Turbo", hf_repo="stabilityai/sdxl-turbo", size_gb=6.5, desc="Higher quality text-to-image (512×512)"),
+        ModelEntry(id="sd-turbo",    name="SD-Turbo",      hf_repo="stabilityai/sd-turbo",        size_gb=4.8,  desc="Fast text-to-image (512×512)"),
+        ModelEntry(id="sdxl-turbo",  name="SDXL-Turbo",    hf_repo="stabilityai/sdxl-turbo",      size_gb=6.5,  desc="Higher quality text-to-image (512×512)"),
+        ModelEntry(id="deepgen-1.0", name="DeepGen 1.0",   hf_repo="deepgenteam/DeepGen-1.0",     size_gb=16.4, desc="5B unified image gen + editing: text-to-image, reasoning, text rendering",
+                   ignore_patterns=["*.zip.part-*"]),
     ],
     "Video Generation": [
         ModelEntry(id="svd",    name="Stable Video Diffusion",    hf_repo="stabilityai/stable-video-diffusion-img2vid",    size_gb=9.2, desc="Image-to-video, 14 frames"),
@@ -37,7 +41,7 @@ MODEL_CATALOG: dict[str, list[ModelEntry]] = {
         ModelEntry(id="paddleocr",  name="PaddleOCR",      hf_repo=None, pip_pkg="paddleocr", size_gb=0.5, desc="Multi-language OCR (auto-downloads on first use)"),
     ],
     "Segmentation": [
-        ModelEntry(id="sam3",          name="SAM 3",          hf_repo="facebook/sam3",                   size_gb=3.2, desc="Segment Anything v3 — image+video, text prompts, 848M params (gated: request access at hf.co/facebook/sam3)"),
+        ModelEntry(id="sam3",          name="SAM 3",          hf_repo="facebook/sam3",                   size_gb=6.9, desc="Segment Anything v3 — image+video, text prompts, 848M params (gated: request access at hf.co/facebook/sam3)"),
         ModelEntry(id="sam2.1-large",  name="SAM 2.1 Large",  hf_repo="facebook/sam2.1-hiera-large",     size_gb=2.5, desc="Segment Anything v2.1 — improved occlusion handling"),
         ModelEntry(id="sam2.1-small",  name="SAM 2.1 Small",  hf_repo="facebook/sam2.1-hiera-small",     size_gb=0.2, desc="Segment Anything v2.1 — lightweight"),
         ModelEntry(id="sam2-large",    name="SAM 2 Large",    hf_repo="facebook/sam2-hiera-large",       size_gb=2.5, desc="Segment Anything v2 — best accuracy"),
@@ -58,6 +62,9 @@ def get_model_local_path(model_id: str) -> Path:
     return _BASE_DIR / model_id
 
 
+_COMPLETE_SENTINEL = ".complete"
+
+
 def is_model_downloaded(model_id: str) -> bool:
     entry = _ALL.get(model_id)
     if not entry:
@@ -65,7 +72,7 @@ def is_model_downloaded(model_id: str) -> bool:
     if entry.pip_pkg:
         return importlib.util.find_spec(entry.pip_pkg.replace("-", "_").split(".")[0]) is not None
     p = get_model_local_path(model_id)
-    return p.exists() and any(p.iterdir())
+    return (p / _COMPLETE_SENTINEL).exists()
 
 
 def get_downloaded_size_gb(model_id: str) -> float:
@@ -117,12 +124,18 @@ async def stream_hf_download(model_id: str) -> AsyncIterator[str]:
         yield f'data: {json.dumps({"error": "huggingface_hub not installed — run: pip install huggingface_hub"})}\n\n'
         return
 
-    # Resolve actual repo size so progress % is accurate
+    hf_token = os.environ.get("HF_TOKEN") or None
+
+    # Resolve actual repo size so progress % is accurate (respects ignore_patterns)
+    def _matches_ignore(path: str) -> bool:
+        import fnmatch
+        return any(fnmatch.fnmatch(path.split("/")[-1], pat) for pat in entry.ignore_patterns)
+
     def _get_repo_size_gb(repo_id: str) -> float:
         try:
             total = sum(
-                item.size for item in list_repo_tree(repo_id, recursive=True)
-                if hasattr(item, "size") and item.size
+                item.size for item in list_repo_tree(repo_id, recursive=True, token=hf_token)
+                if hasattr(item, "size") and item.size and not _matches_ignore(getattr(item, "path", ""))
             )
             return round(total / 1e9, 2)
         except Exception:
@@ -134,13 +147,23 @@ async def stream_hf_download(model_id: str) -> AsyncIterator[str]:
     progress_queue: asyncio.Queue[dict] = asyncio.Queue()
 
     def _hf_download():
+        # Clear stale lock files that block resume after a crash
+        cache_dl_dir = local_dir / ".cache" / "huggingface" / "download"
+        if cache_dl_dir.exists():
+            for lock_file in cache_dl_dir.glob("*.lock"):
+                lock_file.unlink(missing_ok=True)
         try:
             from huggingface_hub import snapshot_download as _dl
-            _dl(
+            kwargs: dict = dict(
                 repo_id=entry.hf_repo,
                 local_dir=str(local_dir),
                 local_dir_use_symlinks=False,
+                token=hf_token,
             )
+            if entry.ignore_patterns:
+                kwargs["ignore_patterns"] = entry.ignore_patterns
+            _dl(**kwargs)
+            (local_dir / _COMPLETE_SENTINEL).touch()
             progress_queue.put_nowait({"status": "__done__"})
         except Exception as exc:
             progress_queue.put_nowait({"error": str(exc)})
@@ -162,7 +185,8 @@ async def stream_hf_download(model_id: str) -> AsyncIterator[str]:
             if ev.get("status") == "__done__" or ev.get("error"):
                 return
         # Emit a heartbeat with local dir size so UI can show growth
-        current_gb = get_downloaded_size_gb(model_id)
+        # Run in executor — rglob scan is blocking I/O and must not stall the event loop
+        current_gb = await loop.run_in_executor(None, get_downloaded_size_gb, model_id)
         yield f'data: {json.dumps({"status": "Downloading…", "downloaded_gb": current_gb, "total_gb": total_gb})}\n\n'
         await asyncio.sleep(1.5)
 

@@ -50,6 +50,7 @@
                 <div class="nav-group-title" data-toggle="grp-agent">Core <span class="toggle-icon">−</span></div>
                 <ul class="nav-list" id="grp-agent">
                     <li class="nav-item" data-view="skills"><span class="nav-icon">⚡</span>Skills</li>
+                    <li class="nav-item" data-view="datasets"><span class="nav-icon">🗂️</span>Datasets</li>
                     <li class="nav-item" data-view="powers"><span class="nav-icon">🔌</span>Powers</li>
                 </ul>
             </div>
@@ -192,9 +193,15 @@
                     <div class="inst-card srv-management-card">
                         <div id="serverManagementList"><p class="placeholder">Loading…</p></div>
                     </div>
-                    <div class="inst-card srv-status-card">
-                        <div class="inst-card-header"><h3>Server Status</h3></div>
-                        <div id="serverStatusList" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                    <div class="srv-right-col">
+                        <div class="inst-card srv-status-card">
+                            <div class="inst-card-header"><h3>Server Status</h3></div>
+                            <div id="serverStatusList" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                        </div>
+                        <div class="inst-card">
+                            <div class="inst-card-header"><h3>Hardware</h3></div>
+                            <div id="hardwareInfo" class="inst-card-body"><p class="placeholder">Loading…</p></div>
+                        </div>
                     </div>
                 </div>
 
@@ -219,10 +226,6 @@
                 </div>
                 <div class="instances-layout">
                     <div class="inst-col">
-                        <div class="inst-card">
-                            <div class="inst-card-header"><h3>Hardware</h3></div>
-                            <div id="hardwareInfo" class="inst-card-body"><p class="placeholder">Loading…</p></div>
-                        </div>
                         <div class="inst-card">
                             <div class="inst-card-header"><h3>Ollama Models</h3><span id="pulledCount" class="badge-count"></span></div>
                             <div id="pulledModelsList" class="inst-card-body model-list"><p class="placeholder">Loading…</p></div>
@@ -402,6 +405,41 @@
             </div>
             <div class="view-scroll">
                 <div id="powersGrid" class="powers-grid"><p class="placeholder">Loading…</p></div>
+            </div>
+        </section>
+
+        <!-- ═══ Datasets ═══ -->
+        <section id="view-datasets" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🗂️ Datasets</h2>
+                    <p class="view-hint">Download and manage datasets for model training and evaluation. Stored in <code>output/.datasets/</code>.</p>
+                </div>
+                <button class="btn-sm" onclick="loadDatasets()">↻ Refresh</button>
+            </div>
+            <div class="view-scroll">
+                <!-- Search bar -->
+                <div class="ds-search-bar">
+                    <div class="ds-search-input-wrap">
+                        <span class="ds-search-icon">🔍</span>
+                        <input id="dsSearchInput" type="text" class="ds-search-input" placeholder="Search HuggingFace &amp; Kaggle datasets…" onkeydown="if(event.key==='Enter')searchDatasets()">
+                        <select id="dsSearchSource" class="ds-search-source">
+                            <option value="huggingface">HuggingFace</option>
+                            <option value="kaggle">Kaggle</option>
+                        </select>
+                        <button class="btn-search" onclick="searchDatasets()">Search</button>
+                    </div>
+                </div>
+                <!-- Search results -->
+                <div id="dsSearchResults" class="ds-search-results" hidden></div>
+                <!-- Status + progress for active download -->
+                <div id="datasetStatus" class="pull-status" hidden></div>
+                <div id="datasetProgressWrap" class="pull-progress-wrap" hidden>
+                    <div class="pull-progress-bar"><div id="datasetProgressFill" class="pull-progress-fill" style="width:0%"></div></div>
+                    <span id="datasetProgressPct" class="pull-progress-pct">0%</span>
+                </div>
+                <!-- Installed catalog -->
+                <div id="datasetCatalog"><p class="placeholder">Loading…</p></div>
             </div>
         </section>
 

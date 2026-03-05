@@ -93,6 +93,7 @@ function switchView(view) {
         sessions: loadSessions,
         cron: loadCron,
         skills: loadSkills,
+        datasets: loadDatasets,
         text2diagram: loadTextToDiagramView,
         powers: loadPowers,
         vault: loadVaultTree,
@@ -1019,8 +1020,10 @@ function _renderServerManagement(servers) {
         const activeLabel = s.healthy ? `Active: ${s.device.toUpperCase()}` : '';
         const activeBadge = s.healthy ? `<span class="accel-badge ${s.device === 'mps' || s.device === 'gpu' ? 'metal' : 'cpu'}">${activeLabel}</span>` : '';
         const ctrlBtns = s.managed
-            ? `<button class="srv-btn srv-restart" onclick="serverAction('${s.id}','restart')">↻ Restart</button>
-               <button class="srv-btn srv-stop" onclick="serverAction('${s.id}','stop')">■ Stop</button>`
+            ? (s.healthy
+                ? `<button class="srv-btn srv-restart" onclick="serverAction('${s.id}','restart')">↻ Restart</button>
+                   <button class="srv-btn srv-stop"    onclick="serverAction('${s.id}','stop')">■ Stop</button>`
+                : `<button class="srv-btn srv-start"   onclick="serverAction('${s.id}','start')">▶ Start</button>`)
             : `<button class="srv-btn srv-restart" onclick="serverAction('${s.id}','restart')" disabled title="Externally managed">↻</button>`;
         const card = document.createElement('div');
         card.className = 'srv-card';
@@ -1195,10 +1198,300 @@ async function deleteLocalModel(modelId, btn) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Datasets
+// ═══════════════════════════════════════════════════════════════════════
+
+const _DS_CAT_ORDER = ['Image Classification', 'Object Detection', 'Segmentation', 'Document / OCR'];
+const _DS_CAT_ICON  = {
+    'Image Classification': '🖼️',
+    'Object Detection':     '📦',
+    'Segmentation':         '🎨',
+    'Document / OCR':       '📄',
+};
+
+async function loadDatasets() {
+    const el = document.getElementById('datasetCatalog');
+    el.innerHTML = '<p class="placeholder">Loading…</p>';
+    try {
+        const resp = await fetch('/api/datasets');
+        const data = await resp.json();
+        const datasets = data.datasets || [];
+        if (datasets.length === 0) { el.innerHTML = '<p class="placeholder">No datasets in catalog.</p>'; return; }
+
+        const groups = {};
+        for (const d of datasets) {
+            (groups[d.category] = groups[d.category] || []).push(d);
+        }
+
+        el.innerHTML = '';
+        for (const cat of _DS_CAT_ORDER) {
+            if (!groups[cat]) continue;
+            const header = document.createElement('div');
+            header.className = 'mcat-group-label';
+            header.textContent = `${_DS_CAT_ICON[cat] || ''} ${cat}`;
+            el.appendChild(header);
+
+            for (const d of groups[cat]) {
+                el.appendChild(buildDatasetCard(d));
+            }
+        }
+    } catch (e) {
+        el.innerHTML = `<p class="placeholder">Failed to load datasets: ${e.message}</p>`;
+    }
+}
+
+function buildDatasetCard(d) {
+    const card = document.createElement('div');
+    card.className = 'ds-card';
+    card.id = `ds-card-${d.id}`;
+
+    const badge = d.downloaded
+        ? `<span class="mcat-badge downloaded">Downloaded</span>`
+        : '';
+    const sizeLabel = d.downloaded && d.local_size_gb
+        ? `${d.local_size_gb} GB on disk`
+        : `~${d.size_gb} GB`;
+    const samplesLabel = d.num_samples ? `${(d.num_samples / 1000).toFixed(0)}K samples` : '';
+    const splitsLabel = (d.splits || []).join(' · ');
+    const taskBadge = d.task ? `<span class="ds-task-badge">${d.task}</span>` : '';
+
+    const rightCol = d.downloaded
+        ? `<div class="ds-actions">
+               <span class="ready-label">Ready</span>
+               <button class="btn-delete-sm" onclick="deleteDataset('${d.id}', this)" title="Delete">🗑</button>
+           </div>`
+        : `<button class="btn-dl-ds" id="ds-dl-btn-${d.id}" onclick="downloadDataset('${d.id}', this)">⬇ Download</button>`;
+
+    card.innerHTML = `
+        <div class="ds-info">
+            <div class="ds-title">${d.name} ${badge}</div>
+            ${taskBadge}
+            <div class="ds-desc">${d.desc}</div>
+            <div class="ds-meta">${sizeLabel}${samplesLabel ? ' · ' + samplesLabel : ''}${splitsLabel ? ' · ' + splitsLabel : ''}</div>
+        </div>
+        <div class="ds-right">${rightCol}</div>`;
+    return card;
+}
+
+async function downloadDataset(datasetId, btn) {
+    const statusEl = document.getElementById('datasetStatus');
+    const progressWrap = document.getElementById('datasetProgressWrap');
+    const fill = document.getElementById('datasetProgressFill');
+    const pct = document.getElementById('datasetProgressPct');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting…';
+    statusEl.hidden = false;
+    statusEl.className = 'pull-status';
+    statusEl.textContent = 'Connecting…';
+    progressWrap.hidden = false;
+    fill.style.width = '0%';
+    pct.textContent = '0%';
+
+    // scroll progress into view
+    statusEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+        const resp = await fetch(`/api/datasets/${datasetId}/download`, { method: 'POST' });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '', totalGb = 0;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                const ev = JSON.parse(line.slice(5).trim());
+                if (ev.error) {
+                    statusEl.className = 'pull-status error';
+                    statusEl.textContent = '❌ ' + ev.error;
+                    btn.disabled = false;
+                    btn.textContent = '⬇ Download';
+                    return;
+                }
+                if (ev.total_gb) totalGb = ev.total_gb;
+                if (ev.downloaded_gb !== undefined && totalGb) {
+                    const p = Math.min(100, Math.round(ev.downloaded_gb / totalGb * 100));
+                    fill.style.width = p + '%';
+                    pct.textContent = p + '%';
+                    statusEl.textContent = `Downloading… ${ev.downloaded_gb.toFixed(2)} / ${totalGb.toFixed(2)} GB`;
+                } else if (ev.status && ev.status !== '__done__') {
+                    statusEl.textContent = ev.status;
+                }
+                if (ev.status === '__done__') {
+                    fill.style.width = '100%';
+                    pct.textContent = '100%';
+                    statusEl.className = 'pull-status success';
+                    statusEl.textContent = '✅ Download complete';
+                    await loadDatasets();
+                    setTimeout(() => { progressWrap.hidden = true; statusEl.hidden = true; }, 3000);
+                    return;
+                }
+            }
+        }
+    } catch (e) {
+        statusEl.className = 'pull-status error';
+        statusEl.textContent = '❌ ' + e.message;
+        btn.disabled = false;
+        btn.textContent = '⬇ Download';
+    }
+}
+
+async function deleteDataset(datasetId, btn) {
+    if (!confirm('Delete this dataset? This cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+        await fetch(`/api/datasets/${datasetId}`, { method: 'DELETE' });
+        await loadDatasets();
+    } catch (e) {
+        alert('Delete failed: ' + e.message);
+        btn.disabled = false;
+    }
+}
+
+async function searchDatasets() {
+    const q = document.getElementById('dsSearchInput').value.trim();
+    if (!q) return;
+    const source = document.getElementById('dsSearchSource').value;
+    const resultsEl = document.getElementById('dsSearchResults');
+    resultsEl.hidden = false;
+    resultsEl.innerHTML = '<p class="placeholder">Searching…</p>';
+
+    try {
+        const resp = await fetch(`/api/datasets/search?q=${encodeURIComponent(q)}&source=${source}&limit=12`);
+        const data = await resp.json();
+        if (data.error) {
+            resultsEl.innerHTML = `<p class="placeholder error-text">⚠ ${data.error}</p>`;
+            return;
+        }
+        if (!data.results.length) {
+            resultsEl.innerHTML = '<p class="placeholder">No results found.</p>';
+            return;
+        }
+        const sourceIcon = source === 'huggingface' ? '🤗' : '📊';
+        resultsEl.innerHTML = `
+            <div class="ds-search-header">
+                <span>${sourceIcon} ${data.results.length} results for "<strong>${q}</strong>" on ${source === 'huggingface' ? 'HuggingFace' : 'Kaggle'}</span>
+                <button class="btn-sm" onclick="document.getElementById('dsSearchResults').hidden=true">✕ Close</button>
+            </div>
+            <div class="ds-search-grid">${data.results.map(r => buildSearchResultCard(r)).join('')}</div>`;
+    } catch (e) {
+        resultsEl.innerHTML = `<p class="placeholder error-text">⚠ Search failed: ${e.message}</p>`;
+    }
+}
+
+function buildSearchResultCard(r) {
+    const tags = (r.tags || []).slice(0, 4).map(t => `<span class="ds-tag">${t}</span>`).join('');
+    const dlCount = r.downloads > 1000 ? `${(r.downloads/1000).toFixed(0)}k` : (r.downloads || 0);
+    const sizeStr = r.size_mb ? ` · ~${(r.size_mb/1024).toFixed(1)} GB` : '';
+    const source = r.source;
+    return `
+        <div class="ds-result-card">
+            <div class="ds-result-info">
+                <div class="ds-result-title">${r.name} <span class="ds-result-id">${r.full_id}</span></div>
+                <div class="ds-result-meta">⬇ ${dlCount}${sizeStr} · ♥ ${r.likes || 0}</div>
+                <div class="ds-result-tags">${tags}</div>
+            </div>
+            <div class="ds-result-actions">
+                <a href="${r.url}" target="_blank" class="btn-sm btn-link">↗ View</a>
+                ${source === 'huggingface'
+                    ? `<button class="btn-primary-sm" onclick="downloadExternalDataset('${r.full_id}', '${r.name.replace(/'/g,"\\'")}', this)">⬇ Download</button>`
+                    : `<button class="btn-primary-sm" onclick="openKaggleDownload('${r.full_id}')">⬇ Kaggle</button>`
+                }
+            </div>
+        </div>`;
+}
+
+async function downloadExternalDataset(fullId, name, btn) {
+    const statusEl = document.getElementById('datasetStatus');
+    const progressWrap = document.getElementById('datasetProgressWrap');
+    const fill = document.getElementById('datasetProgressFill');
+    const pct = document.getElementById('datasetProgressPct');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting…';
+    statusEl.hidden = false;
+    statusEl.className = 'pull-status';
+    statusEl.textContent = 'Connecting…';
+    progressWrap.hidden = false;
+    fill.style.width = '0%';
+    pct.textContent = '0%';
+    statusEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+        const resp = await fetch('/api/datasets/add-external', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: fullId, full_id: fullId, name, source: 'huggingface' }),
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '', totalGb = 0;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                const ev = JSON.parse(line.slice(5).trim());
+                if (ev.error) {
+                    statusEl.className = 'pull-status error';
+                    statusEl.textContent = '❌ ' + ev.error;
+                    btn.disabled = false;
+                    btn.textContent = '⬇ Download';
+                    return;
+                }
+                if (ev.total_gb) totalGb = ev.total_gb;
+                if (ev.downloaded_gb !== undefined && totalGb) {
+                    const p = Math.min(100, Math.round(ev.downloaded_gb / totalGb * 100));
+                    fill.style.width = p + '%';
+                    pct.textContent = p + '%';
+                    statusEl.textContent = `Downloading… ${ev.downloaded_gb.toFixed(2)} / ${totalGb.toFixed(2)} GB`;
+                } else if (ev.status && ev.status !== '__done__') {
+                    statusEl.textContent = ev.status;
+                }
+                if (ev.status === '__done__') {
+                    fill.style.width = '100%';
+                    pct.textContent = '100%';
+                    statusEl.className = 'pull-status success';
+                    statusEl.textContent = '✅ Download complete';
+                    btn.textContent = '✅ Downloaded';
+                    await loadDatasets();
+                    setTimeout(() => { progressWrap.hidden = true; statusEl.hidden = true; }, 3000);
+                    return;
+                }
+            }
+        }
+    } catch (e) {
+        statusEl.className = 'pull-status error';
+        statusEl.textContent = '❌ ' + e.message;
+        btn.disabled = false;
+        btn.textContent = '⬇ Download';
+    }
+}
+
+function openKaggleDownload(ref) {
+    window.open(`https://www.kaggle.com/datasets/${ref}`, '_blank');
+}
+
 async function loadHardwareAndRecommended() {
     try {
-        const resp = await fetch('/api/models/recommended');
+        const [resp, pulledResp] = await Promise.all([
+            fetch('/api/models/recommended'),
+            fetch('/api/models'),
+        ]);
         const data = await resp.json();
+        const pulledData = await pulledResp.json().catch(() => ({ models: [] }));
+        // Normalize pulled model names: strip tag suffix, lowercase
+        const pulledSet = new Set(
+            (pulledData.models || []).map(n => n.replace(/:latest$/i, '').toLowerCase())
+        );
         const hw = data.hardware;
         const hwEl = document.getElementById('hardwareInfo');
         if (hw) {
@@ -1247,12 +1540,20 @@ async function loadHardwareAndRecommended() {
             const ggufRepo = (m.gguf_sources || [])[0]?.repo;
             const pullTag = ggufRepo ? `hf.co/${ggufRepo}` : (m.name.includes('/') ? `hf.co/${m.name}` : `${m.name}:${m.quantization}`);
             const displayTag = `${m.name}:${m.quantization}`;
+            // Check if already pulled: match on pullTag or displayTag (strip :latest, lowercase)
+            const normalizedPull = pullTag.replace(/:latest$/i, '').toLowerCase();
+            const normalizedDisplay = displayTag.replace(/:latest$/i, '').toLowerCase();
+            const alreadyPulled = pulledSet.has(normalizedPull) || pulledSet.has(normalizedDisplay)
+                || [...pulledSet].some(p => p === normalizedPull || p.endsWith('/' + normalizedPull));
+            const actionCol = alreadyPulled
+                ? `<span class="mcat-badge downloaded" style="font-size:0.72rem">Downloaded</span>`
+                : `<button class="btn-pull-sm" onclick="quickPullCmd('${escapeHtml(pullTag)}', this)" title="ollama pull ${escapeHtml(pullTag)}">⬇</button>`;
             row.innerHTML = `
                 <span class="fit-badge ${fitCls}">${m.fit}</span>
                 <span class="runtime-badge runtime-${runtime}">${runtimeLabel}</span>
                 <span class="model-name" title="${displayTag}">${shortName}:${m.quantization}</span>
                 <span class="model-meta">${m.vram_gb}GB</span>
-                <button class="btn-pull-sm" onclick="quickPullCmd('${escapeHtml(pullTag)}', this)" title="ollama pull ${escapeHtml(pullTag)}">⬇</button>`;
+                ${actionCol}`;
             recEl.appendChild(row);
         }
     } catch (e) {
@@ -1498,7 +1799,12 @@ async function loadCron() {
         let html = '<div class="cron-list">';
         for (const j of jobs) {
             const statusCls = j.enabled ? 'active' : 'inactive';
-            html += `<div class="cron-card">
+            const actionsHtml = j.runnable
+                ? `<div class="cron-actions">
+                    <button class="btn-run-job" onclick="showFineTuneModal(${JSON.stringify(j).replace(/"/g, '&quot;')})">⚙ Configure &amp; Run</button>
+                   </div>`
+                : '';
+            html += `<div class="cron-card${j.runnable ? ' cron-runnable' : ''}">
                 <div class="cron-head">
                     <span class="cron-icon">${j.icon || '⏰'}</span>
                     <div class="cron-info">
@@ -1512,12 +1818,148 @@ async function loadCron() {
                     <span class="cron-next">Next run: <strong>${j.next_run || 'N/A'}</strong></span>
                     <span class="cron-last">Last run: ${j.last_run || 'Never'}</span>
                 </div>
+                ${actionsHtml}
             </div>`;
         }
         html += '</div>';
         el.innerHTML = html;
     } catch {
         el.innerHTML = '<p class="placeholder">Failed to load jobs.</p>';
+    }
+}
+
+function showFineTuneModal(job) {
+    const d = job.defaults || {};
+    const existing = document.getElementById('fineTuneModalOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'fineTuneModalOverlay';
+    overlay.className = 'skill-modal-overlay';
+    overlay.innerHTML = `
+        <div class="skill-modal ft-modal">
+            <div class="sim-header">
+                <span class="sim-icon">🎯</span>
+                <div>
+                    <div class="sim-title">Model Fine-Tuning</div>
+                    <div class="sim-subtitle">HuggingFace Trainer — local GPU/MPS/CPU</div>
+                </div>
+                <button class="sim-close" onclick="document.getElementById('fineTuneModalOverlay').remove()">✕</button>
+            </div>
+            <div class="ft-form">
+                <div class="ft-row">
+                    <label>Base Model <span class="ft-hint">(HuggingFace model ID)</span></label>
+                    <input id="ft-model-id" type="text" value="${d.model_id || 'google/vit-base-patch16-224'}" placeholder="google/vit-base-patch16-224" />
+                </div>
+                <div class="ft-row">
+                    <label>Dataset <span class="ft-hint">(HuggingFace dataset ID or local path)</span></label>
+                    <input id="ft-dataset-id" type="text" value="${d.dataset_id || 'food101'}" placeholder="food101" />
+                </div>
+                <div class="ft-row-2col">
+                    <div class="ft-row">
+                        <label>Image column</label>
+                        <input id="ft-image-col" type="text" value="${d.image_column || 'image'}" placeholder="image" />
+                    </div>
+                    <div class="ft-row">
+                        <label>Label column</label>
+                        <input id="ft-label-col" type="text" value="${d.label_column || 'label'}" placeholder="label" />
+                    </div>
+                </div>
+                <div class="ft-row-3col">
+                    <div class="ft-row">
+                        <label>Epochs</label>
+                        <input id="ft-epochs" type="number" value="${d.epochs || 3}" min="1" max="100" />
+                    </div>
+                    <div class="ft-row">
+                        <label>Learning rate</label>
+                        <input id="ft-lr" type="text" value="${d.lr || '5e-5'}" placeholder="5e-5" />
+                    </div>
+                    <div class="ft-row">
+                        <label>Batch size</label>
+                        <input id="ft-batch" type="number" value="${d.batch_size || 16}" min="1" max="256" />
+                    </div>
+                </div>
+                <div class="ft-row">
+                    <label>Output name <span class="ft-hint">(saved to output/fine-tuned/…)</span></label>
+                    <input id="ft-output-name" type="text" value="${d.output_name || 'my-fine-tuned-model'}" placeholder="my-fine-tuned-model" />
+                </div>
+                <div class="ft-log-wrap" id="ft-log-wrap" hidden>
+                    <div class="ft-log" id="ft-log"></div>
+                </div>
+                <div class="ft-footer">
+                    <button class="sim-btn primary" id="ft-run-btn" onclick="runFineTuneJob()">▶ Start Training</button>
+                    <span class="ft-status" id="ft-status"></span>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+async function runFineTuneJob() {
+    const btn = document.getElementById('ft-run-btn');
+    const statusEl = document.getElementById('ft-status');
+    const logWrap = document.getElementById('ft-log-wrap');
+    const log = document.getElementById('ft-log');
+
+    const config = {
+        model_id:     document.getElementById('ft-model-id').value.trim(),
+        dataset_id:   document.getElementById('ft-dataset-id').value.trim(),
+        image_column: document.getElementById('ft-image-col').value.trim(),
+        label_column: document.getElementById('ft-label-col').value.trim(),
+        epochs:       parseInt(document.getElementById('ft-epochs').value) || 3,
+        lr:           parseFloat(document.getElementById('ft-lr').value) || 5e-5,
+        batch_size:   parseInt(document.getElementById('ft-batch').value) || 16,
+        output_name:  document.getElementById('ft-output-name').value.trim() || 'my-fine-tuned-model',
+    };
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Training…';
+    statusEl.textContent = '';
+    logWrap.hidden = false;
+    log.innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/jobs/fine-tune/run', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                const ev = JSON.parse(line.slice(5).trim());
+                if (ev.line !== undefined) {
+                    const div = document.createElement('div');
+                    div.className = 'ft-log-line';
+                    div.textContent = ev.line;
+                    log.appendChild(div);
+                    log.scrollTop = log.scrollHeight;
+                } else if (ev.status === '__done__') {
+                    if (ev.success) {
+                        statusEl.className = 'ft-status ok';
+                        statusEl.textContent = `✅ Saved to output/fine-tuned/${config.output_name}`;
+                    } else {
+                        statusEl.className = 'ft-status error';
+                        statusEl.textContent = '❌ Training failed — see log above';
+                    }
+                    btn.disabled = false;
+                    btn.textContent = '▶ Run Again';
+                }
+            }
+        }
+    } catch (e) {
+        statusEl.className = 'ft-status error';
+        statusEl.textContent = '❌ ' + e.message;
+        btn.disabled = false;
+        btn.textContent = '▶ Start Training';
     }
 }
 
@@ -1559,15 +2001,20 @@ function buildSkillCard(id, info) {
     const card = document.createElement('div');
     card.className = `skill-card ${info.status}`;
     const toolsHtml = (info.tools || []).map(t => `<span class="skill-tool-chip">${t}</span>`).join('');
-    const missingHtml = (info.missing || []).length
-        ? `<div class="skill-missing">⚠ Requires: ${info.missing.join(', ')}</div>` : '';
-    const installHtml = info.install
-        ? `<code class="skill-install" title="Click to copy">${escapeHtml(info.install)}</code>` : '';
+    const missingItems = info.missing || [];
+    const missingHtml = missingItems.length
+        ? (info.status === 'ready'
+            ? `<div class="skill-missing optional">+ Optional: ${missingItems.join(', ')}</div>`
+            : `<div class="skill-missing">⚠ Requires: ${missingItems.join(', ')}</div>`)
+        : '';
     const modelHtml = info.model_label
         ? `<div class="skill-model-tag">🤖 ${escapeHtml(info.model_label)}</div>` : '';
     const actions = [];
     if (id === 'text_to_diagram') {
         actions.push(`<button class="btn-sm" onclick="openTextToDiagramSkill()">Open</button>`);
+    }
+    if (info.status !== 'ready') {
+        actions.push(`<button class="btn-install-skill" onclick="showSkillInstallModal('${id}')">⚙ Install Skill</button>`);
     }
     actions.push(
         `<button class="pin-btn ${isSkillPinned(id) ? 'pinned' : ''}" ` +
@@ -1580,21 +2027,185 @@ function buildSkillCard(id, info) {
         <div class="skill-head">
             <span class="skill-icon">${info.icon}</span>
             <span class="skill-title">${info.label}</span>
-            <span class="status-badge ${info.status}">${info.status.replace('-', ' ')}</span>
+            <span class="status-badge ${info.status}">${info.status.replace(/-/g, ' ')}</span>
         </div>
         <div class="skill-cat">${info.category}</div>
         <div class="skill-desc">${info.description}</div>
         ${modelHtml}
         ${missingHtml}
-        ${installHtml}
         ${actionsHtml}
         ${toolsHtml ? `<div class="skill-tools">${toolsHtml}</div>` : ''}`;
-    if (info.install) {
-        card.querySelector('.skill-install')?.addEventListener('click', () => {
-            navigator.clipboard?.writeText(info.install);
-        });
-    }
     return card;
+}
+
+// ── Skill Install Modal ───────────────────────────────────────────────────────
+
+function showSkillInstallModal(skillId) {
+    const info = _skillsById[skillId];
+    if (!info) return;
+
+    const packages = info.packages || [];
+    const models   = info.models   || [];
+    const powers   = info.powers   || [];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'skill-modal-overlay';
+    overlay.id = 'skillInstallOverlay';
+
+    const hasSteps = packages.length || models.length || powers.length;
+    const stepsHtml = !hasSteps
+        ? `<p class="sim-empty">No automated install steps available. Check the skill requirements manually.</p>`
+        : [
+            packages.length ? `
+            <div class="sim-step" id="sim-step-pkg">
+                <div class="sim-step-header">
+                    <span class="sim-step-icon">📦</span>
+                    <div class="sim-step-info">
+                        <strong>Python Packages</strong>
+                        <span class="sim-step-detail">${packages.join('  ·  ')}</span>
+                    </div>
+                    <span class="sim-step-badge pending" id="sim-badge-pkg">Pending</span>
+                </div>
+                <div class="sim-step-body" id="sim-body-pkg" hidden>
+                    <div class="sim-output" id="sim-output-pkg"></div>
+                </div>
+                <button class="sim-btn" id="sim-btn-pkg" onclick="skillInstallPackages('${skillId}')">
+                    Install Packages
+                </button>
+            </div>` : '',
+            models.map((m, i) => `
+            <div class="sim-step" id="sim-step-model-${i}">
+                <div class="sim-step-header">
+                    <span class="sim-step-icon">🤖</span>
+                    <div class="sim-step-info">
+                        <strong>Download Model</strong>
+                        <span class="sim-step-detail">${escapeHtml(m.label)}</span>
+                    </div>
+                    <span class="sim-step-badge pending" id="sim-badge-model-${i}">Pending</span>
+                </div>
+                <button class="sim-btn" id="sim-btn-model-${i}" onclick="skillDownloadModel('${m.id}')">
+                    Download Model
+                </button>
+            </div>`).join(''),
+            powers.map((p, i) => `
+            <div class="sim-step" id="sim-step-power-${i}">
+                <div class="sim-step-header">
+                    <span class="sim-step-icon">🔌</span>
+                    <div class="sim-step-info">
+                        <strong>Configure Power</strong>
+                        <span class="sim-step-detail">${escapeHtml(p.label)}</span>
+                    </div>
+                    <span class="sim-step-badge pending" id="sim-badge-power-${i}">Pending</span>
+                </div>
+                <button class="sim-btn" id="sim-btn-power-${i}" onclick="skillOpenPower()">
+                    Open Powers →
+                </button>
+            </div>`).join(''),
+        ].join('');
+
+    overlay.innerHTML = `
+        <div class="skill-modal">
+            <div class="sim-header">
+                <span class="sim-icon">${info.icon}</span>
+                <div>
+                    <div class="sim-title">Install: ${escapeHtml(info.label)}</div>
+                    <div class="sim-subtitle">Complete the steps below to enable this skill</div>
+                </div>
+                <button class="sim-close" onclick="closeSkillInstallModal()">✕</button>
+            </div>
+            <div class="sim-steps">${stepsHtml}</div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSkillInstallModal(); });
+}
+
+function closeSkillInstallModal() {
+    document.getElementById('skillInstallOverlay')?.remove();
+    loadSkills();
+}
+
+async function skillInstallPackages(skillId) {
+    const info = _skillsById[skillId];
+    const packages = info?.packages || [];
+    const btn    = document.getElementById('sim-btn-pkg');
+    const badge  = document.getElementById('sim-badge-pkg');
+    const body   = document.getElementById('sim-body-pkg');
+    const output = document.getElementById('sim-output-pkg');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Installing…';
+    badge.className = 'sim-step-badge running';
+    badge.textContent = 'Installing';
+    body.hidden = false;
+    output.textContent = '';
+
+    try {
+        const resp = await fetch('/api/skills/install-packages', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ packages }),
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                let ev;
+                try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+                if (ev.line !== undefined) {
+                    output.textContent += ev.line + '\n';
+                    output.scrollTop = output.scrollHeight;
+                }
+                if (ev.status === '__done__') {
+                    if (ev.success) {
+                        badge.className = 'sim-step-badge done';
+                        badge.textContent = '✓ Done';
+                        btn.textContent = '✓ Installed';
+                    } else {
+                        badge.className = 'sim-step-badge error';
+                        badge.textContent = '✗ Failed';
+                        btn.disabled = false;
+                        btn.textContent = 'Retry';
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        badge.className = 'sim-step-badge error';
+        badge.textContent = '✗ Error';
+        output.textContent += '\nError: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+    }
+}
+
+function skillDownloadModel(modelId) {
+    closeSkillInstallModal();
+    switchView('instances');
+    // Give the view time to render, then scroll to the model in the catalog
+    setTimeout(() => {
+        const card = document.querySelector(`.mcat-card[data-model-id="${modelId}"]`);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.outline = '2px solid var(--accent)';
+            setTimeout(() => { card.style.outline = ''; }, 3000);
+            card.querySelector('.btn-mcat-download')?.click();
+        }
+    }, 400);
+}
+
+function skillOpenPower() {
+    closeSkillInstallModal();
+    switchView('powers');
 }
 
 function openTextToDiagramSkill() {
@@ -2143,7 +2754,10 @@ async function savePower(id) {
         const data = await resp.json();
         if (!data.ok) throw new Error(data.error || 'Unknown error');
         statusEl.className = 'pwr-save-status ok';
-        statusEl.textContent = `Saved ${data.updated.length} key${data.updated.length !== 1 ? 's' : ''}`;
+        statusEl.textContent = data.updated.length
+            ? `Saved ${data.updated.length} key${data.updated.length !== 1 ? 's' : ''}`
+            : 'No changes (token unchanged)';
+        await new Promise(r => setTimeout(r, 800));
         await Promise.all([loadPowers(), loadSkills()]);
     } catch (e) {
         statusEl.className = 'pwr-save-status error';

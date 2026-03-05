@@ -18,11 +18,15 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from dotenv import load_dotenv as _load_dotenv_startup
 from cv_agent.config import AgentConfig, load_config
 
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Re-apply .env with override so vars added after initial startup are picked up
+_load_dotenv_startup(_PROJECT_ROOT / ".env", override=True)
 
 
 def create_app(config: AgentConfig | None = None) -> FastAPI:
@@ -1711,7 +1715,8 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     @app.post("/api/powers/{power_id}/configure")
     async def configure_power(power_id: str, body: dict):
-        """Update credentials for a power. Persists to .env."""
+        """Update credentials for a power. Persists to .env and refreshes os.environ from .env."""
+        from dotenv import load_dotenv as _load_dotenv, dotenv_values as _dotenv_values
         fields: dict = body.get("fields", {})
         updates: dict[str, str] = {}
         for key, value in fields.items():
@@ -1737,6 +1742,9 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 if k not in written:
                     new_lines.append(f"{k}={v}")
             env_path.write_text("\n".join(new_lines) + "\n")
+        # Re-load .env into os.environ so new values are visible immediately
+        # (load_dotenv at import time won't pick up changes made after startup)
+        _load_dotenv(env_path, override=True)
         return JSONResponse({"ok": True, "updated": list(updates.keys())})
 
     # ── Skills ─────────────────────────────────────────────────────────────
@@ -1763,161 +1771,198 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_paddle_ocr = _pkg("paddleocr")
         has_any_ocr    = has_monkey_ocr or has_paddle_ocr
 
+        def _skill(label, icon, category, description, status, tools,
+                   missing=None, packages=None, models=None, powers=None,
+                   model=None, model_label=None, install=None):
+            return {
+                "label": label, "icon": icon, "category": category,
+                "description": description, "status": status, "tools": tools,
+                "missing": missing or [],
+                "packages": packages or [],   # list of pip package names to install
+                "models": models or [],        # list of {id, label} model dicts to download
+                "powers": powers or [],        # list of {id, label} power dicts to configure
+                "model": model, "model_label": model_label,
+                "install": install,
+            }
+
         skills = {
-            "research_blog": {
-                "label": "Write Research Blog", "icon": "✍️", "category": "content",
-                "description": "Generate weekly digest posts, paper summaries, and deep-dive articles on CV breakthroughs.",
-                "status": "ready",
-                "tools": ["search_arxiv", "web_search", "file_write"],
-                "missing": [],
-            },
-            "weekly_digest": {
-                "label": "Weekly Digest", "icon": "📰", "category": "content",
-                "description": "Curated weekly magazine of CV breakthroughs — auto-pulled from ArXiv and web, formatted as Markdown.",
-                "status": "ready",
-                "tools": ["search_arxiv", "web_search", "file_write"],
-                "missing": [],
-            },
-            "email_reports": {
-                "label": "Email Reports", "icon": "📧", "category": "content",
-                "description": "Send automated digest emails and paper alerts to a recipient list.",
-                "status": "ready" if has_email else "needs-power",
-                "tools": [],
-                "missing": [] if has_email else ["Email power"],
-            },
-            "2d_image_processing": {
-                "label": "2D Image Processing", "icon": "🖼️", "category": "vision",
-                "description": "Analyse, describe, and compare 2D images using VLMs (Qwen2.5-VL, LLaVA) and MLX vision models.",
-                "status": "ready",
-                "tools": ["analyze_image", "describe_image", "compare_images", "pull_vision_model"],
-                "missing": [],
-            },
-            "3d_image_processing": {
-                "label": "3D Image Processing", "icon": "🧊", "category": "vision",
-                "description": "Process point clouds, depth maps, mesh data, and NeRF outputs using Open3D or Trimesh.",
-                "status": "ready" if has_3d else "needs-install",
-                "tools": ["shell", "file_read"],
-                "missing": [] if has_3d else ["open3d or trimesh"],
-                "install": None if has_3d else "pip install open3d",
-            },
-            "video_understanding": {
-                "label": "Video Understanding", "icon": "🎥", "category": "vision",
-                "description": "Analyse video streams, extract key frames, and understand temporal patterns in CV datasets.",
-                "status": "ready" if has_video else "needs-install",
-                "tools": ["analyze_image", "shell"],
-                "missing": [] if has_video else ["opencv-python or decord"],
-                "install": None if has_video else "pip install opencv-python",
-            },
-            "image_stitching": {
-                "label": "Image Stitching", "icon": "🧩", "category": "vision",
-                "description": "Stitch multiple overlapping images into seamless panoramas or mosaics using OpenCV feature matching.",
-                "status": "ready" if _pkg("cv2") else "needs-install",
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": [] if _pkg("cv2") else ["opencv-python"],
-                "install": None if _pkg("cv2") else "pip install opencv-python",
-            },
-            "object_detection": {
-                "label": "Object Detection", "icon": "🎯", "category": "vision",
-                "description": "Detect and localise objects using torchvision Faster R-CNN / FCOS / RetinaNet or HuggingFace RT-DETR (Apache 2.0 / BSD-3 only).",
-                "status": "ready" if (_pkg("torchvision") or _pkg("transformers")) else "needs-install",
-                "tools": ["analyze_image", "shell"],
-                "missing": [] if (_pkg("torchvision") or _pkg("transformers")) else ["torchvision or transformers"],
-                "install": None if (_pkg("torchvision") or _pkg("transformers")) else "pip install torchvision",
-            },
-            "object_tracking": {
-                "label": "Object Tracking", "icon": "📡", "category": "vision",
-                "description": "Track objects across video frames using supervision (MIT) with ByteTrack / SORT, or SAM 3 video segmentation.",
-                "status": "ready" if _pkg("supervision") else "needs-install",
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": [] if _pkg("supervision") else ["supervision"],
-                "install": None if _pkg("supervision") else "pip install supervision",
-            },
-            "text_to_image": {
-                "label": "Text → Image", "icon": "🖼️", "category": "vision",
-                "description": "Generate images from text prompts using diffusers (Apache 2.0) — SD-Turbo, SDXL-Turbo. Runs locally on MPS / CUDA / CPU.",
-                "status": "ready" if _pkg("diffusers") else "needs-install",
-                "tools": ["shell", "file_write"],
-                "missing": [] if _pkg("diffusers") else ["diffusers"],
-                "install": None if _pkg("diffusers") else "pip install diffusers transformers accelerate",
-            },
-            "super_resolution": {
-                "label": "Super Resolution", "icon": "🔭", "category": "vision",
-                "description": "Upscale images 2×–4× using spandrel (MIT) — supports ESRGAN, SwinIR, HAT, and Real-ESRGAN architectures.",
-                "status": "ready" if (_pkg("spandrel") or _pkg("basicsr")) else "needs-install",
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": [] if (_pkg("spandrel") or _pkg("basicsr")) else ["spandrel"],
-                "install": None if (_pkg("spandrel") or _pkg("basicsr")) else "pip install spandrel",
-            },
-            "image_denoising": {
-                "label": "Image Denoising", "icon": "✨", "category": "vision",
-                "description": "Remove noise from images using kornia (Apache 2.0) — Gaussian, bilateral, NLM, and diffusion-based denoisers.",
-                "status": "ready" if (_pkg("kornia") or _pkg("skimage")) else "needs-install",
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": [] if (_pkg("kornia") or _pkg("skimage")) else ["kornia"],
-                "install": None if (_pkg("kornia") or _pkg("skimage")) else "pip install kornia",
-            },
-            "document_extraction": {
-                "label": "Image Document Extraction", "icon": "📄", "category": "vision",
-                "description": "Extract structured text, tables, and layout from document images using Monkey OCR 1.5 (default) or PaddleOCR. Monkey OCR understands document structure, equations, and mixed layouts.",
-                "status": "ready" if has_monkey_ocr else ("ready" if has_paddle_ocr else "needs-model"),
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": [] if has_any_ocr else ["Monkey OCR 1.5 model"],
-                "model": "monkey-ocr" if has_monkey_ocr else ("paddleocr" if has_paddle_ocr else "monkey-ocr"),
-                "model_label": "Monkey OCR 1.5" if has_monkey_ocr else ("PaddleOCR" if has_paddle_ocr else "Monkey OCR 1.5 (not downloaded)"),
-                "install": None if has_any_ocr else "Download Monkey OCR 1.5 from the Models view",
-            },
-            "paper_to_spec": {
-                "label": "Paper → Spec", "icon": "📋", "category": "research",
-                "description": "Convert papers to spec.md files with equations, architecture diagrams, and implementation requirements.",
-                "status": "ready",
-                "tools": ["fetch_arxiv_paper", "extract_equations", "generate_spec"],
-                "missing": [],
-            },
-            "knowledge_graph": {
-                "label": "Knowledge Graph", "icon": "🕸️", "category": "research",
-                "description": "Build and query Obsidian-compatible vaults linking papers, methods, datasets, and concepts.",
-                "status": "ready",
-                "tools": ["add_paper_to_graph", "query_graph", "export_graph"],
-                "missing": [],
-            },
-            "equation_extraction": {
-                "label": "Equation Extraction", "icon": "∑", "category": "research",
-                "description": "Extract LaTeX equations, loss functions, and mathematical formulations from PDF papers.",
-                "status": "ready",
-                "tools": ["extract_equations", "extract_key_info"],
-                "missing": [],
-            },
-            "text_to_diagram": {
-                "label": "Text → Diagram", "icon": "🧭", "category": "research",
-                "description": "Paste or write text and generate diagrams via Paperbanana (Ollama + matplotlib).",
-                "status": "ready" if has_paperbanana else "needs-install",
-                "tools": ["text_to_diagram"],
-                "missing": [] if has_paperbanana else ["paperbanana"],
-                "install": None if has_paperbanana else "pip install -e /tmp/paperbanana",
-            },
-            "kaggle_competition": {
-                "label": "Kaggle Competition", "icon": "🏆", "category": "ml",
-                "description": "Analyse tasks, download datasets, build baselines, and submit competition predictions.",
-                "status": "ready" if has_kaggle else "needs-power",
-                "tools": ["web_search", "shell", "file_read", "file_write"],
-                "missing": [] if has_kaggle else ["Kaggle power"],
-            },
-            "model_fine_tuning": {
-                "label": "Model Fine-Tuning", "icon": "🎯", "category": "ml",
-                "description": "Fine-tune vision models with HuggingFace Trainer locally or on Azure ML compute clusters.",
-                "status": "ready" if (has_hf or has_azure) else "needs-power",
-                "tools": ["shell", "file_read", "file_write"],
-                "missing": ([] if has_hf else ["HuggingFace power"]) + ([] if has_azure else ["Azure ML power"]),
-            },
-            "dataset_analysis": {
-                "label": "Dataset Analysis", "icon": "📊", "category": "ml",
-                "description": "Profile CV datasets, compute statistics, visualise class distributions and annotation quality.",
-                "status": "ready",
-                "tools": ["shell", "file_read", "analyze_image"],
-                "missing": [],
-            },
+            "research_blog": _skill(
+                "Write Research Blog", "✍️", "content",
+                "Generate weekly digest posts, paper summaries, and deep-dive articles on CV breakthroughs.",
+                "ready", ["search_arxiv", "web_search", "file_write"],
+            ),
+            "weekly_digest": _skill(
+                "Weekly Digest", "📰", "content",
+                "Curated weekly magazine of CV breakthroughs — auto-pulled from ArXiv and web, formatted as Markdown.",
+                "ready", ["search_arxiv", "web_search", "file_write"],
+            ),
+            "email_reports": _skill(
+                "Email Reports", "📧", "content",
+                "Send automated digest emails and paper alerts to a recipient list.",
+                "ready" if has_email else "needs-power", [],
+                missing=[] if has_email else ["Email power (SMTP)"],
+                powers=[] if has_email else [{"id": "email", "label": "Email (SMTP)"}],
+            ),
+            "2d_image_processing": _skill(
+                "2D Image Processing", "🖼️", "vision",
+                "Analyse, describe, and compare 2D images using VLMs (Qwen2.5-VL, LLaVA) and MLX vision models.",
+                "ready", ["analyze_image", "describe_image", "compare_images", "pull_vision_model"],
+            ),
+            "3d_image_processing": _skill(
+                "3D Image Processing", "🧊", "vision",
+                "Process point clouds, depth maps, mesh data, and NeRF outputs using Open3D or Trimesh.",
+                "ready" if has_3d else "needs-install", ["shell", "file_read"],
+                missing=[] if has_3d else ["open3d"],
+                packages=[] if has_3d else ["open3d"],
+                install=None if has_3d else "pip install open3d",
+            ),
+            "video_understanding": _skill(
+                "Video Understanding", "🎥", "vision",
+                "Analyse video streams, extract key frames, and understand temporal patterns in CV datasets.",
+                "ready" if has_video else "needs-install", ["analyze_image", "shell"],
+                missing=[] if has_video else ["opencv-python"],
+                packages=[] if has_video else ["opencv-python"],
+                install=None if has_video else "pip install opencv-python",
+            ),
+            "image_stitching": _skill(
+                "Image Stitching", "🧩", "vision",
+                "Stitch multiple overlapping images into seamless panoramas or mosaics using OpenCV feature matching.",
+                "ready" if _pkg("cv2") else "needs-install", ["shell", "file_read", "file_write"],
+                missing=[] if _pkg("cv2") else ["opencv-python"],
+                packages=[] if _pkg("cv2") else ["opencv-python"],
+                install=None if _pkg("cv2") else "pip install opencv-python",
+            ),
+            "object_detection": _skill(
+                "Object Detection", "🎯", "vision",
+                "Detect and localise objects using torchvision Faster R-CNN / FCOS / RetinaNet or HuggingFace RT-DETR (Apache 2.0 / BSD-3 only).",
+                "ready" if (_pkg("torchvision") or _pkg("transformers")) else "needs-install",
+                ["analyze_image", "shell"],
+                missing=[] if (_pkg("torchvision") or _pkg("transformers")) else ["torchvision"],
+                packages=[] if (_pkg("torchvision") or _pkg("transformers")) else ["torchvision"],
+                install=None if (_pkg("torchvision") or _pkg("transformers")) else "pip install torchvision",
+            ),
+            "object_tracking": _skill(
+                "Object Tracking", "📡", "vision",
+                "Track objects across video frames using supervision (MIT) with ByteTrack / SORT, or SAM 3 video segmentation.",
+                "ready" if _pkg("supervision") else "needs-install", ["shell", "file_read", "file_write"],
+                missing=[] if _pkg("supervision") else ["supervision"],
+                packages=[] if _pkg("supervision") else ["supervision"],
+                install=None if _pkg("supervision") else "pip install supervision",
+            ),
+            "text_to_image": _skill(
+                "Text → Image", "🖼️", "vision",
+                "Generate images from text prompts using diffusers (Apache 2.0) — SD-Turbo, SDXL-Turbo. Runs locally on MPS / CUDA / CPU.",
+                "ready" if _pkg("diffusers") else "needs-install", ["shell", "file_write"],
+                missing=[] if _pkg("diffusers") else ["diffusers", "accelerate"],
+                packages=[] if _pkg("diffusers") else ["diffusers", "transformers", "accelerate"],
+                models=[] if _pkg("diffusers") else [{"id": "sd-turbo", "label": "SD-Turbo (4.8 GB)"}],
+                install=None if _pkg("diffusers") else "pip install diffusers transformers accelerate",
+            ),
+            "super_resolution": _skill(
+                "Super Resolution", "🔭", "vision",
+                "Upscale images 2×–4× using spandrel (MIT) — supports ESRGAN, SwinIR, HAT, and Real-ESRGAN architectures.",
+                "ready" if (_pkg("spandrel") or _pkg("basicsr")) else "needs-install",
+                ["shell", "file_read", "file_write"],
+                missing=[] if (_pkg("spandrel") or _pkg("basicsr")) else ["spandrel"],
+                packages=[] if (_pkg("spandrel") or _pkg("basicsr")) else ["spandrel"],
+                install=None if (_pkg("spandrel") or _pkg("basicsr")) else "pip install spandrel",
+            ),
+            "image_denoising": _skill(
+                "Image Denoising", "✨", "vision",
+                "Remove noise from images using kornia (Apache 2.0) — Gaussian, bilateral, NLM, and diffusion-based denoisers.",
+                "ready" if (_pkg("kornia") or _pkg("skimage")) else "needs-install",
+                ["shell", "file_read", "file_write"],
+                missing=[] if (_pkg("kornia") or _pkg("skimage")) else ["kornia"],
+                packages=[] if (_pkg("kornia") or _pkg("skimage")) else ["kornia"],
+                install=None if (_pkg("kornia") or _pkg("skimage")) else "pip install kornia",
+            ),
+            "document_extraction": _skill(
+                "Image Document Extraction", "📄", "vision",
+                "Extract structured text, tables, and layout from document images using Monkey OCR 1.5 (default) or PaddleOCR.",
+                "ready" if has_any_ocr else "needs-model", ["shell", "file_read", "file_write"],
+                missing=[] if has_any_ocr else ["Monkey OCR 1.5 model"],
+                models=[] if has_monkey_ocr else [{"id": "monkey-ocr", "label": "Monkey OCR 1.5 (~8 GB)"}],
+                model="monkey-ocr" if has_monkey_ocr else ("paddleocr" if has_paddle_ocr else "monkey-ocr"),
+                model_label="Monkey OCR 1.5" if has_monkey_ocr else ("PaddleOCR" if has_paddle_ocr else "Monkey OCR 1.5 (not downloaded)"),
+            ),
+            "paper_to_spec": _skill(
+                "Paper → Spec", "📋", "research",
+                "Convert papers to spec.md files with equations, architecture diagrams, and implementation requirements.",
+                "ready", ["fetch_arxiv_paper", "extract_equations", "generate_spec"],
+            ),
+            "knowledge_graph": _skill(
+                "Knowledge Graph", "🕸️", "research",
+                "Build and query Obsidian-compatible vaults linking papers, methods, datasets, and concepts.",
+                "ready", ["add_paper_to_graph", "query_graph", "export_graph"],
+            ),
+            "equation_extraction": _skill(
+                "Equation Extraction", "∑", "research",
+                "Extract LaTeX equations, loss functions, and mathematical formulations from PDF papers.",
+                "ready", ["extract_equations", "extract_key_info"],
+            ),
+            "text_to_diagram": _skill(
+                "Text → Diagram", "🧭", "research",
+                "Paste or write text and generate diagrams via Paperbanana (Ollama + matplotlib).",
+                "ready" if has_paperbanana else "needs-install", ["text_to_diagram"],
+                missing=[] if has_paperbanana else ["paperbanana"],
+                packages=[] if has_paperbanana else ["paperbanana"],
+                install=None if has_paperbanana else "pip install -e ./paperbanana",
+            ),
+            "kaggle_competition": _skill(
+                "Kaggle Competition", "🏆", "ml",
+                "Analyse tasks, download datasets, build baselines, and submit competition predictions.",
+                "ready" if has_kaggle else "needs-power", ["web_search", "shell", "file_read", "file_write"],
+                missing=[] if has_kaggle else ["Kaggle API credentials"],
+                powers=[] if has_kaggle else [{"id": "kaggle", "label": "Kaggle (API key)"}],
+            ),
+            "model_fine_tuning": _skill(
+                "Model Fine-Tuning", "🎯", "ml",
+                "Fine-tune vision models with HuggingFace Trainer locally or on Azure ML compute clusters.",
+                "ready" if (has_hf or has_azure) else "needs-power", ["shell", "file_read", "file_write"],
+                missing=([] if has_hf else ["HuggingFace token"]) + ([] if has_azure else ["Azure ML"]),
+                powers=([] if has_hf else [{"id": "huggingface", "label": "HuggingFace Hub"}]) +
+                       ([] if has_azure else [{"id": "azure_ml", "label": "Azure ML"}]),
+            ),
+            "dataset_analysis": _skill(
+                "Dataset Analysis", "📊", "ml",
+                "Profile CV datasets, compute statistics, visualise class distributions and annotation quality.",
+                "ready", ["shell", "file_read", "analyze_image"],
+            ),
         }
         return JSONResponse(skills)
+
+    @app.post("/api/skills/install-packages")
+    async def install_skill_packages(body: dict):
+        """Stream pip install output as SSE for a list of packages."""
+        import json as _json
+        import sys as _sys
+        from fastapi.responses import StreamingResponse as _SR
+
+        packages: list[str] = body.get("packages", [])
+        if not packages:
+            return JSONResponse({"error": "no packages specified"}, status_code=400)
+
+        async def _stream():
+            cmd = [_sys.executable, "-m", "pip", "install", *packages]
+            cmd_str = "$ pip install " + " ".join(packages)
+            yield f'data: {_json.dumps({"line": cmd_str})}\n\n'
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").rstrip()
+                if line:
+                    yield f'data: {_json.dumps({"line": line})}\n\n'
+            await proc.wait()
+            if proc.returncode == 0:
+                yield f'data: {_json.dumps({"status": "__done__", "success": True})}\n\n'
+            else:
+                yield f'data: {_json.dumps({"status": "__done__", "success": False, "returncode": proc.returncode})}\n\n'
+
+        return _SR(_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # ── Overview ───────────────────────────────────────────────────────────
 
@@ -2055,8 +2100,309 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "next_run": "Manual",
                 "last_run": None,
             },
+            {
+                "id": "fine_tune",
+                "name": "Model Fine-Tuning",
+                "icon": "🎯",
+                "description": "Fine-tune a vision model locally with HuggingFace Trainer. Supports image classification using ViT, ResNet, ConvNext and other HF vision models.",
+                "schedule": "On demand",
+                "enabled": True,
+                "next_run": "Manual",
+                "last_run": None,
+                "type": "fine_tune",
+                "runnable": True,
+                "requires": ["transformers", "datasets", "accelerate"],
+                "defaults": {
+                    "model_id": "google/vit-base-patch16-224",
+                    "dataset_id": "food101",
+                    "label_column": "label",
+                    "image_column": "image",
+                    "epochs": 3,
+                    "lr": "5e-5",
+                    "batch_size": 16,
+                    "output_name": "my-fine-tuned-model",
+                },
+            },
         ]
         return JSONResponse({"jobs": jobs})
+
+    @app.post("/api/jobs/fine-tune/run")
+    async def run_fine_tune_job(body: dict):
+        """Stream HuggingFace Trainer fine-tuning output as SSE."""
+        import sys as _sys
+        import textwrap as _tw
+
+        model_id    = body.get("model_id", "google/vit-base-patch16-224")
+        dataset_id  = body.get("dataset_id", "food101")
+        label_col   = body.get("label_column", "label")
+        image_col   = body.get("image_column", "image")
+        epochs      = int(body.get("epochs", 3))
+        lr          = float(body.get("lr", 5e-5))
+        batch_size  = int(body.get("batch_size", 16))
+        output_name = body.get("output_name", "my-fine-tuned-model").strip().replace(" ", "-") or "my-fine-tuned-model"
+        hf_token    = os.environ.get("HF_TOKEN") or None
+
+        output_dir = _PROJECT_ROOT / "output" / "fine-tuned" / output_name
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        train_script = _tw.dedent(f"""\
+            import os, warnings
+            warnings.filterwarnings("ignore")
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            {"os.environ['HF_TOKEN'] = " + repr(hf_token) if hf_token else ""}
+
+            from datasets import load_dataset
+            from transformers import (
+                AutoImageProcessor, AutoModelForImageClassification,
+                TrainingArguments, Trainer, DefaultDataCollator,
+            )
+            import numpy as np, evaluate, torch
+            from PIL import Image
+
+            print("⬇  Loading dataset: {dataset_id}")
+            ds = load_dataset("{dataset_id}")
+
+            # Auto-detect num_labels
+            label_names = ds["train"].features["{label_col}"].names if hasattr(ds["train"].features.get("{label_col}", None), "names") else sorted(set(ds["train"]["{label_col}"]))
+            num_labels = len(label_names) if isinstance(label_names, list) else int(max(ds["train"]["{label_col}"]) + 1)
+            id2label = {{i: str(l) for i, l in enumerate(label_names)}} if isinstance(label_names, list) else {{i: str(i) for i in range(num_labels)}}
+            label2id = {{v: k for k, v in id2label.items()}}
+            print(f"✅ Dataset loaded — {{len(ds['train'])}} train samples, {{num_labels}} classes")
+
+            print("⬇  Loading model: {model_id}")
+            processor = AutoImageProcessor.from_pretrained("{model_id}")
+            model = AutoModelForImageClassification.from_pretrained(
+                "{model_id}", num_labels=num_labels,
+                id2label=id2label, label2id=label2id, ignore_mismatched_sizes=True,
+            )
+            print("✅ Model loaded")
+
+            def preprocess(batch):
+                imgs = [img.convert("RGB") if isinstance(img, Image.Image) else Image.fromarray(img).convert("RGB") for img in batch["{image_col}"]]
+                return processor(images=imgs, return_tensors="pt")
+
+            ds = ds.with_transform(preprocess)
+
+            metric = evaluate.load("accuracy")
+            def compute_metrics(p):
+                preds = np.argmax(p.predictions, axis=1)
+                return metric.compute(predictions=preds, references=p.label_ids)
+
+            args = TrainingArguments(
+                output_dir="{output_dir}",
+                num_train_epochs={epochs},
+                per_device_train_batch_size={batch_size},
+                per_device_eval_batch_size={batch_size},
+                learning_rate={lr},
+                eval_strategy="epoch",
+                save_strategy="epoch",
+                load_best_model_at_end=True,
+                logging_steps=50,
+                remove_unused_columns=False,
+                report_to="none",
+            )
+            trainer = Trainer(
+                model=model, args=args,
+                train_dataset=ds["train"],
+                eval_dataset=ds.get("validation") or ds.get("test"),
+                processing_class=processor,
+                compute_metrics=compute_metrics,
+                data_collator=DefaultDataCollator(),
+            )
+            print("🚀 Training started")
+            trainer.train()
+            trainer.save_model("{output_dir}")
+            processor.save_pretrained("{output_dir}")
+            print(f"✅ Model saved to {output_dir}")
+        """)
+
+        script_path = output_dir / "train.py"
+        script_path.write_text(train_script)
+
+        async def _stream():
+            yield f'data: {json.dumps({"line": f"🎯 Fine-tuning {model_id} on {dataset_id}"})}\n\n'
+            yield f'data: {json.dumps({"line": f"📁 Output: output/fine-tuned/{output_name}"})}\n\n'
+            proc = await asyncio.create_subprocess_exec(
+                _sys.executable, str(script_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(_PROJECT_ROOT),
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").rstrip()
+                if line:
+                    yield f'data: {json.dumps({"line": line})}\n\n'
+            await proc.wait()
+            success = proc.returncode == 0
+            yield f'data: {json.dumps({"status": "__done__", "success": success, "output_dir": str(output_dir)})}\n\n'
+
+        return StreamingResponse(_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ── Datasets ───────────────────────────────────────────────────────────
+
+    @app.get("/api/datasets/search")
+    async def search_datasets(q: str, source: str = "huggingface", limit: int = 10):
+        """Search HuggingFace Hub or Kaggle for datasets matching q."""
+        import asyncio as _asyncio
+
+        def _hf_search():
+            try:
+                from huggingface_hub import list_datasets as _list_ds
+                results = []
+                for ds in _list_ds(search=q, limit=limit, sort="downloads", direction=-1):
+                    results.append({
+                        "id": ds.id,
+                        "name": ds.id.split("/")[-1].replace("-", " ").replace("_", " ").title(),
+                        "full_id": ds.id,
+                        "downloads": getattr(ds, "downloads", 0),
+                        "likes": getattr(ds, "likes", 0),
+                        "tags": list(getattr(ds, "tags", []))[:6],
+                        "source": "huggingface",
+                        "url": f"https://huggingface.co/datasets/{ds.id}",
+                    })
+                return results
+            except Exception as exc:
+                return {"error": str(exc)}
+
+        def _kaggle_search():
+            try:
+                import kaggle
+                results = []
+                for ds in kaggle.api.dataset_list(search=q, page_size=limit):
+                    results.append({
+                        "id": f"{ds.ref}",
+                        "name": ds.title,
+                        "full_id": ds.ref,
+                        "downloads": getattr(ds, "downloadCount", 0),
+                        "likes": getattr(ds, "voteCount", 0),
+                        "tags": [],
+                        "size_mb": getattr(ds, "totalBytes", 0) // (1024 * 1024),
+                        "source": "kaggle",
+                        "url": f"https://www.kaggle.com/datasets/{ds.ref}",
+                    })
+                return results
+            except Exception as exc:
+                return {"error": str(exc)}
+
+        loop = _asyncio.get_running_loop()
+        fn = _hf_search if source == "huggingface" else _kaggle_search
+        data = await loop.run_in_executor(None, fn)
+        if isinstance(data, dict) and "error" in data:
+            return JSONResponse({"results": [], "error": data["error"]})
+        return JSONResponse({"results": data})
+
+    @app.post("/api/datasets/add-external")
+    async def add_external_dataset(req: Request):
+        """Register an external HF/Kaggle dataset into the catalog for download."""
+        body = await req.json()
+        dataset_id = body.get("id", "").strip().replace("/", "--")
+        if not dataset_id:
+            return JSONResponse({"error": "id required"}, status_code=400)
+        from cv_agent.dataset_manager import _ALL, _BASE_DIR, DatasetEntry, _COMPLETE_SENTINEL, get_downloaded_size_gb
+        import asyncio as _asyncio
+        from fastapi.responses import StreamingResponse as _SR
+
+        source = body.get("source", "huggingface")
+        hf_repo = body.get("full_id", body.get("id"))
+        name = body.get("name", dataset_id)
+        size_gb = float(body.get("size_gb") or 0.5)
+
+        if dataset_id not in _ALL:
+            entry = DatasetEntry(
+                id=dataset_id, name=name, desc=body.get("desc", ""),
+                size_gb=size_gb, hf_repo=hf_repo,
+            )
+            _ALL[dataset_id] = entry
+
+        async def _stream():
+            entry = _ALL[dataset_id]
+            try:
+                from huggingface_hub import snapshot_download as _dl
+            except ImportError:
+                yield f'data: {json.dumps({"error": "huggingface_hub not installed"})}\n\n'
+                return
+
+            hf_token = os.environ.get("HF_TOKEN") or None
+            local_dir = _BASE_DIR / dataset_id
+            local_dir.mkdir(parents=True, exist_ok=True)
+
+            import asyncio
+            progress_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+            def _download():
+                cache_dl_dir = local_dir / ".cache" / "huggingface" / "download"
+                if cache_dl_dir.exists():
+                    for lf in cache_dl_dir.glob("*.lock"):
+                        lf.unlink(missing_ok=True)
+                try:
+                    _dl(repo_id=hf_repo, repo_type="dataset", local_dir=str(local_dir),
+                        local_dir_use_symlinks=False, token=hf_token)
+                    (local_dir / _COMPLETE_SENTINEL).touch()
+                    progress_queue.put_nowait({"status": "__done__"})
+                except Exception as exc:
+                    progress_queue.put_nowait({"error": str(exc)})
+
+            loop = asyncio.get_running_loop()
+            dl_task = loop.run_in_executor(None, _download)
+            yield f'data: {json.dumps({"status": "Starting download…", "dataset": name, "hf_repo": hf_repo})}\n\n'
+
+            while not dl_task.done():
+                while not progress_queue.empty():
+                    ev = progress_queue.get_nowait()
+                    yield f"data: {json.dumps(ev)}\n\n"
+                    if ev.get("status") == "__done__" or ev.get("error"):
+                        return
+                current_gb = await loop.run_in_executor(None, get_downloaded_size_gb, dataset_id)
+                yield f'data: {json.dumps({"status": "Downloading…", "downloaded_gb": current_gb, "total_gb": size_gb})}\n\n'
+                await asyncio.sleep(1.5)
+
+            while not progress_queue.empty():
+                ev = progress_queue.get_nowait()
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("status") == "__done__" or ev.get("error"):
+                    return
+            yield f'data: {json.dumps({"status": "__done__"})}\n\n'
+
+        return _SR(_stream(), media_type="text/event-stream",
+                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/api/datasets")
+    async def list_datasets():
+        from cv_agent.dataset_manager import get_catalog_with_status
+        return JSONResponse({"datasets": get_catalog_with_status()})
+
+    @app.get("/api/datasets/{dataset_id}")
+    async def get_dataset(dataset_id: str):
+        from cv_agent.dataset_manager import _ALL, is_dataset_downloaded, get_downloaded_size_gb
+        entry = _ALL.get(dataset_id)
+        if not entry:
+            return JSONResponse({"error": f"Unknown dataset: {dataset_id}"}, status_code=404)
+        downloaded = is_dataset_downloaded(dataset_id)
+        return JSONResponse({
+            "id": entry.id, "name": entry.name, "hf_repo": entry.hf_repo,
+            "downloaded": downloaded,
+            "local_size_gb": get_downloaded_size_gb(dataset_id) if downloaded else None,
+        })
+
+    @app.post("/api/datasets/{dataset_id}/download")
+    async def download_dataset(dataset_id: str):
+        from cv_agent.dataset_manager import stream_hf_download
+        from fastapi.responses import StreamingResponse as _SR
+        return _SR(
+            stream_hf_download(dataset_id),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.delete("/api/datasets/{dataset_id}")
+    async def delete_dataset_route(dataset_id: str):
+        from cv_agent.dataset_manager import delete_dataset, _ALL
+        if dataset_id not in _ALL:
+            return JSONResponse({"error": f"Unknown dataset: {dataset_id}"}, status_code=404)
+        delete_dataset(dataset_id)
+        return JSONResponse({"ok": True})
 
     # ── Debug ──────────────────────────────────────────────────────────────
 
