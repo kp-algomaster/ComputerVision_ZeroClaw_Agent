@@ -32,32 +32,32 @@ def _get_ocr(lang: str = "en") -> Any:
         from paddleocr import PaddleOCR
     except ImportError:
         return None
-    ocr = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
+    # PaddleOCR 3.x: removed use_angle_cls and show_log; skip connectivity check
+    import os
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    ocr = PaddleOCR(lang=lang)
     _OCR_CACHE[lang] = ocr
     return ocr
 
 
-def _flatten_result(result: list) -> list[dict]:
-    """Convert PaddleOCR raw output to a flat list of {text, confidence, box} dicts."""
+def _flatten_result(results: list) -> list[dict]:
+    """Convert PaddleOCR 3.x OCRResult list to flat {text, confidence, box, polygon} dicts."""
     out = []
-    if not result:
-        return out
-    # result is [[[ [box], (text, conf) ], ...]] — one list per image
-    for page in result:
-        if not page:
+    for page in results:
+        if page is None:
             continue
-        for item in page:
-            if not item or len(item) < 2:
-                continue
-            box_raw, (text, conf) = item
-            # box_raw: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-            xs = [p[0] for p in box_raw]
-            ys = [p[1] for p in box_raw]
+        texts = page.get("rec_texts", [])
+        scores = page.get("rec_scores", [])
+        polys = page.get("dt_polys", [])
+        for text, conf, poly in zip(texts, scores, polys):
+            pts = poly.tolist() if hasattr(poly, "tolist") else poly
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
             out.append({
                 "text": text,
                 "confidence": round(float(conf), 4),
                 "box": [round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))],
-                "polygon": [[round(p[0]), round(p[1])] for p in box_raw],
+                "polygon": [[round(p[0]), round(p[1])] for p in pts],
             })
     return out
 
@@ -135,7 +135,7 @@ def run_ocr(
         })
 
     try:
-        result = ocr.ocr(image_path, cls=True)
+        result = ocr.ocr(image_path)
     except Exception as exc:
         return json.dumps({"error": f"OCR failed: {exc}"})
 
