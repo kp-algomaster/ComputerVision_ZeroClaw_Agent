@@ -2074,6 +2074,19 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     # ── SAM3 Playground ────────────────────────────────────────────────────
 
+    @app.post("/api/upload-image")
+    async def upload_image_generic(file: UploadFile = File(...)):
+        """Generic image upload — saves to output/uploads/, returns {path, url}."""
+        import uuid
+        from pathlib import Path as _P
+        upload_dir = _P("output/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        ext = _P(file.filename or "image.jpg").suffix.lower() or ".jpg"
+        fname = f"upload_{uuid.uuid4().hex[:12]}{ext}"
+        dest = upload_dir / fname
+        dest.write_bytes(await file.read())
+        return JSONResponse({"path": str(dest), "url": f"/output/uploads/{fname}"})
+
     @app.post("/api/sam3/upload")
     async def sam3_upload_image(file: UploadFile = File(...)):
         """Accept an image upload, save to output/segments/uploads/, return path + dimensions."""
