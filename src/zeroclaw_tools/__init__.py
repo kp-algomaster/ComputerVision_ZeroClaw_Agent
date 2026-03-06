@@ -14,7 +14,7 @@ import subprocess
 import uuid
 from typing import Any
 
-import httpx
+from cv_agent.http_client import httpx, httpx_verify, create_async_httpx_client, create_httpx_client
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
@@ -232,7 +232,15 @@ def create_agent(
         host = base_url.rstrip("/")
         if host.endswith("/v1"):
             host = host[:-3]
-        llm = ChatOllama(model=model, base_url=host, temperature=0)
+        verify = httpx_verify()
+        llm = ChatOllama(
+            model=model,
+            base_url=host,
+            temperature=0,
+            client_kwargs={"verify": verify},
+            async_client_kwargs={"verify": verify},
+            sync_client_kwargs={"verify": verify},
+        )
     else:
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
@@ -240,6 +248,8 @@ def create_agent(
             api_key=api_key or "ollama",
             base_url=base_url,
             temperature=0,
+            http_client=create_httpx_client(timeout=None),
+            http_async_client=create_async_httpx_client(timeout=None),
         )
 
     return _make_text_react_graph(llm, tools)
@@ -341,7 +351,7 @@ def web_search(query: str, max_results: int = 8) -> str:
     # ── DuckDuckGo full-text search (ddgs) ───────────────────────────────────
     try:
         from ddgs import DDGS
-        results = list(DDGS().text(query, max_results=max_results))
+        results = list(DDGS(verify=httpx_verify()).text(query, max_results=max_results))
         if results:
             lines = [f"# Web Search: \"{query}\"\n"]
             for i, r in enumerate(results, 1):

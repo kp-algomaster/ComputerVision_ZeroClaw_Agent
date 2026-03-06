@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from cv_agent.core.workflow_manager import WorkflowManager
 
 @pytest.mark.asyncio
@@ -8,7 +8,7 @@ async def test_submit_workflow():
     manager.base_url = "http://localhost:7862"
 
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_resp = AsyncMock()
+        mock_resp = Mock()
         mock_resp.json.return_value = {"runId": "test-1234"}
         mock_resp.raise_for_status.return_value = None
         mock_post.return_value = mock_resp
@@ -25,8 +25,9 @@ async def test_resolve_checkpoint():
     manager.base_url = "http://localhost:7862"
 
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_resp = AsyncMock()
+        mock_resp = Mock()
         mock_resp.json.return_value = {"status": "ok"}
+        mock_resp.raise_for_status.return_value = None
         mock_post.return_value = mock_resp
 
         result = await manager.resolve_checkpoint("cp-123", True, "LGTM")

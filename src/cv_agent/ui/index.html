@@ -92,6 +92,19 @@
         <!-- ═══ Main Chat ═══ -->
         <section id="view-chat" class="view active">
             <div class="chat-container">
+                <div class="chat-toolbar">
+                    <div class="chat-model-row">
+                        <div class="chat-model-field">
+                            <label for="chatModelSelect">Main Chat Model</label>
+                            <select id="chatModelSelect" disabled>
+                                <option>Loading local models...</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn-sm" id="refreshChatModelsBtn"
+                            onclick="loadChatModels({ forceRefresh: true })">↻ Refresh Models</button>
+                    </div>
+                    <div id="chatModelHint" class="chat-model-hint">Checking local Ollama chat models...</div>
+                </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message system">
                         <div class="message-content">

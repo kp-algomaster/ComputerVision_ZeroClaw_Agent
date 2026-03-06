@@ -465,6 +465,7 @@ CV_Zero_Claw_Agent/
 | `LLM_MODEL` | `qwen3.5:latest` | LLM model tag |
 | `OLLAMA_VISION_MODEL` | `qwen3.5:latest` | Vision model tag |
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible base URL |
+| `CV_SSL_VERIFY` | `false` | Verify TLS certificates for outbound HTTP(S); set `false` for self-signed chains or set a PEM bundle path |
 | `HF_TOKEN` | — | HuggingFace Hub token (required for gated models: SAM 3, DeepGen 1.0) |
 | `BRAVE_API_KEY` | — | Brave Search (upgrades web search quality) |
 | `SEMANTIC_SCHOLAR_API_KEY` | — | Removes rate limits on paper search |

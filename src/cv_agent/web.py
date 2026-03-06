@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cv_agent.http_client import httpx
 import markdown
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -24,9 +25,44 @@ from cv_agent.config import AgentConfig, load_config
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_NON_CHAT_MODEL_MARKERS = (
+    "embed",
+    "embedding",
+    "rerank",
+    "whisper",
+    "transcribe",
+    "speech",
+    "tts",
+    "clip",
+)
 
 # Re-apply .env with override so vars added after initial startup are picked up
 _load_dotenv_startup(_PROJECT_ROOT / ".env", override=True)
+
+
+def _is_chat_model_compatible(model_name: str, capabilities: list[str] | None) -> bool:
+    """Return True when an Ollama model looks suitable for text chat."""
+    normalized_name = model_name.strip().lower()
+    if any(marker in normalized_name for marker in _NON_CHAT_MODEL_MARKERS):
+        return False
+
+    normalized_caps = {str(cap).strip().lower() for cap in (capabilities or []) if str(cap).strip()}
+    if not normalized_caps:
+        return True
+    return "completion" in normalized_caps or "chat" in normalized_caps
+
+
+def _select_default_chat_model(
+    available_models: list[str],
+    configured_model: str,
+    preferred_model: str | None = None,
+) -> str:
+    """Pick the best available chat model, preferring an explicit user choice."""
+    if preferred_model and preferred_model in available_models:
+        return preferred_model
+    if configured_model in available_models:
+        return configured_model
+    return available_models[0] if available_models else ""
 
 
 def create_app(config: AgentConfig | None = None) -> FastAPI:
@@ -40,6 +76,67 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     output_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/output", StaticFiles(directory=output_dir), name="output")
     app.state.diagram_jobs = {}
+
+    def _fetch_ollama_model_metadata(model_name: str) -> dict[str, Any]:
+        host = config.vision.ollama.host.rstrip("/")
+        try:
+            resp = httpx.post(
+                f"{host}/api/show",
+                json={"name": model_name},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.warning("Could not inspect Ollama model '%s': %s", model_name, exc)
+            return {}
+
+    def _list_chat_compatible_models() -> list[dict[str, Any]]:
+        from cv_agent.tools.hardware_probe import list_ollama_models
+
+        compatible: list[dict[str, Any]] = []
+        for model_name in list_ollama_models(config.vision.ollama.host):
+            metadata = _fetch_ollama_model_metadata(model_name)
+            details = metadata.get("details") or {}
+            capabilities = [
+                str(cap).strip().lower()
+                for cap in (metadata.get("capabilities") or [])
+                if str(cap).strip()
+            ]
+            if not _is_chat_model_compatible(model_name, capabilities):
+                continue
+
+            normalized_name = model_name.lower()
+            compatible.append(
+                {
+                    "name": model_name,
+                    "family": details.get("family") or "",
+                    "parameter_size": details.get("parameter_size") or "",
+                    "quantization": details.get("quantization_level") or "",
+                    "capabilities": capabilities,
+                    "supports_tools": "tools" in capabilities,
+                    "supports_vision": "vision" in capabilities,
+                    "supports_thinking": "thinking" in capabilities,
+                    "warning": (
+                        "Base model detected; it may be less instruction-tuned than chat/instruct variants."
+                        if "-base" in normalized_name
+                        else ""
+                    ),
+                }
+            )
+
+        compatible.sort(
+            key=lambda item: (
+                0 if item["name"] == config.llm.model else 1,
+                0 if item["supports_tools"] else 1,
+                0 if item["supports_vision"] else 1,
+                0 if item["supports_thinking"] else 1,
+                0 if not item["warning"] else 1,
+                item["name"].lower(),
+            )
+        )
+        return compatible
 
     def _add_diag_event(job: dict[str, Any], message: str, kind: str = "info") -> None:
         job["events"].append(
@@ -158,6 +255,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 data = await websocket.receive_text()
                 msg = json.loads(data)
                 user_text = msg.get("message", "")
+                requested_model = str(msg.get("model", "")).strip()
 
                 if not user_text.strip():
                     continue
@@ -166,16 +264,45 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 await websocket.send_text(json.dumps({"type": "typing", "status": True}))
 
                 try:
+                    available_chat_models = _list_chat_compatible_models()
+                    available_model_names = [model["name"] for model in available_chat_models]
+                    selected_model = _select_default_chat_model(
+                        available_model_names,
+                        config.llm.model,
+                        requested_model or None,
+                    )
+                    if not selected_model:
+                        raise RuntimeError(
+                            "No compatible Ollama chat models are currently available. Pull one in the Models view first."
+                        )
+
+                    if selected_model != (requested_model or config.llm.model):
+                        missing_model = requested_model or config.llm.model
+                        await websocket.send_text(json.dumps({
+                            "type": "model_info",
+                            "selected_model": selected_model,
+                            "requested_model": missing_model,
+                            "fallback": True,
+                            "message": f"Model '{missing_model}' is unavailable. Using '{selected_model}' instead.",
+                        }))
+
+                    runtime_config = config.model_copy(
+                        update={
+                            "llm": config.llm.model_copy(update={"model": selected_model}),
+                        }
+                    )
+
                     from cv_agent.agent import run_agent_stream
 
                     # Signal stream start so client creates the message bubble
                     await websocket.send_text(json.dumps({
                         "type": "stream_start",
                         "role": "assistant",
+                        "model": selected_model,
                     }))
 
                     final_content = ""
-                    async for event in run_agent_stream(user_text, config, history):
+                    async for event in run_agent_stream(user_text, runtime_config, history):
                         etype = event["type"]
 
                         if etype == "token":
@@ -370,6 +497,30 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "llm_model": config.llm.model,
             "vision_model": config.vision.ollama.default_model,
             "vault_path": config.knowledge.vault_path,
+        })
+
+    @app.get("/api/chat/models")
+    async def chat_models():
+        """List locally available Ollama models that can power the main chat."""
+        models = _list_chat_compatible_models()
+        available_names = [model["name"] for model in models]
+        default_model = _select_default_chat_model(available_names, config.llm.model)
+
+        message = ""
+        if not models:
+            message = "No compatible Ollama chat models are pulled yet. Open Models to pull one first."
+        elif config.llm.model not in available_names and default_model:
+            message = (
+                f"Configured chat model '{config.llm.model}' is not pulled. "
+                f"Select '{default_model}' or another available model below."
+            )
+
+        return JSONResponse({
+            "configured_model": config.llm.model,
+            "configured_model_available": config.llm.model in available_names,
+            "default_model": default_model,
+            "message": message,
+            "models": models,
         })
 
     # ── Text To Diagram ───────────────────────────────────────────────────
@@ -1302,7 +1453,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         """Test the connection for a remote platform."""
         if platform not in _PLATFORMS:
             return JSONResponse({"error": f"Unknown platform: {platform}"}, status_code=404)
-        import httpx as _hx
+        from cv_agent.http_client import httpx as _hx
         import subprocess as _sp
 
         if platform == "telegram":
@@ -1393,7 +1544,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     async def pull_model_cmd(body: dict):
         """Stream `ollama pull` progress as SSE (NDJSON from Ollama API)."""
         import json as _json
-        import httpx as _httpx
+        from cv_agent.http_client import httpx as _httpx
         from fastapi.responses import StreamingResponse as _SR
         model = (body.get("model") or "").strip()
         if not model:
@@ -1427,7 +1578,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     @app.delete("/api/models/{name:path}")
     async def delete_model(name: str):
         """Delete a pulled model from Ollama."""
-        import httpx as _httpx
+        from cv_agent.http_client import httpx as _httpx
         host = config.vision.ollama.host.rstrip("/")
         try:
             resp = _httpx.delete(
@@ -1459,7 +1610,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         pypi_version: str | None = None
         update_available = False
         try:
-            import httpx as _httpx
+            from cv_agent.http_client import httpx as _httpx
             resp = _httpx.get("https://pypi.org/pypi/zeroclaw-tools/json", timeout=4)
             if resp.status_code == 200:
                 pypi_version = resp.json()["info"]["version"]

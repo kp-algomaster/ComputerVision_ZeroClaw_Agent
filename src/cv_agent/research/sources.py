@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import feedparser
-import httpx
+from cv_agent.http_client import httpx
 
 logger = logging.getLogger(__name__)
 

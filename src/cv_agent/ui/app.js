@@ -17,6 +17,15 @@ let _t2dProviderDefaults = { profiles: {}, vlm_providers: {}, image_providers: {
 let _t2dVlmChoices = [];
 let _skillsById = {};
 let _draggedPinnedSkillId = null;
+const _CHAT_MODEL_STORAGE_KEY = 'cv_main_chat_model';
+let _chatModels = [];
+let _chatModelState = {
+    configured_model: '',
+    configured_model_available: true,
+    default_model: '',
+    message: '',
+};
+let currentChatModel = '';
 
 function _localDefaultT2DVlmModel(vlmProvider) {
     if (vlmProvider === 'gemini') return 'gemini-2.0-flash';
@@ -50,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPinnedNavItems();
     renderPinnedSkillNavItems();
     checkStatus();
+    loadChatModels();
     // Prefetch skills so pinned nav items can route immediately on first click
     fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => {});
 });
@@ -132,6 +142,130 @@ async function checkStatus() {
     }
 }
 
+async function loadChatModels(options = {}) {
+    const select = document.getElementById('chatModelSelect');
+    const hint = document.getElementById('chatModelHint');
+    if (!select || !hint) return;
+
+    select.disabled = true;
+    select.innerHTML = '<option>Loading local models...</option>';
+    hint.textContent = 'Checking local Ollama chat models...';
+
+    try {
+        const url = options.forceRefresh
+            ? `/api/chat/models?t=${Date.now()}`
+            : '/api/chat/models';
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        _chatModels = Array.isArray(data.models) ? data.models : [];
+        _chatModelState = {
+            configured_model: data.configured_model || '',
+            configured_model_available: Boolean(data.configured_model_available),
+            default_model: data.default_model || '',
+            message: data.message || '',
+        };
+
+        const availableNames = _chatModels.map(model => model.name);
+        const storedModel = localStorage.getItem(_CHAT_MODEL_STORAGE_KEY) || '';
+        const preferredModel = [
+            currentChatModel,
+            storedModel,
+            _chatModelState.default_model,
+            availableNames[0] || '',
+        ].find(modelName => modelName && availableNames.includes(modelName)) || '';
+
+        select.innerHTML = '';
+        if (!_chatModels.length) {
+            select.innerHTML = '<option>No compatible models pulled</option>';
+            currentChatModel = '';
+            renderChatModelHint();
+            return;
+        }
+
+        _chatModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        select.disabled = false;
+        setCurrentChatModel(preferredModel, { persist: true });
+    } catch {
+        _chatModels = [];
+        _chatModelState = {
+            configured_model: '',
+            configured_model_available: false,
+            default_model: '',
+            message: 'Failed to load local models. Make sure Ollama is running.',
+        };
+        currentChatModel = '';
+        select.innerHTML = '<option>Unable to load models</option>';
+        renderChatModelHint();
+    }
+}
+
+function setCurrentChatModel(modelName, options = {}) {
+    currentChatModel = modelName || '';
+
+    const select = document.getElementById('chatModelSelect');
+    if (select && currentChatModel && select.value !== currentChatModel) {
+        select.value = currentChatModel;
+    }
+
+    if (options.persist !== false) {
+        if (currentChatModel) {
+            localStorage.setItem(_CHAT_MODEL_STORAGE_KEY, currentChatModel);
+        } else {
+            localStorage.removeItem(_CHAT_MODEL_STORAGE_KEY);
+        }
+    }
+
+    renderChatModelHint();
+}
+
+function renderChatModelHint() {
+    const hint = document.getElementById('chatModelHint');
+    if (!hint) return;
+
+    if (!_chatModels.length) {
+        hint.innerHTML = '<span class="chat-model-warning">No compatible Ollama chat models are pulled. Open the Models view and pull one first.</span>';
+        return;
+    }
+
+    const selected = _chatModels.find(model => model.name === currentChatModel) || _chatModels[0];
+    if (!selected && _chatModelState.message) {
+        hint.innerHTML = `<span class="chat-model-warning">${_escHtml(_chatModelState.message)}</span>`;
+        return;
+    }
+
+    const capabilities = [];
+    if (selected?.supports_tools) capabilities.push('tools');
+    if (selected?.supports_vision) capabilities.push('vision');
+    if (selected?.supports_thinking) capabilities.push('thinking');
+
+    const meta = [selected?.family, selected?.parameter_size, selected?.quantization]
+        .filter(Boolean)
+        .concat(capabilities.length ? [capabilities.join(' + ')] : []);
+
+    const parts = [];
+    if (selected?.name) {
+        parts.push(`<span class="chat-model-chip">Using <code>${_escHtml(selected.name)}</code></span>`);
+    }
+    if (meta.length) {
+        parts.push(`<span class="chat-model-meta">${_escHtml(meta.join(' · '))}</span>`);
+    }
+    if (_chatModelState.message) {
+        parts.push(`<span class="chat-model-warning">${_escHtml(_chatModelState.message)}</span>`);
+    }
+    if (selected?.warning) {
+        parts.push(`<span class="chat-model-warning">${_escHtml(selected.warning)}</span>`);
+    }
+
+    hint.innerHTML = parts.join(' ');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Chat
 // ═══════════════════════════════════════════════════════════════════════
@@ -139,6 +273,7 @@ async function checkStatus() {
 function initChat() {
     const form = document.getElementById('chatForm');
     const input = document.getElementById('chatInput');
+    const modelSelect = document.getElementById('chatModelSelect');
 
     input.addEventListener('input', () => {
         input.style.height = 'auto';
@@ -154,10 +289,17 @@ function initChat() {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
+        if (!currentChatModel) {
+            addMessage('system', 'No compatible Ollama chat model is available. Pull one from the Models view first.');
+            return;
+        }
         addMessage('user', text);
         sendMessage(text);
         input.value = '';
         input.style.height = 'auto';
+    });
+    modelSelect?.addEventListener('change', () => {
+        setCurrentChatModel(modelSelect.value, { persist: true });
     });
     connectWebSocket();
 }
@@ -223,6 +365,13 @@ function connectWebSocket() {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
             _finalizeStream(data.content, data.html);
+        } else if (data.type === 'model_info') {
+            if (data.selected_model) {
+                setCurrentChatModel(data.selected_model, { persist: true });
+            }
+            if (data.message) {
+                addMessage('system', data.message);
+            }
         } else if (data.type === 'error') {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
@@ -349,7 +498,7 @@ function _escHtml(str) {
 
 function sendMessage(text) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ message: text }));
+        ws.send(JSON.stringify({ message: text, model: currentChatModel }));
         document.getElementById('sendBtn').disabled = true;
         setTimeout(() => { document.getElementById('sendBtn').disabled = false; }, 1000);
     } else {
