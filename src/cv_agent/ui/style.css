@@ -2311,6 +2311,55 @@ body {
     margin-bottom: 12px;
 }
 
+.llmfit-install-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.llmfit-notice-message {
+    line-height: 1.5;
+}
+
+.llmfit-notice-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.llmfit-notice-actions code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #f4d58d;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+.llmfit-install-btn {
+    background: #5a4300;
+    border-color: #7a5b00;
+    color: #ffd166;
+}
+
+.llmfit-install-btn:hover {
+    background: #6d5100;
+    color: #ffe29a;
+}
+
+.llmfit-install-status {
+    margin-top: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 180px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
 /* ══════════════════════════════════════════════
    Sessions
    ══════════════════════════════════════════════ */
@@ -4350,6 +4399,53 @@ body {
     line-height: 1.4;
 }
 
+.sam3-image-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sam3-image-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sam3-image-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    text-align: right;
+    line-height: 1.4;
+}
+
+.sam3-image-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sam3-image-actions .btn-sm {
+    text-align: center;
+}
+
+.sam3-image-primary {
+    flex: 1 1 160px;
+    background: var(--accent-bg);
+    border-color: #264966;
+    color: var(--text-primary);
+}
+
+.sam3-image-primary:hover {
+    background: #234b73;
+    color: #fff;
+}
+
 /* Model selector row */
 .sam3-model-row {
     display: flex;
@@ -4592,4 +4688,6 @@ body {
     }
     .sam3-canvas-panel { border-right: none; border-bottom: 1px solid var(--border); }
     .sam3-side-panel { max-height: none; }
+    .sam3-image-panel-head { flex-direction: column; }
+    .sam3-image-status { text-align: left; }
 }

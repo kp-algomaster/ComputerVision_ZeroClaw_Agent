@@ -2080,7 +2080,9 @@ async function loadHardwareAndRecommended() {
                     <span class="accel-badge ${accel}">${accelLabel}</span>
                 </div>`;
         } else if (!data.llmfit_available) {
-            hwEl.innerHTML = `<div class="llmfit-notice">⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.<br>Install: <code>brew install llmfit</code></div>`;
+            hwEl.innerHTML = _renderLlmfitInstallNotice(
+                '⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.'
+            );
         } else {
             hwEl.innerHTML = '<p class="placeholder">Hardware info unavailable.</p>';
         }
@@ -2088,7 +2090,7 @@ async function loadHardwareAndRecommended() {
         const recEl = document.getElementById('recommendedList');
         const badge = document.getElementById('llmfitBadge');
         if (!data.llmfit_available) {
-            recEl.innerHTML = '<div class="llmfit-notice">Install llmfit to get hardware-matched recommendations.</div>';
+            recEl.innerHTML = _renderLlmfitInstallNotice('Install llmfit to get hardware-matched recommendations.');
             badge.textContent = 'llmfit required';
             return;
         }
@@ -2127,6 +2129,119 @@ async function loadHardwareAndRecommended() {
         document.getElementById('hardwareInfo').innerHTML = '<p class="placeholder">Failed to load.</p>';
         console.error(e);
     }
+}
+
+function _renderLlmfitInstallNotice(message) {
+    return `
+        <div class="llmfit-notice llmfit-install-notice">
+            <div class="llmfit-notice-message">${message}</div>
+            <div class="llmfit-notice-actions">
+                <button class="btn-pull-sm llmfit-install-btn" onclick="installLlmfit(this)">Install llmfit</button>
+                <code>brew install llmfit</code>
+            </div>
+            <div class="llmfit-install-status pull-status" hidden></div>
+        </div>`;
+}
+
+function _getLlmfitInstallStatus(btn) {
+    return btn?.closest('.llmfit-install-notice')?.querySelector('.llmfit-install-status') || null;
+}
+
+function _setLlmfitInstallPending(btn, status) {
+    btn.disabled = true;
+    btn.textContent = 'Installing...';
+    if (!status) return;
+    status.hidden = false;
+    status.className = 'llmfit-install-status pull-status';
+    status.textContent = '';
+}
+
+function _appendLlmfitInstallLine(status, line) {
+    if (!status) return;
+    status.textContent += line + '\n';
+    status.scrollTop = status.scrollHeight;
+}
+
+function _finishLlmfitInstallStatus(status, doneEvent) {
+    if (!status || !doneEvent) return;
+    const installed = Boolean(doneEvent.success);
+    status.className = `llmfit-install-status pull-status ${installed ? 'success' : 'error'}`;
+    status.textContent += installed
+        ? '\nllmfit installed successfully. Refreshing recommendations...'
+        : `\nInstallation failed (exit ${doneEvent.returncode ?? 'unknown'}).`;
+}
+
+async function _streamSkillCommand(command, onEvent) {
+    const resp = await fetch('/api/skills/run-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+    });
+
+    if (!resp.ok || !resp.body) {
+        throw new Error('Failed to start command.');
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let doneEvent = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+
+        for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+
+            let ev;
+            try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+
+            onEvent?.(ev);
+            if (ev.status === '__done__') doneEvent = ev;
+        }
+    }
+
+    return doneEvent;
+}
+
+async function installLlmfit(btn) {
+    if (!btn) return;
+
+    const status = _getLlmfitInstallStatus(btn);
+    const originalText = btn.textContent;
+
+    _setLlmfitInstallPending(btn, status);
+
+    try {
+        const doneEvent = await _streamSkillCommand('brew install llmfit', ev => {
+            if (ev.line !== undefined) _appendLlmfitInstallLine(status, ev.line);
+        });
+
+        _finishLlmfitInstallStatus(status, doneEvent);
+
+        if (doneEvent?.success) {
+            await loadHardwareAndRecommended();
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Retry Install';
+        }
+    } catch (e) {
+        if (status) {
+            status.hidden = false;
+            status.className = 'llmfit-install-status pull-status error';
+            status.textContent += `\nError: ${e.message}`;
+        }
+        btn.disabled = false;
+        btn.textContent = 'Retry Install';
+        return;
+    }
+
+    btn.textContent = originalText;
 }
 
 function _categorizeModel(name) {
@@ -3875,6 +3990,7 @@ function loadSam3View() {
         _sam3InitUpload();
         _sam3.inited = true;
     }
+    _sam3UpdateImageControls();
     fetch('/api/sam3/status').then(r => r.json()).then(d => {
         const badge = document.getElementById('sam3ModelBadge');
         if (!badge) return;
@@ -3917,7 +4033,7 @@ function _sam3InitUpload() {
     const canvas = document.getElementById('sam3BoxCanvas');
     if (!zone || !input || !canvas) return;
 
-    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('click', () => sam3ChooseImage());
     input.addEventListener('change', () => { if (input.files[0]) _sam3HandleFile(input.files[0]); });
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
@@ -3939,9 +4055,38 @@ function _sam3InitUpload() {
     }
 }
 
+function sam3ChooseImage() {
+    const input = document.getElementById('sam3FileInput');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+function _sam3UpdateImageControls(options = {}) {
+    const chooseBtn = document.getElementById('sam3ChooseImageBtn');
+    const clearBtn = document.getElementById('sam3ClearImageBtn');
+    const status = document.getElementById('sam3ImageStatus');
+    if (!chooseBtn || !clearBtn || !status) return;
+
+    const hasImage = options.hasImage ?? Boolean(_sam3.imagePath);
+    const busy = Boolean(options.busy);
+    const infoText = document.getElementById('sam3ImgInfo')?.textContent?.trim();
+
+    chooseBtn.textContent = busy ? 'Uploading...' : (hasImage ? 'Select New Image' : 'Select Image');
+    chooseBtn.disabled = busy;
+    clearBtn.hidden = !hasImage;
+    clearBtn.disabled = busy;
+    status.textContent = options.statusText ?? (hasImage ? (infoText || 'Image loaded') : 'No image selected');
+}
+
 async function _sam3HandleFile(file) {
     const content = document.getElementById('sam3UploadContent');
     content.innerHTML = '<div class="sam3-upload-icon">⏳</div><p>Uploading…</p>';
+    _sam3UpdateImageControls({
+        busy: true,
+        hasImage: Boolean(_sam3.imagePath),
+        statusText: file?.name ? `Uploading ${file.name}...` : 'Uploading image...',
+    });
 
     const fd = new FormData();
     fd.append('file', file);
@@ -3950,29 +4095,31 @@ async function _sam3HandleFile(file) {
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
 
+        sam3ClearResult();
+        sam3ClearBox();
         _sam3.imagePath = data.image_path;
 
         const img  = document.getElementById('sam3Img');
         const wrap = document.getElementById('sam3ImgWrap');
+        const infoText = data.width && data.height ? `${data.width} × ${data.height} px` : 'Image loaded';
 
         // Show wrap BEFORE setting src — so dimensions are available when onload fires
         document.getElementById('sam3UploadZone').hidden = true;
         wrap.hidden = false;
         document.getElementById('sam3ImgToolbar').hidden = false;
-        document.getElementById('sam3ImgInfo').textContent =
-            data.width && data.height ? `${data.width} × ${data.height} px` : '';
+        document.getElementById('sam3ImgInfo').textContent = infoText;
+        _sam3UpdateImageControls({ statusText: infoText });
 
         img.onload = () => _sam3SyncCanvas();
         img.src = data.url + '?t=' + Date.now();
         // Fallback: if the image was already decoded before onload wired up
         requestAnimationFrame(() => { if (img.complete && img.naturalWidth > 0) _sam3SyncCanvas(); });
-
-        sam3ClearResult();
     } catch (e) {
         content.innerHTML =
             `<div class="sam3-upload-icon">❌</div>` +
             `<p style="color:var(--text-secondary)">Upload failed: ${escapeHtml(e.message)}</p>` +
             `<p><button class="btn-sm" onclick="_sam3ResetUploadZone()">Try again</button></p>`;
+        _sam3UpdateImageControls();
     }
 }
 
@@ -4177,16 +4324,18 @@ function sam3NewImage() {
 
     document.getElementById('sam3ImgWrap').hidden    = true;
     document.getElementById('sam3ImgToolbar').hidden = true;
+    document.getElementById('sam3ImgInfo').textContent = '';
     document.getElementById('sam3UploadZone').hidden = false;
     _sam3ResetUploadZone();
     document.getElementById('sam3FileInput').value = '';
+    _sam3UpdateImageControls();
 }
 
 function _sam3ResetUploadZone() {
     const el = document.getElementById('sam3UploadContent');
     if (el) el.innerHTML =
         '<div class="sam3-upload-icon">🖼️</div>' +
-        '<p>Drop image here or <button class="btn-link" onclick="document.getElementById(\'sam3FileInput\').click()">browse</button></p>' +
+        '<p>Drop image here or <button class="btn-link" onclick="sam3ChooseImage()">browse</button></p>' +
         '<p class="sam3-upload-hint">JPEG · PNG · WebP</p>';
 }
 
