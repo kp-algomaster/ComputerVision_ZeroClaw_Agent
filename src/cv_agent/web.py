@@ -1979,14 +1979,78 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_paperbanana = _pkg("paperbanana")
 
         from cv_agent.local_model_manager import is_model_downloaded
+        from cv_agent.tools.segment_anything import get_sam3_runtime_status
+
         has_monkey_ocr = is_model_downloaded("monkey-ocr")
         has_paddle_ocr = _pkg("paddleocr")
         has_any_ocr    = has_monkey_ocr or has_paddle_ocr
-        has_sam3_pkg   = _pkg("sam3")
-        has_sam3_model = is_model_downloaded("sam3")
+        sam3_runtime = get_sam3_runtime_status()
+        has_sam3_pkg = bool(sam3_runtime["has_sam3_pkg"])
+        has_sam3_model = bool(sam3_runtime["has_sam3_model"])
+        has_sam3_mlx_model = bool(sam3_runtime["has_sam3_mlx_model"])
+        has_mlx_pkg = bool(sam3_runtime["has_mlx_pkg"])
+        has_mlx_src = bool(sam3_runtime["has_mlx_src"])
+        has_any_sam3_model = bool(sam3_runtime["has_any_model"])
+        sam3_ready = bool(sam3_runtime["ready"])
 
         import sys as _sys
         _py = _sys.executable
+
+        sam3_status = "ready"
+        sam3_missing: list[str] = []
+        sam3_models: list[dict[str, str]] = []
+        sam3_commands: list[str] = []
+        sam3_install: str | None = None
+
+        if sam3_ready:
+            sam3_status = "ready"
+        elif has_sam3_mlx_model:
+            sam3_status = "needs-install"
+            if not has_mlx_pkg:
+                sam3_missing.append("mlx package")
+                sam3_commands.append(f'"{_py}" -m pip install mlx')
+            if not has_mlx_src:
+                sam3_missing.append("mlx_sam3 source")
+                sam3_commands.insert(0, "git clone https://github.com/Deekshith-Dade/mlx_sam3.git")
+            if not has_mlx_pkg and not has_mlx_src:
+                sam3_install = "git clone https://github.com/Deekshith-Dade/mlx_sam3.git && pip install mlx"
+            elif not has_mlx_src:
+                sam3_install = "git clone https://github.com/Deekshith-Dade/mlx_sam3.git"
+            elif not has_mlx_pkg:
+                sam3_install = "pip install mlx"
+        elif has_sam3_model:
+            sam3_status = "needs-install"
+            if not has_sam3_pkg:
+                sam3_missing.append("sam3 package")
+                sam3_commands.extend([
+                    "git clone https://github.com/facebookresearch/sam3",
+                    f'"{_py}" -m pip install -e sam3/',
+                ])
+                sam3_install = "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
+        elif has_sam3_pkg or has_mlx_pkg or has_mlx_src:
+            sam3_status = "needs-model"
+            sam3_missing.append("SAM 3 or SAM 3 MLX model weights")
+            sam3_models = [
+                {"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"},
+                {"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"},
+            ]
+        else:
+            sam3_status = "needs-install"
+            sam3_missing.extend([
+                "sam3 package or mlx runtime",
+                "SAM 3 or SAM 3 MLX model weights",
+            ])
+            sam3_models = [
+                {"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"},
+                {"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"},
+            ]
+            sam3_commands = [
+                "git clone https://github.com/facebookresearch/sam3",
+                f'"{_py}" -m pip install -e sam3/',
+                "git clone https://github.com/Deekshith-Dade/mlx_sam3.git",
+                f'"{_py}" -m pip install mlx',
+            ]
+            sam3_install = "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
 
         def _skill(label, icon, category, description, status, tools,
                    missing=None, packages=None, models=None, powers=None,
@@ -2075,28 +2139,13 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "Supports natural-language text prompts, bounding-box prompts, and video object tracking. "
                 "PyTorch model is gated — request access at hf.co/facebook/sam3. "
                 "MLX model (Apple Silicon, ~2× faster) available without gating.",
-                "ready" if (has_sam3_pkg and has_sam3_model)
-                    else ("needs-model" if has_sam3_pkg else "needs-install"),
+                sam3_status,
                 ["segment_with_text", "segment_with_box", "segment_video"],
-                missing=(
-                    [] if (has_sam3_pkg and has_sam3_model)
-                    else (["SAM3 model weights (~6.9 GB, gated)"] if has_sam3_pkg
-                          else ["sam3 package", "SAM3 model weights"])
-                ),
+                missing=sam3_missing,
                 packages=[],
-                models=([] if has_sam3_model else [{"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"}])
-                      + [{"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"}],
-                commands=([] if has_sam3_pkg else [
-                    "git clone https://github.com/facebookresearch/sam3",
-                    f'"{_py}" -m pip install -e sam3/',
-                ]) + [
-                    "git clone https://github.com/Deekshith-Dade/mlx_sam3.git",
-                    f'"{_py}" -m pip install mlx',
-                ],
-                install=(
-                    None if has_sam3_pkg
-                    else "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
-                ),
+                models=[] if has_any_sam3_model else sam3_models,
+                commands=sam3_commands,
+                install=sam3_install,
             ),
             "text_to_image": _skill(
                 "Text → Image", "🖼️", "vision",
@@ -2323,25 +2372,40 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     @app.get("/api/sam3/status")
     async def sam3_status():
-        """Check whether the SAM3 package and model weights are available."""
-        import importlib.util as _ilu
-        from cv_agent.local_model_manager import is_model_downloaded
-        from cv_agent.tools.segment_anything import available_segment_models
-        has_pkg   = _ilu.find_spec("sam3") is not None
-        has_model = is_model_downloaded("sam3")
-        ready     = has_pkg and has_model
-        message   = (
-            "SAM3 ready" if ready
-            else ("SAM3 package installed — download model weights from the Models page" if has_pkg
-                  else "Install sam3 package and download model weights to use this skill")
-        )
-        models = available_segment_models()
+        """Check whether any SAM3 backend is available for the playground."""
+        from cv_agent.tools.segment_anything import get_sam3_runtime_status
+
+        sam3_runtime = get_sam3_runtime_status()
+        has_pkg = bool(sam3_runtime["has_sam3_pkg"])
+        has_model = bool(sam3_runtime["has_any_model"])
+        ready = bool(sam3_runtime["ready"])
+
+        if ready:
+            message = "SAM3 ready"
+        elif sam3_runtime["has_sam3_mlx_model"]:
+            missing = []
+            if not sam3_runtime["has_mlx_pkg"]:
+                missing.append("install mlx")
+            if not sam3_runtime["has_mlx_src"]:
+                missing.append("clone mlx_sam3")
+            message = (
+                "SAM3-MLX weights found — " + " and ".join(missing) + " to use this skill"
+                if missing
+                else "SAM3-MLX weights found"
+            )
+        elif sam3_runtime["has_sam3_model"]:
+            message = "SAM3 weights found — install sam3 package to use this skill"
+        elif has_pkg or sam3_runtime["has_mlx_pkg"] or sam3_runtime["has_mlx_src"]:
+            message = "Download SAM3 or SAM3-MLX weights from the Models page"
+        else:
+            message = "Install sam3 or SAM3-MLX runtime, then download model weights to use this skill"
+
         return JSONResponse({
             "ready": ready,
             "has_pkg": has_pkg,
             "has_model": has_model,
             "message": message,
-            "available_models": models,
+            "available_models": sam3_runtime["available_models"],
         })
 
     @app.post("/api/sam3/segment")

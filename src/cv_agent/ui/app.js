@@ -1614,7 +1614,10 @@ async function _streamLocalModelDownload(modelId, btn) {
         progressFill.style.width = '100%';
         progressPct.textContent = '100%';
         _localModelDownloadReader = null;
-        await loadModelCatalog();
+        await Promise.all([
+            loadModelCatalog(),
+            loadSkills().catch(() => {}),
+        ]);
     } catch (e) {
         _localModelDownloadReader = null;
         statusEl.className = 'pull-status error';
@@ -1639,7 +1642,10 @@ async function deleteLocalModel(modelId, btn) {
     btn.disabled = true;
     try {
         await fetch(`/api/local-models/${modelId}`, { method: 'DELETE' });
-        await loadModelCatalog();
+        await Promise.all([
+            loadModelCatalog(),
+            loadSkills().catch(() => {}),
+        ]);
     } catch (e) {
         alert('Delete failed: ' + e.message);
         btn.disabled = false;
@@ -2546,6 +2552,7 @@ const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research'
 
 async function loadSkills() {
     const grid = document.getElementById('skillsGrid');
+    if (!grid) return;
     try {
         const resp = await fetch('/api/skills');
         const data = await resp.json();
@@ -2623,12 +2630,42 @@ function buildSkillCard(id, info) {
 
 // ── Skill Install Modal ───────────────────────────────────────────────────────
 
-function showSkillInstallModal(skillId) {
-    const info = _skillsById[skillId];
+async function showSkillInstallModal(skillId) {
+    let info = _skillsById[skillId];
     if (!info) return;
 
+    let catalog = [];
+    let sam3Status = null;
+    try {
+        const requests = [
+            fetch('/api/skills'),
+            fetch('/api/local-models/catalog'),
+        ];
+        if (skillId === 'segment_anything') requests.push(fetch('/api/sam3/status'));
+
+        const [skillsResp, catalogResp, sam3Resp] = await Promise.all(requests);
+
+        if (skillsResp && skillsResp.ok) {
+            const skills = await skillsResp.json();
+            _skillsById = skills || {};
+            info = _skillsById[skillId] || info;
+        }
+        if (catalogResp && catalogResp.ok) {
+            catalog = await catalogResp.json();
+        }
+        if (sam3Resp && sam3Resp.ok) {
+            sam3Status = await sam3Resp.json();
+        }
+    } catch {
+        // Fall back to cached skill state if live refresh fails.
+    }
+
     const packages = info.packages || [];
-    const models = info.models || [];
+    const downloadedModelIds = new Set((catalog || []).filter(m => m.downloaded).map(m => m.id));
+    let models = (info.models || []).filter(m => !downloadedModelIds.has(m.id));
+    if (skillId === 'segment_anything' && sam3Status?.has_model) {
+        models = [];
+    }
     const powers = info.powers || [];
     const commands = info.commands || [];
 
