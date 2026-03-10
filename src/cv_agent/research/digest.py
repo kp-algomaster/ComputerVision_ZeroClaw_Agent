@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-import httpx
+from cv_agent.http_client import httpx
 
 from cv_agent.config import AgentConfig, load_config
 from cv_agent.research.monitor import ResearchMonitor

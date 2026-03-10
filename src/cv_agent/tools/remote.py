@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-import httpx
+from cv_agent.http_client import httpx
 from zeroclaw_tools import tool
 
 

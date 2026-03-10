@@ -7,7 +7,7 @@ import uuid
 import logging
 from typing import Any, AsyncGenerator
 
-import httpx
+from cv_agent.http_client import httpx
 
 from cv_agent.config import load_config
 

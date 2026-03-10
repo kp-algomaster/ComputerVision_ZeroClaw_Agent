@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cv_agent.http_client import httpx
 import markdown
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -24,9 +25,104 @@ from cv_agent.config import AgentConfig, load_config
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_NON_CHAT_MODEL_MARKERS = (
+    "embed",
+    "embedding",
+    "rerank",
+    "whisper",
+    "transcribe",
+    "speech",
+    "tts",
+    "clip",
+)
 
 # Re-apply .env with override so vars added after initial startup are picked up
 _load_dotenv_startup(_PROJECT_ROOT / ".env", override=True)
+
+
+def _is_chat_model_compatible(model_name: str, capabilities: list[str] | None) -> bool:
+    """Return True when an Ollama model looks suitable for text chat."""
+    normalized_name = model_name.strip().lower()
+    if any(marker in normalized_name for marker in _NON_CHAT_MODEL_MARKERS):
+        return False
+
+    normalized_caps = {str(cap).strip().lower() for cap in (capabilities or []) if str(cap).strip()}
+    if not normalized_caps:
+        return True
+    return "completion" in normalized_caps or "chat" in normalized_caps
+
+
+def _select_default_chat_model(
+    available_models: list[str],
+    configured_model: str,
+    preferred_model: str | None = None,
+) -> str:
+    """Pick the best available chat model, preferring an explicit user choice."""
+    if preferred_model and preferred_model in available_models:
+        return preferred_model
+    if configured_model in available_models:
+        return configured_model
+    return available_models[0] if available_models else ""
+
+
+def _persist_env_updates(env_path: Path, updates: dict[str, str]) -> None:
+    """Write environment updates to `.env`, creating the file when needed."""
+    if not updates:
+        return
+
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    written: set[str] = set()
+    new_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}")
+                written.add(key)
+                continue
+        new_lines.append(line)
+
+    for key, value in updates.items():
+        if key not in written:
+            new_lines.append(f"{key}={value}")
+
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(new_lines) + "\n")
+
+
+def _persist_huggingface_token(token: str) -> bool:
+    """Persist the active HF token for clients that read Hub auth state directly."""
+    cleaned = token.strip()
+    if not cleaned:
+        return False
+
+    os.environ["HF_TOKEN"] = cleaned
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = cleaned
+
+    try:
+        from huggingface_hub import constants as hf_constants
+    except ImportError:
+        return False
+
+    try:
+        token_path = Path(hf_constants.HF_TOKEN_PATH)
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(cleaned)
+
+        # Keep a named token entry too so `hf auth list` can surface it.
+        try:
+            from huggingface_hub.utils import _auth as hf_auth
+
+            hf_auth._save_token(cleaned, "cv-agent")
+        except Exception:
+            logger.debug("Could not update stored HF token list", exc_info=True)
+
+        return True
+    except Exception:
+        logger.warning("Could not persist HF token to huggingface_hub cache", exc_info=True)
+        return False
 
 
 def create_app(config: AgentConfig | None = None) -> FastAPI:
@@ -40,6 +136,67 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     output_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/output", StaticFiles(directory=output_dir), name="output")
     app.state.diagram_jobs = {}
+
+    def _fetch_ollama_model_metadata(model_name: str) -> dict[str, Any]:
+        host = config.vision.ollama.host.rstrip("/")
+        try:
+            resp = httpx.post(
+                f"{host}/api/show",
+                json={"name": model_name},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.warning("Could not inspect Ollama model '%s': %s", model_name, exc)
+            return {}
+
+    def _list_chat_compatible_models() -> list[dict[str, Any]]:
+        from cv_agent.tools.hardware_probe import list_ollama_models
+
+        compatible: list[dict[str, Any]] = []
+        for model_name in list_ollama_models(config.vision.ollama.host):
+            metadata = _fetch_ollama_model_metadata(model_name)
+            details = metadata.get("details") or {}
+            capabilities = [
+                str(cap).strip().lower()
+                for cap in (metadata.get("capabilities") or [])
+                if str(cap).strip()
+            ]
+            if not _is_chat_model_compatible(model_name, capabilities):
+                continue
+
+            normalized_name = model_name.lower()
+            compatible.append(
+                {
+                    "name": model_name,
+                    "family": details.get("family") or "",
+                    "parameter_size": details.get("parameter_size") or "",
+                    "quantization": details.get("quantization_level") or "",
+                    "capabilities": capabilities,
+                    "supports_tools": "tools" in capabilities,
+                    "supports_vision": "vision" in capabilities,
+                    "supports_thinking": "thinking" in capabilities,
+                    "warning": (
+                        "Base model detected; it may be less instruction-tuned than chat/instruct variants."
+                        if "-base" in normalized_name
+                        else ""
+                    ),
+                }
+            )
+
+        compatible.sort(
+            key=lambda item: (
+                0 if item["name"] == config.llm.model else 1,
+                0 if item["supports_tools"] else 1,
+                0 if item["supports_vision"] else 1,
+                0 if item["supports_thinking"] else 1,
+                0 if not item["warning"] else 1,
+                item["name"].lower(),
+            )
+        )
+        return compatible
 
     def _add_diag_event(job: dict[str, Any], message: str, kind: str = "info") -> None:
         job["events"].append(
@@ -158,6 +315,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 data = await websocket.receive_text()
                 msg = json.loads(data)
                 user_text = msg.get("message", "")
+                requested_model = str(msg.get("model", "")).strip()
 
                 if not user_text.strip():
                     continue
@@ -166,16 +324,45 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 await websocket.send_text(json.dumps({"type": "typing", "status": True}))
 
                 try:
+                    available_chat_models = _list_chat_compatible_models()
+                    available_model_names = [model["name"] for model in available_chat_models]
+                    selected_model = _select_default_chat_model(
+                        available_model_names,
+                        config.llm.model,
+                        requested_model or None,
+                    )
+                    if not selected_model:
+                        raise RuntimeError(
+                            "No compatible Ollama chat models are currently available. Pull one in the Models view first."
+                        )
+
+                    if selected_model != (requested_model or config.llm.model):
+                        missing_model = requested_model or config.llm.model
+                        await websocket.send_text(json.dumps({
+                            "type": "model_info",
+                            "selected_model": selected_model,
+                            "requested_model": missing_model,
+                            "fallback": True,
+                            "message": f"Model '{missing_model}' is unavailable. Using '{selected_model}' instead.",
+                        }))
+
+                    runtime_config = config.model_copy(
+                        update={
+                            "llm": config.llm.model_copy(update={"model": selected_model}),
+                        }
+                    )
+
                     from cv_agent.agent import run_agent_stream
 
                     # Signal stream start so client creates the message bubble
                     await websocket.send_text(json.dumps({
                         "type": "stream_start",
                         "role": "assistant",
+                        "model": selected_model,
                     }))
 
                     final_content = ""
-                    async for event in run_agent_stream(user_text, config, history):
+                    async for event in run_agent_stream(user_text, runtime_config, history):
                         etype = event["type"]
 
                         if etype == "token":
@@ -370,6 +557,30 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "llm_model": config.llm.model,
             "vision_model": config.vision.ollama.default_model,
             "vault_path": config.knowledge.vault_path,
+        })
+
+    @app.get("/api/chat/models")
+    async def chat_models():
+        """List locally available Ollama models that can power the main chat."""
+        models = _list_chat_compatible_models()
+        available_names = [model["name"] for model in models]
+        default_model = _select_default_chat_model(available_names, config.llm.model)
+
+        message = ""
+        if not models:
+            message = "No compatible Ollama chat models are pulled yet. Open Models to pull one first."
+        elif config.llm.model not in available_names and default_model:
+            message = (
+                f"Configured chat model '{config.llm.model}' is not pulled. "
+                f"Select '{default_model}' or another available model below."
+            )
+
+        return JSONResponse({
+            "configured_model": config.llm.model,
+            "configured_model_available": config.llm.model in available_names,
+            "default_model": default_model,
+            "message": message,
+            "models": models,
         })
 
     # ── Text To Diagram ───────────────────────────────────────────────────
@@ -1302,7 +1513,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         """Test the connection for a remote platform."""
         if platform not in _PLATFORMS:
             return JSONResponse({"error": f"Unknown platform: {platform}"}, status_code=404)
-        import httpx as _hx
+        from cv_agent.http_client import httpx as _hx
         import subprocess as _sp
 
         if platform == "telegram":
@@ -1393,7 +1604,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     async def pull_model_cmd(body: dict):
         """Stream `ollama pull` progress as SSE (NDJSON from Ollama API)."""
         import json as _json
-        import httpx as _httpx
+        from cv_agent.http_client import httpx as _httpx
         from fastapi.responses import StreamingResponse as _SR
         model = (body.get("model") or "").strip()
         if not model:
@@ -1427,7 +1638,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     @app.delete("/api/models/{name:path}")
     async def delete_model(name: str):
         """Delete a pulled model from Ollama."""
-        import httpx as _httpx
+        from cv_agent.http_client import httpx as _httpx
         host = config.vision.ollama.host.rstrip("/")
         try:
             resp = _httpx.delete(
@@ -1459,7 +1670,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         pypi_version: str | None = None
         update_available = False
         try:
-            import httpx as _httpx
+            from cv_agent.http_client import httpx as _httpx
             resp = _httpx.get("https://pypi.org/pypi/zeroclaw-tools/json", timeout=4)
             if resp.status_code == 200:
                 pypi_version = resp.json()["info"]["version"]
@@ -1729,32 +1940,20 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     @app.post("/api/powers/{power_id}/configure")
     async def configure_power(power_id: str, body: dict):
         """Update credentials for a power. Persists to .env and refreshes os.environ from .env."""
-        from dotenv import load_dotenv as _load_dotenv, dotenv_values as _dotenv_values
+        from dotenv import load_dotenv as _load_dotenv
         fields: dict = body.get("fields", {})
         updates: dict[str, str] = {}
         for key, value in fields.items():
             v = str(value) if value is not None else ""
             if v and not v.startswith("••"):
                 os.environ[key] = v
+                if key == "HF_TOKEN":
+                    os.environ["HUGGING_FACE_HUB_TOKEN"] = v
                 updates[key] = v
         env_path = _PROJECT_ROOT / ".env"
-        if env_path.exists() and updates:
-            lines = env_path.read_text().splitlines()
-            written: set[str] = set()
-            new_lines = []
-            for line in lines:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#") and "=" in stripped:
-                    k = stripped.split("=", 1)[0].strip()
-                    if k in updates:
-                        new_lines.append(f"{k}={updates[k]}")
-                        written.add(k)
-                        continue
-                new_lines.append(line)
-            for k, v in updates.items():
-                if k not in written:
-                    new_lines.append(f"{k}={v}")
-            env_path.write_text("\n".join(new_lines) + "\n")
+        _persist_env_updates(env_path, updates)
+        if "HF_TOKEN" in updates:
+            _persist_huggingface_token(updates["HF_TOKEN"])
         # Re-load .env into os.environ so new values are visible immediately
         # (load_dotenv at import time won't pick up changes made after startup)
         _load_dotenv(env_path, override=True)
@@ -1780,14 +1979,78 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_paperbanana = _pkg("paperbanana")
 
         from cv_agent.local_model_manager import is_model_downloaded
+        from cv_agent.tools.segment_anything import get_sam3_runtime_status
+
         has_monkey_ocr = is_model_downloaded("monkey-ocr")
         has_paddle_ocr = _pkg("paddleocr")
         has_any_ocr    = has_monkey_ocr or has_paddle_ocr
-        has_sam3_pkg   = _pkg("sam3")
-        has_sam3_model = is_model_downloaded("sam3")
+        sam3_runtime = get_sam3_runtime_status()
+        has_sam3_pkg = bool(sam3_runtime["has_sam3_pkg"])
+        has_sam3_model = bool(sam3_runtime["has_sam3_model"])
+        has_sam3_mlx_model = bool(sam3_runtime["has_sam3_mlx_model"])
+        has_mlx_pkg = bool(sam3_runtime["has_mlx_pkg"])
+        has_mlx_src = bool(sam3_runtime["has_mlx_src"])
+        has_any_sam3_model = bool(sam3_runtime["has_any_model"])
+        sam3_ready = bool(sam3_runtime["ready"])
 
         import sys as _sys
         _py = _sys.executable
+
+        sam3_status = "ready"
+        sam3_missing: list[str] = []
+        sam3_models: list[dict[str, str]] = []
+        sam3_commands: list[str] = []
+        sam3_install: str | None = None
+
+        if sam3_ready:
+            sam3_status = "ready"
+        elif has_sam3_mlx_model:
+            sam3_status = "needs-install"
+            if not has_mlx_pkg:
+                sam3_missing.append("mlx package")
+                sam3_commands.append(f'"{_py}" -m pip install mlx')
+            if not has_mlx_src:
+                sam3_missing.append("mlx_sam3 source")
+                sam3_commands.insert(0, "git clone https://github.com/Deekshith-Dade/mlx_sam3.git")
+            if not has_mlx_pkg and not has_mlx_src:
+                sam3_install = "git clone https://github.com/Deekshith-Dade/mlx_sam3.git && pip install mlx"
+            elif not has_mlx_src:
+                sam3_install = "git clone https://github.com/Deekshith-Dade/mlx_sam3.git"
+            elif not has_mlx_pkg:
+                sam3_install = "pip install mlx"
+        elif has_sam3_model:
+            sam3_status = "needs-install"
+            if not has_sam3_pkg:
+                sam3_missing.append("sam3 package")
+                sam3_commands.extend([
+                    "git clone https://github.com/facebookresearch/sam3",
+                    f'"{_py}" -m pip install -e sam3/',
+                ])
+                sam3_install = "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
+        elif has_sam3_pkg or has_mlx_pkg or has_mlx_src:
+            sam3_status = "needs-model"
+            sam3_missing.append("SAM 3 or SAM 3 MLX model weights")
+            sam3_models = [
+                {"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"},
+                {"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"},
+            ]
+        else:
+            sam3_status = "needs-install"
+            sam3_missing.extend([
+                "sam3 package or mlx runtime",
+                "SAM 3 or SAM 3 MLX model weights",
+            ])
+            sam3_models = [
+                {"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"},
+                {"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"},
+            ]
+            sam3_commands = [
+                "git clone https://github.com/facebookresearch/sam3",
+                f'"{_py}" -m pip install -e sam3/',
+                "git clone https://github.com/Deekshith-Dade/mlx_sam3.git",
+                f'"{_py}" -m pip install mlx',
+            ]
+            sam3_install = "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
 
         def _skill(label, icon, category, description, status, tools,
                    missing=None, packages=None, models=None, powers=None,
@@ -1876,28 +2139,13 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 "Supports natural-language text prompts, bounding-box prompts, and video object tracking. "
                 "PyTorch model is gated — request access at hf.co/facebook/sam3. "
                 "MLX model (Apple Silicon, ~2× faster) available without gating.",
-                "ready" if (has_sam3_pkg and has_sam3_model)
-                    else ("needs-model" if has_sam3_pkg else "needs-install"),
+                sam3_status,
                 ["segment_with_text", "segment_with_box", "segment_video"],
-                missing=(
-                    [] if (has_sam3_pkg and has_sam3_model)
-                    else (["SAM3 model weights (~6.9 GB, gated)"] if has_sam3_pkg
-                          else ["sam3 package", "SAM3 model weights"])
-                ),
+                missing=sam3_missing,
                 packages=[],
-                models=([] if has_sam3_model else [{"id": "sam3", "label": "SAM 3 (~6.9 GB, gated)"}])
-                      + [{"id": "sam3-mlx", "label": "SAM 3 MLX (3.4 GB, Apple Silicon)"}],
-                commands=([] if has_sam3_pkg else [
-                    "git clone https://github.com/facebookresearch/sam3",
-                    f'"{_py}" -m pip install -e sam3/',
-                ]) + [
-                    "git clone https://github.com/Deekshith-Dade/mlx_sam3.git",
-                    f'"{_py}" -m pip install mlx',
-                ],
-                install=(
-                    None if has_sam3_pkg
-                    else "git clone https://github.com/facebookresearch/sam3 && pip install -e sam3/"
-                ),
+                models=[] if has_any_sam3_model else sam3_models,
+                commands=sam3_commands,
+                install=sam3_install,
             ),
             "text_to_image": _skill(
                 "Text → Image", "🖼️", "vision",
@@ -1928,11 +2176,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             ),
             "document_extraction": _skill(
                 "OCR · Text Extraction", "📄", "vision",
-                "Extract text from images and documents in 80+ languages using PaddleOCR (Apache 2.0). Auto-downloads models on first use.",
-                "ready" if has_paddle_ocr else "needs-install", ["shell", "file_read", "file_write"],
-                missing=[] if has_paddle_ocr else ["paddleocr"],
-                packages=[] if has_paddle_ocr else ["paddleocr", "paddlepaddle"],
-                install=None if has_paddle_ocr else "pip install paddleocr paddlepaddle",
+                "Extract text from images and documents using Apple MLX-accelerated Monkey OCR (v1.5) or PaddleOCR (multi-language).",
+                "ready" if has_any_ocr else "needs-install", ["shell", "file_read", "file_write"],
+                missing=[] if has_any_ocr else ["paddleocr", "mlx-vlm"],
+                packages=[] if has_any_ocr else ["paddleocr", "paddlepaddle", "mlx-vlm"],
+                install=None if has_any_ocr else "pip install paddleocr paddlepaddle mlx-vlm",
                 view="ocr",
             ),
             "paper_to_spec": _skill(
@@ -2124,25 +2372,40 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     @app.get("/api/sam3/status")
     async def sam3_status():
-        """Check whether the SAM3 package and model weights are available."""
-        import importlib.util as _ilu
-        from cv_agent.local_model_manager import is_model_downloaded
-        from cv_agent.tools.segment_anything import available_segment_models
-        has_pkg   = _ilu.find_spec("sam3") is not None
-        has_model = is_model_downloaded("sam3")
-        ready     = has_pkg and has_model
-        message   = (
-            "SAM3 ready" if ready
-            else ("SAM3 package installed — download model weights from the Models page" if has_pkg
-                  else "Install sam3 package and download model weights to use this skill")
-        )
-        models = available_segment_models()
+        """Check whether any SAM3 backend is available for the playground."""
+        from cv_agent.tools.segment_anything import get_sam3_runtime_status
+
+        sam3_runtime = get_sam3_runtime_status()
+        has_pkg = bool(sam3_runtime["has_sam3_pkg"])
+        has_model = bool(sam3_runtime["has_any_model"])
+        ready = bool(sam3_runtime["ready"])
+
+        if ready:
+            message = "SAM3 ready"
+        elif sam3_runtime["has_sam3_mlx_model"]:
+            missing = []
+            if not sam3_runtime["has_mlx_pkg"]:
+                missing.append("install mlx")
+            if not sam3_runtime["has_mlx_src"]:
+                missing.append("clone mlx_sam3")
+            message = (
+                "SAM3-MLX weights found — " + " and ".join(missing) + " to use this skill"
+                if missing
+                else "SAM3-MLX weights found"
+            )
+        elif sam3_runtime["has_sam3_model"]:
+            message = "SAM3 weights found — install sam3 package to use this skill"
+        elif has_pkg or sam3_runtime["has_mlx_pkg"] or sam3_runtime["has_mlx_src"]:
+            message = "Download SAM3 or SAM3-MLX weights from the Models page"
+        else:
+            message = "Install sam3 or SAM3-MLX runtime, then download model weights to use this skill"
+
         return JSONResponse({
             "ready": ready,
             "has_pkg": has_pkg,
             "has_model": has_model,
             "message": message,
-            "available_models": models,
+            "available_models": sam3_runtime["available_models"],
         })
 
     @app.post("/api/sam3/segment")
@@ -2240,15 +2503,23 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     @app.get("/api/ocr/status")
     async def ocr_status():
         import importlib.util as _ilu
-        has_pkg = _ilu.find_spec("paddleocr") is not None
-        return JSONResponse({"ready": has_pkg, "message": "PaddleOCR ready" if has_pkg else "paddleocr not installed"})
+        has_paddle = _ilu.find_spec("paddleocr") is not None
+        has_mlx = _ilu.find_spec("mlx_vlm") is not None
+        from cv_agent.local_model_manager import is_model_downloaded
+        import asyncio
+        has_monkey = await asyncio.to_thread(is_model_downloaded, "monkey-ocr")
+        has_pkg = has_paddle or (has_mlx and has_monkey)
+        return JSONResponse({"ready": has_pkg, "message": "OCR Engine ready" if has_pkg else "OCR engine not installed"})
 
     @app.post("/api/ocr/run")
     async def ocr_run(body: dict):
-        """Run PaddleOCR on an uploaded image."""
+        """Run OCR on an uploaded image."""
         import json as _json
         from pathlib import Path as _P
         from cv_agent.tools.ocr import run_ocr
+        import importlib.util as _ilu
+        from cv_agent.local_model_manager import is_model_downloaded
+        import asyncio
 
         image_path = body.get("image_path", "")
         lang = body.get("lang", "en")
@@ -2257,12 +2528,20 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             return JSONResponse({"error": "image_path is required"}, status_code=400)
         if not _P(image_path).exists():
             return JSONResponse({"error": f"Image not found: {image_path}"}, status_code=404)
+        
+        has_paddle = _ilu.find_spec("paddleocr") is not None
+        has_monkey = await asyncio.to_thread(is_model_downloaded, "monkey-ocr") and _ilu.find_spec("mlx_vlm") is not None
+        
+        engine = "monkeyocr" if has_monkey else "paddleocr"
 
-        result_json = await asyncio.to_thread(
-            run_ocr.invoke,
-            {"image_path": image_path, "lang": lang, "render_overlay": True},
-        )
-        result = _json.loads(result_json)
+        try:
+            result_json = await asyncio.to_thread(
+                run_ocr.invoke,
+                {"image_path": image_path, "lang": lang, "engine": engine, "render_overlay": True},
+            )
+            result = _json.loads(result_json)
+        except Exception as exc:
+            return JSONResponse({"error": f"OCR failed: {exc}"}, status_code=500)
         if "overlay_path" in result and result["overlay_path"]:
             result["overlay_url"] = "/" + result["overlay_path"].replace("\\", "/").lstrip("/")
         return JSONResponse(result)

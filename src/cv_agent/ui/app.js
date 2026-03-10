@@ -17,6 +17,15 @@ let _t2dProviderDefaults = { profiles: {}, vlm_providers: {}, image_providers: {
 let _t2dVlmChoices = [];
 let _skillsById = {};
 let _draggedPinnedSkillId = null;
+const _CHAT_MODEL_STORAGE_KEY = 'cv_main_chat_model';
+let _chatModels = [];
+let _chatModelState = {
+    configured_model: '',
+    configured_model_available: true,
+    default_model: '',
+    message: '',
+};
+let currentChatModel = '';
 
 function _localDefaultT2DVlmModel(vlmProvider) {
     if (vlmProvider === 'gemini') return 'gemini-2.0-flash';
@@ -50,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPinnedNavItems();
     renderPinnedSkillNavItems();
     checkStatus();
+    loadChatModels();
     // Prefetch skills so pinned nav items can route immediately on first click
     fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => {});
 });
@@ -132,6 +142,130 @@ async function checkStatus() {
     }
 }
 
+async function loadChatModels(options = {}) {
+    const select = document.getElementById('chatModelSelect');
+    const hint = document.getElementById('chatModelHint');
+    if (!select || !hint) return;
+
+    select.disabled = true;
+    select.innerHTML = '<option>Loading local models...</option>';
+    hint.textContent = 'Checking local Ollama chat models...';
+
+    try {
+        const url = options.forceRefresh
+            ? `/api/chat/models?t=${Date.now()}`
+            : '/api/chat/models';
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        _chatModels = Array.isArray(data.models) ? data.models : [];
+        _chatModelState = {
+            configured_model: data.configured_model || '',
+            configured_model_available: Boolean(data.configured_model_available),
+            default_model: data.default_model || '',
+            message: data.message || '',
+        };
+
+        const availableNames = _chatModels.map(model => model.name);
+        const storedModel = localStorage.getItem(_CHAT_MODEL_STORAGE_KEY) || '';
+        const preferredModel = [
+            currentChatModel,
+            storedModel,
+            _chatModelState.default_model,
+            availableNames[0] || '',
+        ].find(modelName => modelName && availableNames.includes(modelName)) || '';
+
+        select.innerHTML = '';
+        if (!_chatModels.length) {
+            select.innerHTML = '<option>No compatible models pulled</option>';
+            currentChatModel = '';
+            renderChatModelHint();
+            return;
+        }
+
+        _chatModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+
+        select.disabled = false;
+        setCurrentChatModel(preferredModel, { persist: true });
+    } catch {
+        _chatModels = [];
+        _chatModelState = {
+            configured_model: '',
+            configured_model_available: false,
+            default_model: '',
+            message: 'Failed to load local models. Make sure Ollama is running.',
+        };
+        currentChatModel = '';
+        select.innerHTML = '<option>Unable to load models</option>';
+        renderChatModelHint();
+    }
+}
+
+function setCurrentChatModel(modelName, options = {}) {
+    currentChatModel = modelName || '';
+
+    const select = document.getElementById('chatModelSelect');
+    if (select && currentChatModel && select.value !== currentChatModel) {
+        select.value = currentChatModel;
+    }
+
+    if (options.persist !== false) {
+        if (currentChatModel) {
+            localStorage.setItem(_CHAT_MODEL_STORAGE_KEY, currentChatModel);
+        } else {
+            localStorage.removeItem(_CHAT_MODEL_STORAGE_KEY);
+        }
+    }
+
+    renderChatModelHint();
+}
+
+function renderChatModelHint() {
+    const hint = document.getElementById('chatModelHint');
+    if (!hint) return;
+
+    if (!_chatModels.length) {
+        hint.innerHTML = '<span class="chat-model-warning">No compatible Ollama chat models are pulled. Open the Models view and pull one first.</span>';
+        return;
+    }
+
+    const selected = _chatModels.find(model => model.name === currentChatModel) || _chatModels[0];
+    if (!selected && _chatModelState.message) {
+        hint.innerHTML = `<span class="chat-model-warning">${_escHtml(_chatModelState.message)}</span>`;
+        return;
+    }
+
+    const capabilities = [];
+    if (selected?.supports_tools) capabilities.push('tools');
+    if (selected?.supports_vision) capabilities.push('vision');
+    if (selected?.supports_thinking) capabilities.push('thinking');
+
+    const meta = [selected?.family, selected?.parameter_size, selected?.quantization]
+        .filter(Boolean)
+        .concat(capabilities.length ? [capabilities.join(' + ')] : []);
+
+    const parts = [];
+    if (selected?.name) {
+        parts.push(`<span class="chat-model-chip">Using <code>${_escHtml(selected.name)}</code></span>`);
+    }
+    if (meta.length) {
+        parts.push(`<span class="chat-model-meta">${_escHtml(meta.join(' · '))}</span>`);
+    }
+    if (_chatModelState.message) {
+        parts.push(`<span class="chat-model-warning">${_escHtml(_chatModelState.message)}</span>`);
+    }
+    if (selected?.warning) {
+        parts.push(`<span class="chat-model-warning">${_escHtml(selected.warning)}</span>`);
+    }
+
+    hint.innerHTML = parts.join(' ');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Chat
 // ═══════════════════════════════════════════════════════════════════════
@@ -139,6 +273,7 @@ async function checkStatus() {
 function initChat() {
     const form = document.getElementById('chatForm');
     const input = document.getElementById('chatInput');
+    const modelSelect = document.getElementById('chatModelSelect');
 
     input.addEventListener('input', () => {
         input.style.height = 'auto';
@@ -154,10 +289,17 @@ function initChat() {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
+        if (!currentChatModel) {
+            addMessage('system', 'No compatible Ollama chat model is available. Pull one from the Models view first.');
+            return;
+        }
         addMessage('user', text);
         sendMessage(text);
         input.value = '';
         input.style.height = 'auto';
+    });
+    modelSelect?.addEventListener('change', () => {
+        setCurrentChatModel(modelSelect.value, { persist: true });
     });
     connectWebSocket();
 }
@@ -223,6 +365,13 @@ function connectWebSocket() {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
             _finalizeStream(data.content, data.html);
+        } else if (data.type === 'model_info') {
+            if (data.selected_model) {
+                setCurrentChatModel(data.selected_model, { persist: true });
+            }
+            if (data.message) {
+                addMessage('system', data.message);
+            }
         } else if (data.type === 'error') {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
@@ -349,7 +498,7 @@ function _escHtml(str) {
 
 function sendMessage(text) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ message: text }));
+        ws.send(JSON.stringify({ message: text, model: currentChatModel }));
         document.getElementById('sendBtn').disabled = true;
         setTimeout(() => { document.getElementById('sendBtn').disabled = false; }, 1000);
     } else {
@@ -1465,7 +1614,10 @@ async function _streamLocalModelDownload(modelId, btn) {
         progressFill.style.width = '100%';
         progressPct.textContent = '100%';
         _localModelDownloadReader = null;
-        await loadModelCatalog();
+        await Promise.all([
+            loadModelCatalog(),
+            loadSkills().catch(() => {}),
+        ]);
     } catch (e) {
         _localModelDownloadReader = null;
         statusEl.className = 'pull-status error';
@@ -1490,7 +1642,10 @@ async function deleteLocalModel(modelId, btn) {
     btn.disabled = true;
     try {
         await fetch(`/api/local-models/${modelId}`, { method: 'DELETE' });
-        await loadModelCatalog();
+        await Promise.all([
+            loadModelCatalog(),
+            loadSkills().catch(() => {}),
+        ]);
     } catch (e) {
         alert('Delete failed: ' + e.message);
         btn.disabled = false;
@@ -1925,7 +2080,9 @@ async function loadHardwareAndRecommended() {
                     <span class="accel-badge ${accel}">${accelLabel}</span>
                 </div>`;
         } else if (!data.llmfit_available) {
-            hwEl.innerHTML = `<div class="llmfit-notice">⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.<br>Install: <code>brew install llmfit</code></div>`;
+            hwEl.innerHTML = _renderLlmfitInstallNotice(
+                '⚠️ <strong>llmfit not installed</strong> — hardware detection unavailable.'
+            );
         } else {
             hwEl.innerHTML = '<p class="placeholder">Hardware info unavailable.</p>';
         }
@@ -1933,7 +2090,7 @@ async function loadHardwareAndRecommended() {
         const recEl = document.getElementById('recommendedList');
         const badge = document.getElementById('llmfitBadge');
         if (!data.llmfit_available) {
-            recEl.innerHTML = '<div class="llmfit-notice">Install llmfit to get hardware-matched recommendations.</div>';
+            recEl.innerHTML = _renderLlmfitInstallNotice('Install llmfit to get hardware-matched recommendations.');
             badge.textContent = 'llmfit required';
             return;
         }
@@ -1972,6 +2129,119 @@ async function loadHardwareAndRecommended() {
         document.getElementById('hardwareInfo').innerHTML = '<p class="placeholder">Failed to load.</p>';
         console.error(e);
     }
+}
+
+function _renderLlmfitInstallNotice(message) {
+    return `
+        <div class="llmfit-notice llmfit-install-notice">
+            <div class="llmfit-notice-message">${message}</div>
+            <div class="llmfit-notice-actions">
+                <button class="btn-pull-sm llmfit-install-btn" onclick="installLlmfit(this)">Install llmfit</button>
+                <code>brew install llmfit</code>
+            </div>
+            <div class="llmfit-install-status pull-status" hidden></div>
+        </div>`;
+}
+
+function _getLlmfitInstallStatus(btn) {
+    return btn?.closest('.llmfit-install-notice')?.querySelector('.llmfit-install-status') || null;
+}
+
+function _setLlmfitInstallPending(btn, status) {
+    btn.disabled = true;
+    btn.textContent = 'Installing...';
+    if (!status) return;
+    status.hidden = false;
+    status.className = 'llmfit-install-status pull-status';
+    status.textContent = '';
+}
+
+function _appendLlmfitInstallLine(status, line) {
+    if (!status) return;
+    status.textContent += line + '\n';
+    status.scrollTop = status.scrollHeight;
+}
+
+function _finishLlmfitInstallStatus(status, doneEvent) {
+    if (!status || !doneEvent) return;
+    const installed = Boolean(doneEvent.success);
+    status.className = `llmfit-install-status pull-status ${installed ? 'success' : 'error'}`;
+    status.textContent += installed
+        ? '\nllmfit installed successfully. Refreshing recommendations...'
+        : `\nInstallation failed (exit ${doneEvent.returncode ?? 'unknown'}).`;
+}
+
+async function _streamSkillCommand(command, onEvent) {
+    const resp = await fetch('/api/skills/run-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+    });
+
+    if (!resp.ok || !resp.body) {
+        throw new Error('Failed to start command.');
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let doneEvent = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+
+        for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+
+            let ev;
+            try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+
+            onEvent?.(ev);
+            if (ev.status === '__done__') doneEvent = ev;
+        }
+    }
+
+    return doneEvent;
+}
+
+async function installLlmfit(btn) {
+    if (!btn) return;
+
+    const status = _getLlmfitInstallStatus(btn);
+    const originalText = btn.textContent;
+
+    _setLlmfitInstallPending(btn, status);
+
+    try {
+        const doneEvent = await _streamSkillCommand('brew install llmfit', ev => {
+            if (ev.line !== undefined) _appendLlmfitInstallLine(status, ev.line);
+        });
+
+        _finishLlmfitInstallStatus(status, doneEvent);
+
+        if (doneEvent?.success) {
+            await loadHardwareAndRecommended();
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Retry Install';
+        }
+    } catch (e) {
+        if (status) {
+            status.hidden = false;
+            status.className = 'llmfit-install-status pull-status error';
+            status.textContent += `\nError: ${e.message}`;
+        }
+        btn.disabled = false;
+        btn.textContent = 'Retry Install';
+        return;
+    }
+
+    btn.textContent = originalText;
 }
 
 function _categorizeModel(name) {
@@ -2397,6 +2667,7 @@ const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research'
 
 async function loadSkills() {
     const grid = document.getElementById('skillsGrid');
+    if (!grid) return;
     try {
         const resp = await fetch('/api/skills');
         const data = await resp.json();
@@ -2474,12 +2745,42 @@ function buildSkillCard(id, info) {
 
 // ── Skill Install Modal ───────────────────────────────────────────────────────
 
-function showSkillInstallModal(skillId) {
-    const info = _skillsById[skillId];
+async function showSkillInstallModal(skillId) {
+    let info = _skillsById[skillId];
     if (!info) return;
 
+    let catalog = [];
+    let sam3Status = null;
+    try {
+        const requests = [
+            fetch('/api/skills'),
+            fetch('/api/local-models/catalog'),
+        ];
+        if (skillId === 'segment_anything') requests.push(fetch('/api/sam3/status'));
+
+        const [skillsResp, catalogResp, sam3Resp] = await Promise.all(requests);
+
+        if (skillsResp && skillsResp.ok) {
+            const skills = await skillsResp.json();
+            _skillsById = skills || {};
+            info = _skillsById[skillId] || info;
+        }
+        if (catalogResp && catalogResp.ok) {
+            catalog = await catalogResp.json();
+        }
+        if (sam3Resp && sam3Resp.ok) {
+            sam3Status = await sam3Resp.json();
+        }
+    } catch {
+        // Fall back to cached skill state if live refresh fails.
+    }
+
     const packages = info.packages || [];
-    const models = info.models || [];
+    const downloadedModelIds = new Set((catalog || []).filter(m => m.downloaded).map(m => m.id));
+    let models = (info.models || []).filter(m => !downloadedModelIds.has(m.id));
+    if (skillId === 'segment_anything' && sam3Status?.has_model) {
+        models = [];
+    }
     const powers = info.powers || [];
     const commands = info.commands || [];
 
@@ -3689,6 +3990,7 @@ function loadSam3View() {
         _sam3InitUpload();
         _sam3.inited = true;
     }
+    _sam3UpdateImageControls();
     fetch('/api/sam3/status').then(r => r.json()).then(d => {
         const badge = document.getElementById('sam3ModelBadge');
         if (!badge) return;
@@ -3731,7 +4033,7 @@ function _sam3InitUpload() {
     const canvas = document.getElementById('sam3BoxCanvas');
     if (!zone || !input || !canvas) return;
 
-    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('click', () => sam3ChooseImage());
     input.addEventListener('change', () => { if (input.files[0]) _sam3HandleFile(input.files[0]); });
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
@@ -3753,9 +4055,38 @@ function _sam3InitUpload() {
     }
 }
 
+function sam3ChooseImage() {
+    const input = document.getElementById('sam3FileInput');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+function _sam3UpdateImageControls(options = {}) {
+    const chooseBtn = document.getElementById('sam3ChooseImageBtn');
+    const clearBtn = document.getElementById('sam3ClearImageBtn');
+    const status = document.getElementById('sam3ImageStatus');
+    if (!chooseBtn || !clearBtn || !status) return;
+
+    const hasImage = options.hasImage ?? Boolean(_sam3.imagePath);
+    const busy = Boolean(options.busy);
+    const infoText = document.getElementById('sam3ImgInfo')?.textContent?.trim();
+
+    chooseBtn.textContent = busy ? 'Uploading...' : (hasImage ? 'Select New Image' : 'Select Image');
+    chooseBtn.disabled = busy;
+    clearBtn.hidden = !hasImage;
+    clearBtn.disabled = busy;
+    status.textContent = options.statusText ?? (hasImage ? (infoText || 'Image loaded') : 'No image selected');
+}
+
 async function _sam3HandleFile(file) {
     const content = document.getElementById('sam3UploadContent');
     content.innerHTML = '<div class="sam3-upload-icon">⏳</div><p>Uploading…</p>';
+    _sam3UpdateImageControls({
+        busy: true,
+        hasImage: Boolean(_sam3.imagePath),
+        statusText: file?.name ? `Uploading ${file.name}...` : 'Uploading image...',
+    });
 
     const fd = new FormData();
     fd.append('file', file);
@@ -3764,29 +4095,31 @@ async function _sam3HandleFile(file) {
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
 
+        sam3ClearResult();
+        sam3ClearBox();
         _sam3.imagePath = data.image_path;
 
         const img  = document.getElementById('sam3Img');
         const wrap = document.getElementById('sam3ImgWrap');
+        const infoText = data.width && data.height ? `${data.width} × ${data.height} px` : 'Image loaded';
 
         // Show wrap BEFORE setting src — so dimensions are available when onload fires
         document.getElementById('sam3UploadZone').hidden = true;
         wrap.hidden = false;
         document.getElementById('sam3ImgToolbar').hidden = false;
-        document.getElementById('sam3ImgInfo').textContent =
-            data.width && data.height ? `${data.width} × ${data.height} px` : '';
+        document.getElementById('sam3ImgInfo').textContent = infoText;
+        _sam3UpdateImageControls({ statusText: infoText });
 
         img.onload = () => _sam3SyncCanvas();
         img.src = data.url + '?t=' + Date.now();
         // Fallback: if the image was already decoded before onload wired up
         requestAnimationFrame(() => { if (img.complete && img.naturalWidth > 0) _sam3SyncCanvas(); });
-
-        sam3ClearResult();
     } catch (e) {
         content.innerHTML =
             `<div class="sam3-upload-icon">❌</div>` +
             `<p style="color:var(--text-secondary)">Upload failed: ${escapeHtml(e.message)}</p>` +
             `<p><button class="btn-sm" onclick="_sam3ResetUploadZone()">Try again</button></p>`;
+        _sam3UpdateImageControls();
     }
 }
 
@@ -3991,16 +4324,18 @@ function sam3NewImage() {
 
     document.getElementById('sam3ImgWrap').hidden    = true;
     document.getElementById('sam3ImgToolbar').hidden = true;
+    document.getElementById('sam3ImgInfo').textContent = '';
     document.getElementById('sam3UploadZone').hidden = false;
     _sam3ResetUploadZone();
     document.getElementById('sam3FileInput').value = '';
+    _sam3UpdateImageControls();
 }
 
 function _sam3ResetUploadZone() {
     const el = document.getElementById('sam3UploadContent');
     if (el) el.innerHTML =
         '<div class="sam3-upload-icon">🖼️</div>' +
-        '<p>Drop image here or <button class="btn-link" onclick="document.getElementById(\'sam3FileInput\').click()">browse</button></p>' +
+        '<p>Drop image here or <button class="btn-link" onclick="sam3ChooseImage()">browse</button></p>' +
         '<p class="sam3-upload-hint">JPEG · PNG · WebP</p>';
 }
 
@@ -4023,12 +4358,12 @@ function loadOcrView() {
         const badge = document.getElementById('ocrStatusBadge');
         if (!badge) return;
         if (d.ready) {
-            badge.textContent = '✓ PaddleOCR ready';
+            badge.textContent = '✓ OCR Engine Ready';
             badge.style.background = '#1a3320';
             badge.style.borderColor = '#1a5c30';
             badge.style.color = '#4caf7a';
         } else {
-            badge.textContent = '⚠️ PaddleOCR not installed';
+            badge.textContent = '⚠️ OCR Engine not installed';
             badge.style.background = '#332200';
             badge.style.borderColor = '#5a4000';
             badge.style.color = '#c8a040';
@@ -4087,7 +4422,7 @@ async function _ocrRun() {
     btn.textContent = 'Running…';
     errEl.hidden  = true;
     statEl.hidden = false;
-    statEl.textContent = 'Running OCR… (first run downloads models ~0.5 GB)';
+    statEl.textContent = 'Running OCR… loading models and extracting text';
 
     const lang = document.getElementById('ocrLangSelect')?.value || 'en';
     try {
@@ -4096,7 +4431,9 @@ async function _ocrRun() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image_path: _ocr.imagePath, lang }),
         });
-        const d = await resp.json();
+        let d;
+        const text = await resp.text();
+        try { d = JSON.parse(text); } catch { d = { error: text || `OCR request failed (HTTP ${resp.status})` }; }
         statEl.hidden = true;
         if (d.error) {
             errEl.textContent = '⚠️ ' + d.error;

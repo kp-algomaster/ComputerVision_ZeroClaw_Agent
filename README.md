@@ -59,7 +59,7 @@ Single-page app at `http://localhost:8420` with a collapsible sidebar containing
 | 🔗 **Channels** | Connect the assistant to messaging platforms (Telegram, Discord, Slack, Email). Push research updates, digests, and alerts to your preferred channel. |
 | 🧠 **Models** | Three-section view for all local model infrastructure: |
 | | &nbsp;&nbsp;**Server Management** — Start / Stop / Restart local inference servers (Image Gen on :7860, OCR on :7861, Ollama on :11434). Live Connected / Disconnected status badge, per-server device selector (GPU / CPU / Auto). |
-| | &nbsp;&nbsp;**Model Management** — HuggingFace model catalog (SD-Turbo, SDXL-Turbo, DeepGen 1.0, SAM 2/3, SVD, Monkey OCR). One-click download with live SSE progress bar, delete, and **Downloaded / Ready** badges. |
+| | &nbsp;&nbsp;**Model Management** — HuggingFace model catalog (SD-Turbo, SDXL-Turbo, Qwen-Image-2512, DeepGen 1.0, SAM 2/3, SVD, Monkey OCR). One-click download with live SSE progress bar, delete, and **Downloaded / Ready** badges. |
 | | &nbsp;&nbsp;**Ollama** — Hardware detection via llmfit, list of pulled Ollama models, pull-by-tag input with auto-select, and llmfit-ranked model recommendations for the current hardware. |
 | 📋 **Sessions** | Browse and manage active agent conversation sessions. |
 | ⏰ **Jobs** | Scheduled and on-demand jobs: **Weekly Digest** (auto-runs every Monday) and **Model Fine-Tuning** (configure base model, dataset, columns, epochs, LR, batch size; streams training output via SSE). |
@@ -107,7 +107,7 @@ Model weights that power intelligent inference. Three categories live in this pr
 | Type | Where | Examples |
 |------|-------|---------|
 | **Ollama models** | Pulled via `ollama pull` | qwen2.5vl, qwen3-vl, olmocr2 (VLMs / LLMs) |
-| **Local HF models** | Downloaded to `output/.models/` | SD-Turbo, SDXL-Turbo, DeepGen 1.0, SAM 2/3, Monkey OCR 1.5, SVD/SVD-XT, PaddleOCR |
+| **Local HF models** | Downloaded to `output/.models/` | SD-Turbo, SDXL-Turbo, Qwen-Image-2512, DeepGen 1.0, SAM 2/3, Monkey OCR 1.5, SVD/SVD-XT, PaddleOCR |
 | **pip-based models** | Auto-download on first use | PaddleOCR |
 
 #### Local Model Catalog
@@ -116,6 +116,7 @@ Model weights that power intelligent inference. Three categories live in this pr
 |----------|-------|---------|------|
 | Image Generation | SD-Turbo | `stabilityai/sd-turbo` | 4.8 GB |
 | Image Generation | SDXL-Turbo | `stabilityai/sdxl-turbo` | 6.5 GB |
+| Image Generation | Qwen-Image-2512 | `Qwen/Qwen-Image-2512` | 57.7 GB |
 | Image Generation | DeepGen 1.0 | `deepgenteam/DeepGen-1.0` | 16.4 GB |
 | Video Generation | Stable Video Diffusion | `stabilityai/stable-video-diffusion-img2vid` | 9.2 GB |
 | Video Generation | SVD-XT (25 frames) | `stabilityai/stable-video-diffusion-img2vid-xt` | 9.2 GB |
@@ -337,7 +338,7 @@ pip install -e ".[dev]"
 cp .env.example .env   # add API keys
 ```
 
-> **ZeroClaw shim:** `zeroclaw-tools` is not yet on PyPI. The repo ships a local compatibility shim at `src/zeroclaw_tools/` that provides the identical `@tool` / `create_agent` API via LangChain + LangGraph. Once the real package is published, replace with `pip install zeroclaw-tools` and delete `src/zeroclaw_tools/`.
+> **ZeroClaw shim:** `zeroclaw-tools` is not yet on PyPI. The repo ships a local compatibility shim at `src/zeroclaw_tools/` that provides the identical `@tool` / `create_agent` API via LangChain + LangGraph in pure Python. Once the real high-performance Rust-backed package is published, replace with `pip install zeroclaw-tools` and delete `src/zeroclaw_tools/` to transparently unlock native memory efficiency and performance gains while keeping zero code changes.
 
 ### Launch
 
@@ -462,9 +463,10 @@ CV_Zero_Claw_Agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `LLM_MODEL` | `qwen3.5:latest` | LLM model tag |
-| `OLLAMA_VISION_MODEL` | `qwen3.5:latest` | Vision model tag |
+| `LLM_MODEL` | `qwen3.5:9b` | LLM model tag |
+| `OLLAMA_VISION_MODEL` | `qwen2.5-vl:7b` | Vision model tag |
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible base URL |
+| `CV_SSL_VERIFY` | `false` | Verify TLS certificates for outbound HTTP(S); set `false` for self-signed chains or set a PEM bundle path |
 | `HF_TOKEN` | — | HuggingFace Hub token (required for gated models: SAM 3, DeepGen 1.0) |
 | `BRAVE_API_KEY` | — | Brave Search (upgrades web search quality) |
 | `SEMANTIC_SCHOLAR_API_KEY` | — | Removes rate limits on paper search |

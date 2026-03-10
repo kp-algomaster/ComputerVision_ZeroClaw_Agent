@@ -5,7 +5,7 @@ import asyncio
 import sys
 from dataclasses import dataclass, field
 
-import httpx
+from cv_agent.http_client import httpx
 
 
 @dataclass

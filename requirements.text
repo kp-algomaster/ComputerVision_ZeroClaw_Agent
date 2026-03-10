@@ -1,0 +1,29 @@
+# Install with: pip install -r requirements.text
+#
+# Base project install. This pulls the dependencies declared in pyproject.toml.
+-e .
+
+# Built-in HuggingFace, dataset, and fine-tuning workflows.
+datasets>=3.0.0
+evaluate>=0.4.3
+kaggle>=1.6.17
+numpy>=1.26.0
+torch>=2.4.0
+transformers>=4.46.0
+
+# Common OCR fallback used by the OCR skill and model catalog.
+paddleocr>=2.8.1
+
+# Optional skill packages. Uncomment what you need.
+# accelerate>=0.34.0
+# decord>=0.6.0
+# diffusers>=0.30.0
+# kornia>=0.7.3
+# mlx>=0.16.0
+# mlx-vlm>=0.1.0
+# open3d>=0.18.0
+# opencv-python>=4.10.0.84
+# spandrel>=0.4.0
+# supervision>=0.24.0
+# torchvision>=0.19.0
+# -e ./paperbanana

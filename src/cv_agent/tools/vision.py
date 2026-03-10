@@ -6,7 +6,7 @@ import base64
 import logging
 from pathlib import Path
 
-import httpx
+from cv_agent.http_client import httpx
 from zeroclaw_tools import tool
 
 from cv_agent.config import load_config
