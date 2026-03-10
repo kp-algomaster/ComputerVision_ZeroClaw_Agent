@@ -5287,6 +5287,30 @@ body {
     box-shadow: 0 0 8px rgba(88, 166, 255, 0.25);
 }
 
+/* Sidebar Live badge — always visible next to Playground nav item */
+.pg-live-sidebar-badge {
+    display: inline-block;
+    margin-left: auto;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0.5;
+}
+
+.pg-live-sidebar-badge:hover {
+    opacity: 1;
+    background: rgba(88, 166, 255, 0.1);
+}
+
+.pg-live-sidebar-badge.pg-live-active {
+    opacity: 1;
+    background: rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 6px rgba(88, 166, 255, 0.3);
+}
+
 /* Live blocks — auto-placed by live mode */
 .drawflow-node.pg-live-block .drawflow_content_node {
     border: 1px dashed var(--pg-pending);

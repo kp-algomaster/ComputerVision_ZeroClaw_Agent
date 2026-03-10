@@ -1656,7 +1656,7 @@ async function _streamLocalModelDownload(modelId, btn) {
         _localModelDownloadReader = null;
         await Promise.all([
             loadModelCatalog(),
-            loadSkills().catch(() => {}),
+            loadSkills().catch(() => { }),
         ]);
     } catch (e) {
         _localModelDownloadReader = null;
@@ -1684,7 +1684,7 @@ async function deleteLocalModel(modelId, btn) {
         await fetch(`/api/local-models/${modelId}`, { method: 'DELETE' });
         await Promise.all([
             loadModelCatalog(),
-            loadSkills().catch(() => {}),
+            loadSkills().catch(() => { }),
         ]);
     } catch (e) {
         alert('Delete failed: ' + e.message);
@@ -4592,6 +4592,9 @@ function togglePlayground() {
         // T016 — Replay queued events after panel opens
         if (_pg.df && _pg.liveQueue.length) _pgLiveReplayQueue();
     }
+    // Always sync sidebar badge
+    const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
+    if (sidebarBadge) sidebarBadge.classList.toggle('pg-live-active', _pg.liveMode);
 }
 
 // ── Drawflow init ──
@@ -5271,6 +5274,8 @@ function pgToggleLive() {
         _pg.liveLastId = null;
         _pg.livePending = new Set();
         btn.classList.add('pg-live-active');
+        const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
+        if (sidebarBadge) sidebarBadge.classList.add('pg-live-active');
 
         // FR-002 — open panel if closed
         if (!_pg.open) togglePlayground();
@@ -5278,6 +5283,8 @@ function pgToggleLive() {
         // T017 — Turning off: stop rendering new blocks, keep existing ones
         _pg.liveMode = false;
         btn.classList.remove('pg-live-active');
+        const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
+        if (sidebarBadge) sidebarBadge.classList.remove('pg-live-active');
         // FR-012 — do NOT close the playground panel
     }
 }

@@ -69,7 +69,9 @@
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
                     <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
                     <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span
-                            class="nav-icon">⚡</span>Playground</li>
+                            class="nav-icon">⚡</span>Playground<span class="pg-live-sidebar-badge"
+                            id="pgLiveSidebarToggle" onclick="event.stopPropagation(); pgToggleLive()"
+                            title="Toggle Live mode">🔗</span></li>
                     <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
                     <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
                 </ul>
