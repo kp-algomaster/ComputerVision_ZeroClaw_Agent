@@ -32,3 +32,10 @@
 - Secrets live in `.env` only — never commit `.env`
 - New tools go in `src/cv_agent/tools/` and are registered in `agent.py:build_tools()`
 - `src/zeroclaw_tools/__init__.py` is the local shim — edit it if the tool interface changes
+
+## Active Technologies
+- Python 3.12 (backend DAG runner + REST endpoint); ES6 Vanilla JS (frontend canvas — no framework, matches existing `app.js` style) (002-cv-playground)
+- JSON files in `output/.workflows/` (existing `WorkflowManager` pattern, same directory as Eko templates) (002-cv-playground)
+
+## Recent Changes
+- 002-cv-playground: Added Python 3.12 (backend DAG runner + REST endpoint); ES6 Vanilla JS (frontend canvas — no framework, matches existing `app.js` style)
