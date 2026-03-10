@@ -97,6 +97,19 @@
         <!-- ═══ Main Chat ═══ -->
         <section id="view-chat" class="view active">
             <div class="chat-container">
+                <div class="chat-toolbar">
+                    <div class="chat-model-row">
+                        <div class="chat-model-field">
+                            <label for="chatModelSelect">Main Chat Model</label>
+                            <select id="chatModelSelect" disabled>
+                                <option>Loading local models...</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn-sm" id="refreshChatModelsBtn"
+                            onclick="loadChatModels({ forceRefresh: true })">↻ Refresh Models</button>
+                    </div>
+                    <div id="chatModelHint" class="chat-model-hint">Checking local Ollama chat models...</div>
+                </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message system">
                         <div class="message-content">
@@ -481,8 +494,7 @@
                             <div class="sam3-upload-content" id="sam3UploadContent">
                                 <div class="sam3-upload-icon">🖼️</div>
                                 <p>Drop image here or <button class="btn-link"
-                                        onclick="event.stopPropagation(); document.getElementById('sam3FileInput').click()">browse</button>
-                                </p>
+                                        onclick="event.stopPropagation(); sam3ChooseImage()">browse</button></p>
                                 <p class="sam3-upload-hint">JPEG · PNG · WebP</p>
                             </div>
                         </div>
@@ -492,7 +504,7 @@
                             <img id="sam3ResultImg" class="sam3-result-img" hidden alt="segmentation result">
                         </div>
                         <div class="sam3-img-toolbar" id="sam3ImgToolbar" hidden>
-                            <button class="btn-sm" onclick="sam3NewImage()">📁 New Image</button>
+                            <button class="btn-sm" onclick="sam3NewImage()">Clear Image</button>
                             <span id="sam3ImgInfo" class="sam3-img-info"></span>
                         </div>
                     </div>
@@ -500,6 +512,19 @@
                     <!-- ── Right: controls ── -->
                     <div class="sam3-side-panel">
                         <div id="sam3ModelBadge" class="sam3-model-badge">Checking SAM3…</div>
+
+                        <div class="sam3-image-panel">
+                            <div class="sam3-image-panel-head">
+                                <p class="sam3-label">Image</p>
+                                <span id="sam3ImageStatus" class="sam3-image-status">No image selected</span>
+                            </div>
+                            <div class="sam3-image-actions">
+                                <button class="btn-sm sam3-image-primary" id="sam3ChooseImageBtn"
+                                    onclick="sam3ChooseImage()">Select Image</button>
+                                <button class="btn-sm" id="sam3ClearImageBtn" onclick="sam3NewImage()"
+                                    hidden>Clear</button>
+                            </div>
+                        </div>
 
                         <div class="sam3-model-row" id="sam3ModelRow" hidden>
                             <label class="sam3-label" for="sam3ModelSelect">Model</label>
@@ -514,7 +539,7 @@
 
                         <!-- Text prompt mode -->
                         <div id="sam3TextPanel" class="sam3-prompt-panel">
-                            <label class="sam3-label">Describe what to segment</label>
+                            <label class="sam3-label" for="sam3TextPrompt">Describe what to segment</label>
                             <input id="sam3TextPrompt" type="text" class="sam3-input"
                                 placeholder="e.g. person, the red car, cat on the left"
                                 onkeydown="if(event.key==='Enter') sam3SegmentText()">
@@ -581,7 +606,7 @@
             <div class="view-header">
                 <div>
                     <h2>📄 OCR · Text Extraction</h2>
-                    <p class="view-sub">PaddleOCR — 80+ languages · auto-downloads models</p>
+                    <p class="view-sub">MLX Monkey OCR / PaddleOCR — Smart text extraction</p>
                 </div>
             </div>
             <div class="view-scroll sam3-scroll">

@@ -19,7 +19,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
+from cv_agent.http_client import httpx
 
 from zeroclaw_tools import tool
 

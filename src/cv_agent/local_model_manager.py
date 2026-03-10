@@ -29,11 +29,11 @@ class ModelEntry:
 
 MODEL_CATALOG: dict[str, list[ModelEntry]] = {
     "Image Generation": [
-        ModelEntry(id="sd-turbo",          name="SD-Turbo",          hf_repo="stabilityai/sd-turbo",        size_gb=12.0, desc="Fast text-to-image (512×512)"),
-        ModelEntry(id="sdxl-turbo",        name="SDXL-Turbo",        hf_repo="stabilityai/sdxl-turbo",      size_gb=6.5,  desc="Higher quality text-to-image (512×512)"),
-        ModelEntry(id="deepgen-1.0",       name="DeepGen 1.0",       hf_repo="deepgenteam/DeepGen-1.0",     size_gb=16.4, desc="5B unified image gen + editing: text-to-image, reasoning, text rendering",
+        ModelEntry(id="sd-turbo",    name="SD-Turbo",      hf_repo="stabilityai/sd-turbo",        size_gb=12.0, desc="Fast text-to-image (512×512)"),
+        ModelEntry(id="sdxl-turbo",  name="SDXL-Turbo",    hf_repo="stabilityai/sdxl-turbo",      size_gb=6.5,  desc="Higher quality text-to-image (512×512)"),
+        ModelEntry(id="qwen-image-2512", name="Qwen-Image-2512", hf_repo="Qwen/Qwen-Image-2512", size_gb=57.7, desc="Qwen multimodal image generation and editing model"),
+        ModelEntry(id="deepgen-1.0", name="DeepGen 1.0",   hf_repo="deepgenteam/DeepGen-1.0",     size_gb=16.4, desc="5B unified image gen + editing: text-to-image, reasoning, text rendering",
                    ignore_patterns=["*.zip.part-*"]),
-        ModelEntry(id="qwen-image-2512",   name="Qwen-Image-2512",   hf_repo="Qwen/Qwen-Image-2512",        size_gb=57.7, desc="Top open-source text-to-image model (Apache 2.0); enhanced human realism, fine natural detail, improved text rendering"),
     ],
     "Video Generation": [
         ModelEntry(id="svd",    name="Stable Video Diffusion",    hf_repo="stabilityai/stable-video-diffusion-img2vid",    size_gb=9.2, desc="Image-to-video, 14 frames"),

@@ -28,13 +28,32 @@ def _get_ocr(lang: str = "en") -> Any:
     """Return a cached PaddleOCR instance for the given language."""
     if lang in _OCR_CACHE:
         return _OCR_CACHE[lang]
+
+    import os
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
+    # Honour CV_SSL_VERIFY — PaddleX model downloads fail behind self-signed
+    # corporate proxies unless we disable SSL verification globally.
+    # Must be applied before importing paddleocr (which imports paddlex).
+    from cv_agent.http_client import httpx_verify
+    if httpx_verify() is False:
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context
+        os.environ.setdefault("CURL_CA_BUNDLE", "")
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", "")
+        import requests.adapters
+        _orig_send = requests.adapters.HTTPAdapter.send
+        def _no_verify_send(self, request, stream=False, timeout=None,
+                            verify=True, cert=None, proxies=None):
+            return _orig_send(self, request, stream=stream, timeout=timeout,
+                              verify=False, cert=cert, proxies=proxies)
+        requests.adapters.HTTPAdapter.send = _no_verify_send
+
     try:
         from paddleocr import PaddleOCR
     except ImportError:
         return None
-    # PaddleOCR 3.x: removed use_angle_cls and show_log; skip connectivity check
-    import os
-    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
     ocr = PaddleOCR(lang=lang)
     _OCR_CACHE[lang] = ocr
     return ocr
@@ -105,20 +124,48 @@ def _render_overlay(image_path: str, detections: list[dict]) -> str:
     return str(out)
 
 
+def _run_monkeyocr(image_path: str) -> str:
+    """Run locally downloaded Monkey OCR 1.5 Recognition model via mlx_vlm."""
+    try:
+        from mlx_vlm import load, generate
+    except ImportError:
+        return "Error: mlx_vlm not installed. Must install mlx_vlm to use MonkeyOCR."
+    
+    model_path = "output/.models/monkey-ocr/Recognition"
+    if not Path(model_path).exists():
+        return f"Error: Monkey OCR model not found at {model_path}. Please download it first."
+    
+    try:
+        model, processor = load(model_path)
+        msg = [
+            {
+                "role": "user", 
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": "Please output the text content from the image."}
+                ]
+            }
+        ]
+        prompt = processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+        out = generate(model, processor, prompt, [image_path], verbose=False)
+        return str(out.text).strip() if hasattr(out, "text") else str(out).strip()
+    except Exception as e:
+        return f"Error during MonkeyOCR MLX evaluation: {e}"
+
+
 @tool
 def run_ocr(
     image_path: str,
     lang: str = "en",
+    engine: str = "paddleocr",
     render_overlay: bool = True,
 ) -> str:
-    """Extract text from an image using PaddleOCR (multi-language).
-
-    Detects and recognises text in 80+ languages. Models auto-download on first use.
+    """Extract text from an image using an OCR engine.
 
     Args:
-        image_path: Path to the input image (JPEG, PNG, PDF page, etc.).
-        lang: Language code — 'en' (English), 'ch' (Chinese), 'fr', 'de', 'es',
-              'ja', 'ko', 'ar', 'ru', and 75+ more. Default: 'en'.
+        image_path: Path to the input image.
+        lang: Language code for PaddleOCR (e.g., 'en', 'ch', 'fr').
+        engine: The OCR engine to use. Choose from 'paddleocr' or 'monkeyocr'.
         render_overlay: If True, save an annotated PNG with boxes and labels.
 
     Returns:
@@ -128,7 +175,20 @@ def run_ocr(
     if not Path(image_path).exists():
         return json.dumps({"error": f"File not found: {image_path}"})
 
-    ocr = _get_ocr(lang)
+    if engine.lower() == "monkeyocr":
+        text_out = _run_monkeyocr(image_path)
+        return json.dumps({
+            "full_text": text_out, 
+            "lang": lang,
+            "line_count": len(text_out.splitlines()),
+            "detections": [],
+            "overlay_path": None
+        })
+
+    try:
+        ocr = _get_ocr(lang)
+    except Exception as exc:
+        return json.dumps({"error": f"OCR init failed: {exc}"})
     if ocr is None:
         return json.dumps({
             "error": "PaddleOCR not installed. Run: pip install paddleocr paddlepaddle"

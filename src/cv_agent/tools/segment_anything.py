@@ -248,36 +248,58 @@ def _load_sam3_mlx_image() -> tuple[Any, Any] | None:
 
 # ── Model availability helpers ───────────────────────────────────────────────
 
-def available_segment_models() -> list[dict]:
-    """Return list of available segmentation models with their status."""
+def get_sam3_runtime_status() -> dict[str, Any]:
+    """Return readiness for both PyTorch SAM3 and SAM3-MLX backends."""
     from cv_agent.local_model_manager import is_model_downloaded
     import importlib.util as _ilu
 
-    models = []
-    # MLX first so it is the default selection in the UI
-    if is_model_downloaded("sam3-mlx"):
-        has_mlx = _ilu.find_spec("mlx") is not None
-        has_src  = _mlx_sam3_src_available()
+    has_sam3_pkg = _ilu.find_spec("sam3") is not None
+    has_sam3_model = is_model_downloaded("sam3")
+    sam3_ready = has_sam3_pkg and has_sam3_model
+
+    has_mlx_pkg = _ilu.find_spec("mlx") is not None
+    has_mlx_src = _mlx_sam3_src_available()
+    has_sam3_mlx_model = is_model_downloaded("sam3-mlx")
+    sam3_mlx_ready = has_mlx_pkg and has_mlx_src and has_sam3_mlx_model
+
+    models: list[dict[str, Any]] = []
+    if has_sam3_mlx_model:
         needs = []
-        if not has_mlx:
+        if not has_mlx_pkg:
             needs.append("mlx package (pip install mlx)")
-        if not has_src:
+        if not has_mlx_src:
             needs.append("mlx_sam3 source (git clone https://github.com/Deekshith-Dade/mlx_sam3.git)")
         models.append({
             "id": "sam3-mlx",
             "label": "SAM 3 MLX (Apple Silicon)",
-            "ready": has_mlx and has_src,
+            "ready": sam3_mlx_ready,
             "needs": needs,
         })
-    has_sam3_pkg = _ilu.find_spec("sam3") is not None
-    if is_model_downloaded("sam3"):
+
+    if has_sam3_model:
         models.append({
             "id": "sam3",
             "label": "SAM 3 (PyTorch · CPU)",
-            "ready": has_sam3_pkg,
-            "needs": [] if has_sam3_pkg else ["sam3 package (pip install -e sam3/)"],
+            "ready": sam3_ready,
+            "needs": [] if sam3_ready else ["sam3 package (pip install -e sam3/)"],
         })
-    return models
+
+    return {
+        "has_sam3_pkg": has_sam3_pkg,
+        "has_sam3_model": has_sam3_model,
+        "sam3_ready": sam3_ready,
+        "has_mlx_pkg": has_mlx_pkg,
+        "has_mlx_src": has_mlx_src,
+        "has_sam3_mlx_model": has_sam3_mlx_model,
+        "sam3_mlx_ready": sam3_mlx_ready,
+        "has_any_model": has_sam3_model or has_sam3_mlx_model,
+        "ready": sam3_ready or sam3_mlx_ready,
+        "available_models": models,
+    }
+
+def available_segment_models() -> list[dict]:
+    """Return list of available segmentation models with their status."""
+    return get_sam3_runtime_status()["available_models"]
 
 
 # ── Mask visualisation ──────────────────────────────────────────────────────
