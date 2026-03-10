@@ -13,3 +13,4 @@ output/digests/*.md
 vault/**/*.md
 !vault/README.md
 node_modules/
+zeroclaw-rust/target/
