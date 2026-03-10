@@ -68,7 +68,8 @@
                     <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
                     <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
-                    <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span class="nav-icon">⚡</span>Playground</li>
+                    <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span
+                            class="nav-icon">⚡</span>Playground</li>
                     <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
                     <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
                 </ul>
@@ -245,7 +246,9 @@
                             <div id="localModelProgressFill" class="pull-progress-fill" style="width:0%"></div>
                         </div>
                         <span id="localModelProgressPct" class="pull-progress-pct">0%</span>
-                        <button id="localModelRestartBtn" class="btn-restart-download" onclick="restartLocalModelDownload()" title="Wipe partial files and restart from 0">↺ Restart</button>
+                        <button id="localModelRestartBtn" class="btn-restart-download"
+                            onclick="restartLocalModelDownload()" title="Wipe partial files and restart from 0">↺
+                            Restart</button>
                     </div>
                     <div id="localModelCatalog">
                         <p class="placeholder">Loading…</p>
@@ -477,7 +480,9 @@
                             <input type="file" id="sam3FileInput" accept="image/*" hidden>
                             <div class="sam3-upload-content" id="sam3UploadContent">
                                 <div class="sam3-upload-icon">🖼️</div>
-                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); document.getElementById('sam3FileInput').click()">browse</button></p>
+                                <p>Drop image here or <button class="btn-link"
+                                        onclick="event.stopPropagation(); document.getElementById('sam3FileInput').click()">browse</button>
+                                </p>
                                 <p class="sam3-upload-hint">JPEG · PNG · WebP</p>
                             </div>
                         </div>
@@ -502,7 +507,8 @@
                         </div>
 
                         <div class="sam3-tabs">
-                            <button class="sam3-tab active" id="sam3TabText" onclick="setSam3Mode('text')">✏️ Text</button>
+                            <button class="sam3-tab active" id="sam3TabText" onclick="setSam3Mode('text')">✏️
+                                Text</button>
                             <button class="sam3-tab" id="sam3TabBox" onclick="setSam3Mode('box')">▭ Box</button>
                         </div>
 
@@ -510,8 +516,8 @@
                         <div id="sam3TextPanel" class="sam3-prompt-panel">
                             <label class="sam3-label">Describe what to segment</label>
                             <input id="sam3TextPrompt" type="text" class="sam3-input"
-                                   placeholder="e.g. person, the red car, cat on the left"
-                                   onkeydown="if(event.key==='Enter') sam3SegmentText()">
+                                placeholder="e.g. person, the red car, cat on the left"
+                                onkeydown="if(event.key==='Enter') sam3SegmentText()">
                             <button class="btn-sam3-run" id="sam3TextBtn" onclick="sam3SegmentText()">
                                 ✂️ Segment
                             </button>
@@ -519,12 +525,14 @@
 
                         <!-- Box prompt mode -->
                         <div id="sam3BoxPanel" class="sam3-prompt-panel" hidden>
-                            <p class="sam3-hint">Click and drag on the image to draw a bounding box around the object.</p>
+                            <p class="sam3-hint">Click and drag on the image to draw a bounding box around the object.
+                            </p>
                             <div id="sam3BoxInfo" class="sam3-box-info">No box drawn yet</div>
                             <button class="btn-sam3-run" id="sam3BoxBtn" onclick="sam3SegmentBox()" disabled>
                                 ✂️ Segment Selection
                             </button>
-                            <button class="btn-sm sam3-clear-box-btn" id="sam3ClearBoxBtn" onclick="sam3ClearBox()" hidden>
+                            <button class="btn-sm sam3-clear-box-btn" id="sam3ClearBoxBtn" onclick="sam3ClearBox()"
+                                hidden>
                                 ✕ Clear Box
                             </button>
                         </div>
@@ -571,7 +579,10 @@
         <!-- ═══ OCR Playground ═══ -->
         <section id="view-ocr" class="view">
             <div class="view-header">
-                <div><h2>📄 OCR · Text Extraction</h2><p class="view-sub">PaddleOCR — 80+ languages · auto-downloads models</p></div>
+                <div>
+                    <h2>📄 OCR · Text Extraction</h2>
+                    <p class="view-sub">PaddleOCR — 80+ languages · auto-downloads models</p>
+                </div>
             </div>
             <div class="view-scroll sam3-scroll">
                 <div class="sam3-layout">
@@ -581,7 +592,9 @@
                             <input type="file" id="ocrFileInput" accept="image/*" hidden>
                             <div class="sam3-upload-content" id="ocrUploadContent">
                                 <div class="sam3-upload-icon">🖼️</div>
-                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); document.getElementById('ocrFileInput').click()">browse</button></p>
+                                <p>Drop image here or <button class="btn-link"
+                                        onclick="event.stopPropagation(); document.getElementById('ocrFileInput').click()">browse</button>
+                                </p>
                                 <p class="sam3-upload-hint">JPEG · PNG · WebP · BMP</p>
                             </div>
                         </div>
@@ -932,6 +945,8 @@
         <div class="pg-toolbar">
             <div class="pg-toolbar-left">
                 <span class="pg-title">⚡ Playground</span>
+                <button class="btn-sm pg-live-btn" id="pgLiveToggle" onclick="pgToggleLive()"
+                    title="Toggle Live mode — auto-render tool calls as blocks">🔗 Live</button>
             </div>
             <div class="pg-toolbar-actions">
                 <button class="btn-sm" id="pgSaveBtn" onclick="pgSavePipeline()">💾 Save</button>
@@ -941,7 +956,8 @@
                 </div>
                 <button class="btn-sm" onclick="pgResetZoom()" title="Reset zoom">⊙</button>
                 <button class="pg-run-btn" id="pgRunBtn" onclick="pgRunPipeline()" disabled>▶ Run</button>
-                <button class="pg-close-btn" onclick="togglePlayground()" title="Close Playground (Cmd+Shift+P)">✕</button>
+                <button class="pg-close-btn" onclick="togglePlayground()"
+                    title="Close Playground (Cmd+Shift+P)">✕</button>
             </div>
         </div>
 
@@ -951,7 +967,8 @@
             <!-- Skill Library -->
             <div class="pg-library" id="pgLibrary">
                 <div class="pg-library-search">
-                    <input type="text" id="pgSkillSearch" placeholder="Search skills…" oninput="pgFilterSkills(this.value)">
+                    <input type="text" id="pgSkillSearch" placeholder="Search skills…"
+                        oninput="pgFilterSkills(this.value)">
                 </div>
                 <div class="pg-library-list" id="pgLibraryList">
                     <p class="placeholder">Loading skills…</p>

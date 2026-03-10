@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPinnedSkillNavItems();
     checkStatus();
     // Prefetch skills so pinned nav items can route immediately on first click
-    fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => {});
+    fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => { });
     initPlayground();
 });
 
@@ -205,6 +205,8 @@ function connectWebSocket() {
             addMessage('assistant', data.content, data.html);
         } else if (data.type === 'stream_start') {
             _startStreamingMessage();
+            // Live Playground: clear canvas for new turn (T009)
+            _pgLiveClearTurn();
         } else if (data.type === 'stream_token') {
             _resetStreamTimeout();
             if (!_writingResponse) {
@@ -216,10 +218,14 @@ function connectWebSocket() {
             _resetStreamTimeout();
             document.getElementById('typingText').textContent = _toolStatusText(data.name);
             _showToolActivity(data.name, data.input);
+            // Live Playground: render block on canvas (T008)
+            if (_pg.liveMode) _pgLiveToolStart(data.name, data.input);
         } else if (data.type === 'tool_end') {
             _resetStreamTimeout();
             document.getElementById('typingText').textContent = 'Thinking…';
             _hideToolActivity(data.name, data.output);
+            // Live Playground: update block status (T008)
+            if (_pg.liveMode) _pgLiveToolEnd(data.name, data.output);
         } else if (data.type === 'stream_end') {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
@@ -1440,7 +1446,7 @@ async function restartLocalModelDownload() {
     const statusEl = document.getElementById('localModelStatus');
     if (restartBtn) restartBtn.disabled = true;
     if (_localModelDownloadReader) {
-        try { _localModelDownloadReader.cancel(); } catch {}
+        try { _localModelDownloadReader.cancel(); } catch { }
         _localModelDownloadReader = null;
     }
     statusEl.textContent = 'Wiping partial files…';
@@ -3756,11 +3762,11 @@ function loadSam3View() {
                 row.hidden = models.length < 2; // only show selector when there's a choice
             }
         }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 function _sam3InitUpload() {
-    const zone  = document.getElementById('sam3UploadZone');
+    const zone = document.getElementById('sam3UploadZone');
     const input = document.getElementById('sam3FileInput');
     const canvas = document.getElementById('sam3BoxCanvas');
     if (!zone || !input || !canvas) return;
@@ -3775,9 +3781,9 @@ function _sam3InitUpload() {
         if (e.dataTransfer.files[0]) _sam3HandleFile(e.dataTransfer.files[0]);
     });
 
-    canvas.addEventListener('mousedown',  _sam3MouseDown);
-    canvas.addEventListener('mousemove',  _sam3MouseMove);
-    canvas.addEventListener('mouseup',    _sam3MouseUp);
+    canvas.addEventListener('mousedown', _sam3MouseDown);
+    canvas.addEventListener('mousemove', _sam3MouseMove);
+    canvas.addEventListener('mouseup', _sam3MouseUp);
     canvas.addEventListener('mouseleave', _sam3MouseUp);
 
     // Re-compute geometry on resize
@@ -3800,7 +3806,7 @@ async function _sam3HandleFile(file) {
 
         _sam3.imagePath = data.image_path;
 
-        const img  = document.getElementById('sam3Img');
+        const img = document.getElementById('sam3Img');
         const wrap = document.getElementById('sam3ImgWrap');
 
         // Show wrap BEFORE setting src — so dimensions are available when onload fires
@@ -3825,13 +3831,13 @@ async function _sam3HandleFile(file) {
 }
 
 function _sam3SyncCanvas() {
-    const img    = document.getElementById('sam3Img');
+    const img = document.getElementById('sam3Img');
     const canvas = document.getElementById('sam3BoxCanvas');
-    const wrap   = document.getElementById('sam3ImgWrap');
+    const wrap = document.getElementById('sam3ImgWrap');
     if (!img || !canvas || !wrap) return;
 
     const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
-    canvas.width  = ww;
+    canvas.width = ww;
     canvas.height = wh;
 
     // Compute image display rect (object-fit: contain)
@@ -3839,10 +3845,10 @@ function _sam3SyncCanvas() {
     const wa = ww / wh;
     let dw, dh, ox, oy;
     if (ia > wa) { dw = ww; dh = ww / ia; ox = 0; oy = (wh - dh) / 2; }
-    else         { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
+    else { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
 
     _sam3.imgRect = { x: ox, y: oy, w: dw, h: dh };
-    _sam3.scale   = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
+    _sam3.scale = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
 
     // Redraw any existing box
     if (_sam3.draw) _sam3DrawBoxOnCanvas(_sam3.draw);
@@ -3903,10 +3909,10 @@ function _sam3DrawBoxOnCanvas(d) {
     const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2);
     const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
 
-    ctx.fillStyle   = 'rgba(74,144,226,0.12)';
+    ctx.fillStyle = 'rgba(74,144,226,0.12)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth = 2;
     ctx.setLineDash([]);
     ctx.strokeRect(x, y, w, h);
 
@@ -3925,7 +3931,7 @@ function setSam3Mode(mode) {
     document.querySelectorAll('.sam3-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('sam3Tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
     document.getElementById('sam3TextPanel').hidden = mode !== 'text';
-    document.getElementById('sam3BoxPanel').hidden  = mode !== 'box';
+    document.getElementById('sam3BoxPanel').hidden = mode !== 'box';
 
     const canvas = document.getElementById('sam3BoxCanvas');
     if (canvas) canvas.style.pointerEvents = mode === 'box' ? 'auto' : 'none';
@@ -3972,7 +3978,7 @@ async function _sam3RunSegment(extra) {
 
         // Show result overlay
         const resultImg = document.getElementById('sam3ResultImg');
-        resultImg.src    = data.output_url + '?t=' + Date.now();
+        resultImg.src = data.output_url + '?t=' + Date.now();
         resultImg.hidden = false;
 
         // Populate result panel
@@ -4023,7 +4029,7 @@ function sam3NewImage() {
     sam3ClearResult();
     sam3ClearBox();
 
-    document.getElementById('sam3ImgWrap').hidden    = true;
+    document.getElementById('sam3ImgWrap').hidden = true;
     document.getElementById('sam3ImgToolbar').hidden = true;
     document.getElementById('sam3UploadZone').hidden = false;
     _sam3ResetUploadZone();
@@ -4067,11 +4073,11 @@ function loadOcrView() {
             badge.style.borderColor = '#5a4000';
             badge.style.color = '#c8a040';
         }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 function _ocrInitUpload() {
-    const zone  = document.getElementById('ocrUploadZone');
+    const zone = document.getElementById('ocrUploadZone');
     const input = document.getElementById('ocrFileInput');
     if (!zone || !input) return;
 
@@ -4096,30 +4102,30 @@ async function _ocrLoadFile(file) {
     if (data.error) { alert(data.error); return; }
     _ocr.imagePath = data.path;
 
-    const img    = document.getElementById('ocrImg');
-    const wrap   = document.getElementById('ocrImgWrap');
+    const img = document.getElementById('ocrImg');
+    const wrap = document.getElementById('ocrImgWrap');
     const toolbar = document.getElementById('ocrImgToolbar');
-    const zone   = document.getElementById('ocrUploadZone');
-    const info   = document.getElementById('ocrImgInfo');
+    const zone = document.getElementById('ocrUploadZone');
+    const info = document.getElementById('ocrImgInfo');
     img.src = data.url;
     img.onload = () => { if (info) info.textContent = `${img.naturalWidth} × ${img.naturalHeight}`; };
-    zone.hidden  = true;
-    wrap.hidden  = false;
+    zone.hidden = true;
+    wrap.hidden = false;
     toolbar.hidden = false;
     document.getElementById('ocrRunBtn').disabled = false;
-    document.getElementById('ocrResults').hidden   = true;
+    document.getElementById('ocrResults').hidden = true;
     document.getElementById('ocrResultImg').hidden = true;
-    document.getElementById('ocrError').hidden      = true;
+    document.getElementById('ocrError').hidden = true;
 }
 
 async function _ocrRun() {
     if (!_ocr.imagePath) return;
-    const btn   = document.getElementById('ocrRunBtn');
+    const btn = document.getElementById('ocrRunBtn');
     const errEl = document.getElementById('ocrError');
     const statEl = document.getElementById('ocrStatus');
     btn.disabled = true;
     btn.textContent = 'Running…';
-    errEl.hidden  = true;
+    errEl.hidden = true;
     statEl.hidden = false;
     statEl.textContent = 'Running OCR… (first run downloads models ~0.5 GB)';
 
@@ -4158,13 +4164,13 @@ async function _ocrRun() {
 
 function ocrNewImage() {
     _ocr.imagePath = null;
-    document.getElementById('ocrImgWrap').hidden    = true;
+    document.getElementById('ocrImgWrap').hidden = true;
     document.getElementById('ocrImgToolbar').hidden = true;
     document.getElementById('ocrUploadZone').hidden = false;
-    document.getElementById('ocrResults').hidden    = true;
-    document.getElementById('ocrResultImg').hidden  = true;
-    document.getElementById('ocrRunBtn').disabled   = true;
-    document.getElementById('ocrFileInput').value   = '';
+    document.getElementById('ocrResults').hidden = true;
+    document.getElementById('ocrResultImg').hidden = true;
+    document.getElementById('ocrRunBtn').disabled = true;
+    document.getElementById('ocrFileInput').value = '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -4184,6 +4190,13 @@ let _pg = {
     undoStack: [],          // snapshot stack for undo
     redoStack: [],          // snapshot stack for redo
     _suppressSnapshot: false, // prevent recursive snapshot on restore
+    // ── Live mode (003-live-playground) ──
+    liveMode: false,        // FR-001: live toggle state
+    liveBlocks: {},         // toolKey → drawflow node id mapping
+    liveQueue: [],          // FR-011: events queued before canvas init
+    liveSeqId: 0,           // counter for left-to-right placement
+    liveLastId: null,       // previous block id (for edge drawing)
+    livePending: new Set(), // tool names currently running (parallel detection)
 };
 
 // Category → badge CSS class
@@ -4233,6 +4246,14 @@ function togglePlayground() {
     if (_pg.open && !_pg.df) {
         _pgInitDrawflow();
         pgFetchSkills();
+    }
+
+    // T014 — Persist Live toggle visual across panel open/close
+    if (_pg.open) {
+        const liveBtn = document.getElementById('pgLiveToggle');
+        if (liveBtn) liveBtn.classList.toggle('pg-live-active', _pg.liveMode);
+        // T016 — Replay queued events after panel opens
+        if (_pg.df && _pg.liveQueue.length) _pgLiveReplayQueue();
     }
 }
 
@@ -4352,7 +4373,7 @@ function pgFilterSkills(query) {
     const q = query.toLowerCase();
     document.querySelectorAll('.pg-skill-item').forEach(el => {
         const match = el.dataset.skill.toLowerCase().includes(q) ||
-                      el.dataset.display.toLowerCase().includes(q);
+            el.dataset.display.toLowerCase().includes(q);
         el.style.display = match ? '' : 'none';
     });
     // Show/hide empty categories
@@ -4511,8 +4532,8 @@ function pgOpenParamPanel(nodeId) {
                 <div class="pg-field" data-key="${_esc(key)}">
                     <label>${_esc(key)}${isReq ? '<span class="pg-required"> *</span>' : ''}</label>
                     ${def.type === 'boolean'
-                        ? `<select data-field="${_esc(key)}"><option value="" ${val===''?'selected':''}>—</option><option value="true" ${val===true||val==='true'?'selected':''}>true</option><option value="false" ${val===false||val==='false'?'selected':''}>false</option></select>`
-                        : `<input type="${fieldType}" data-field="${_esc(key)}" value="${_esc(String(val))}" placeholder="${_esc(def.description || '')}">`}
+                    ? `<select data-field="${_esc(key)}"><option value="" ${val === '' ? 'selected' : ''}>—</option><option value="true" ${val === true || val === 'true' ? 'selected' : ''}>true</option><option value="false" ${val === false || val === 'false' ? 'selected' : ''}>false</option></select>`
+                    : `<input type="${fieldType}" data-field="${_esc(key)}" value="${_esc(String(val))}" placeholder="${_esc(def.description || '')}">`}
                     ${def.description ? `<span class="pg-field-desc">${_esc(def.description)}</span>` : ''}
                 </div>`;
         }).join('');
@@ -4863,3 +4884,243 @@ function pgResetZoom() {
         }
     }, 200);
 })();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Live Playground (003-live-playground)
+// ═══════════════════════════════════════════════════════════════════════
+
+// T004 — Toggle Live mode on/off
+function pgToggleLive() {
+    const btn = document.getElementById('pgLiveToggle');
+
+    if (!_pg.liveMode) {
+        // Activating — check for non-empty canvas (US2 / T011-T013)
+        if (_pg.df) {
+            const data = _pg.df.drawflow.drawflow.Home.data;
+            const manualNodes = Object.keys(data).filter(id =>
+                _pg.nodeConfigs[id] && _pg.nodeConfigs[id].liveSource !== 'live'
+            );
+            if (manualNodes.length > 0) {
+                // T012 — Non-destructive activation prompt
+                const choice = confirm(
+                    'The canvas has existing blocks.\n\nOK = Clear canvas and start Live mode\nCancel = Keep existing blocks and append live blocks'
+                );
+                if (choice) {
+                    // Clear all nodes
+                    _pg._suppressSnapshot = true;
+                    for (const id of Object.keys(data)) {
+                        try { _pg.df.removeNodeId(`node-${id}`); } catch { }
+                    }
+                    _pg.nodeConfigs = {};
+                    _pg._suppressSnapshot = false;
+                } else {
+                    // Append — offset live blocks to the right of existing nodes
+                    let maxX = 0;
+                    for (const id of Object.keys(data)) {
+                        const node = data[id];
+                        if (node.pos_x > maxX) maxX = node.pos_x;
+                    }
+                    _pg.liveSeqId = 0;
+                    _pg._liveOffsetX = maxX + 300;
+                }
+            }
+        }
+
+        _pg.liveMode = true;
+        _pg.liveBlocks = {};
+        _pg.liveQueue = [];
+        if (!_pg._liveOffsetX) _pg._liveOffsetX = 0;
+        _pg.liveSeqId = _pg.liveSeqId || 0;
+        _pg.liveLastId = null;
+        _pg.livePending = new Set();
+        btn.classList.add('pg-live-active');
+
+        // FR-002 — open panel if closed
+        if (!_pg.open) togglePlayground();
+    } else {
+        // T017 — Turning off: stop rendering new blocks, keep existing ones
+        _pg.liveMode = false;
+        btn.classList.remove('pg-live-active');
+        // FR-012 — do NOT close the playground panel
+    }
+}
+
+// T005 + T007 — Handle tool_start event in live mode
+function _pgLiveToolStart(name, input) {
+    if (!_pg.liveMode) return;
+
+    // T015 — Queue events if Drawflow not initialised
+    if (!_pg.df) {
+        _pg.liveQueue.push({ type: 'start', name, input });
+        return;
+    }
+
+    // Build a unique key for this tool call within the turn
+    let toolKey = name;
+    let suffix = 0;
+    while (_pg.liveBlocks[toolKey] !== undefined) {
+        suffix++;
+        toolKey = `${name}_${suffix}`;
+    }
+
+    // Determine if tool is known
+    const isKnown = _pg.skills.some(s => s.name === name);
+    const displayName = isKnown
+        ? (_pg.skills.find(s => s.name === name)?.display_name || name)
+        : name;
+    const cat = isKnown
+        ? (_pg.skills.find(s => s.name === name)?.category || 'Utility')
+        : 'Utility';
+
+    // Position: left-to-right, offset by liveSeqId
+    const baseX = (_pg._liveOffsetX || 0) + 200;
+    const pos_x = baseX + (_pg.liveSeqId * 220);
+    const pos_y = 200;
+
+    // Determine if this is a parallel call (another tool is still running)
+    const isParallel = _pg.livePending.size > 0;
+
+    // Create Drawflow node
+    const badgeCls = _PG_BADGE[cat] || 'pg-cat-badge-utility';
+    const unknownCls = isKnown ? '' : ' pg-live-unknown';
+    const html = `
+        <div class="pg-node-inner${unknownCls}">
+            <span class="pg-cat-badge ${badgeCls}">${_esc(cat)}</span>
+            <span class="pg-node-name">${_esc(displayName)}</span>
+            <span class="pg-live-status-icon">⏳</span>
+        </div>`;
+
+    _pg._suppressSnapshot = true;
+    const nodeId = _pg.df.addNode(
+        name, 0, 0, pos_x, pos_y,
+        `pg-live-block pg-status-running`, {}, html
+    );
+    _pg._suppressSnapshot = false;
+
+    // Store config for live block
+    _pg.nodeConfigs[nodeId] = {
+        skill_name: name,
+        display_name: displayName,
+        category: cat,
+        config: {},
+        liveSource: 'live',
+        liveKey: toolKey,
+        parameter_schema: { type: 'object', properties: {} },
+    };
+
+    _pg.liveBlocks[toolKey] = nodeId;
+
+    // Draw edge from previous sequential block (T005 / FR-005 / FR-013)
+    if (!isParallel && _pg.liveLastId != null) {
+        try {
+            _pg.df.addConnection(_pg.liveLastId, nodeId, 'output_1', 'input_1');
+        } catch { /* skip if ports don't match */ }
+    }
+
+    _pg.livePending.add(toolKey);
+    _pg.liveSeqId++;
+
+    // T010 — Auto-fit: zoom out if block goes beyond visible canvas
+    _pgLiveAutoFit(pos_x);
+}
+
+// T006 — Handle tool_end event in live mode
+function _pgLiveToolEnd(name, output) {
+    if (!_pg.liveMode) return;
+
+    // T015 — Queue if Drawflow not initialised
+    if (!_pg.df) {
+        _pg.liveQueue.push({ type: 'end', name, output });
+        return;
+    }
+
+    // Find the matching live block (find last created block with this tool name)
+    let toolKey = null;
+    for (const key of _pg.livePending) {
+        if (key === name || key.startsWith(name + '_')) {
+            toolKey = key;
+            break;
+        }
+    }
+
+    if (!toolKey) return; // no matching pending block
+
+    const nodeId = _pg.liveBlocks[toolKey];
+    if (nodeId == null) return;
+
+    // Determine success or error status
+    const isError = output && (
+        output.toLowerCase().includes('error:') ||
+        output.toLowerCase().includes('traceback') ||
+        output.toLowerCase().startsWith('error')
+    );
+
+    // Update node CSS class
+    const nodeEl = document.querySelector(`#node-${nodeId}`);
+    if (nodeEl) {
+        nodeEl.classList.remove('pg-status-running');
+        nodeEl.classList.add(isError ? 'pg-status-error' : 'pg-status-done');
+
+        // Update status icon
+        const icon = nodeEl.querySelector('.pg-live-status-icon');
+        if (icon) icon.textContent = isError ? '❌' : '✅';
+    }
+
+    // Remove from pending set
+    _pg.livePending.delete(toolKey);
+
+    // When all pending complete, update liveLastId for next sequential edge
+    if (_pg.livePending.size === 0) {
+        _pg.liveLastId = nodeId;
+    }
+}
+
+// T009 — Clear live blocks at turn boundary (called on stream_start)
+function _pgLiveClearTurn() {
+    if (!_pg.liveMode || !_pg.df) return;
+
+    // Remove all nodes tagged as live
+    _pg._suppressSnapshot = true;
+    const data = _pg.df.drawflow.drawflow.Home.data;
+    for (const id of Object.keys(data)) {
+        if (_pg.nodeConfigs[id]?.liveSource === 'live') {
+            try { _pg.df.removeNodeId(`node-${id}`); } catch { }
+            delete _pg.nodeConfigs[id];
+        }
+    }
+    _pg._suppressSnapshot = false;
+
+    // Reset live state
+    _pg.liveBlocks = {};
+    _pg.liveSeqId = 0;
+    _pg.liveLastId = null;
+    _pg.livePending = new Set();
+    _pg._liveOffsetX = 0;
+}
+
+// T010 — Auto-fit: zoom out if live blocks exceed visible canvas width
+function _pgLiveAutoFit(blockX) {
+    if (!_pg.df) return;
+    const canvas = document.getElementById('pgCanvas');
+    if (!canvas) return;
+    const visibleWidth = canvas.clientWidth;
+
+    // If block position exceeds 80% of visible width at current zoom, zoom out
+    if (blockX > visibleWidth * 0.8 / (_pg.df.zoom || 1)) {
+        const targetZoom = Math.max(0.3, (visibleWidth * 0.7) / (blockX + 200));
+        if (targetZoom < (_pg.df.zoom || 1)) {
+            _pg.df.zoom = targetZoom;
+            _pg.df.zoom_refresh();
+        }
+    }
+}
+
+// T016 — Replay queued live events after Drawflow init
+function _pgLiveReplayQueue() {
+    if (!_pg.liveQueue.length || !_pg.df) return;
+    const queue = _pg.liveQueue.splice(0);
+    for (const evt of queue) {
+        if (evt.type === 'start') _pgLiveToolStart(evt.name, evt.input);
+        else if (evt.type === 'end') _pgLiveToolEnd(evt.name, evt.output);
+    }
+}
