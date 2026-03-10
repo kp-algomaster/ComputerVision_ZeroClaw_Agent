@@ -14,26 +14,28 @@ This guide walks a developer from zero to a working CV-Playground integration in
 
 ---
 
-## Step 1 — Verify /api/skills returns blocks
+## Step 1 — Verify /api/playground/skills returns blocks
 
 Start the server and confirm the new endpoint works:
 
 ```bash
 .venv/bin/uvicorn src.cv_agent.web:app --reload --port 8420
-curl -s http://127.0.0.1:8420/api/skills | python3 -m json.tool | head -40
+curl -s http://127.0.0.1:8420/api/playground/skills | python3 -m json.tool | head -40
 ```
 
 Expected output: JSON array of skill definitions including `Vision`, `Research`, `Content`, `Agents`, `Utility` categories, plus `__inputs__` and `__outputs__` special nodes.
+
+> **Note**: The playground uses `/api/playground/skills` (not `/api/skills`) to avoid conflict with the existing Skills readiness endpoint.
 
 ---
 
 ## Step 2 — Open the Playground sidebar
 
 1. Open `http://127.0.0.1:8420` in a browser
-2. Click the **Playground** button in the top toolbar (or press `Cmd+Shift+P` / `Ctrl+Shift+P`)
-3. The right sidebar opens. The chat panel remains visible and interactive alongside it.
+2. In the **left nav sidebar**, scroll to the **Research** section and click **⚡ Playground** (or press `Cmd+Shift+P` / `Ctrl+Shift+P`)
+3. The right playground panel slides open. The chat panel remains visible and interactive alongside it on screens ≥ 1280 px.
 
-The skill block library on the left column of the sidebar should list all blocks grouped by category. Each category is collapsible.
+The skill block library on the left column of the playground panel lists all blocks grouped by category. Each category is collapsible. Use the search box at the top to filter blocks.
 
 ---
 
@@ -92,8 +94,8 @@ Expected: All tests pass (topological sort, fan-out, error isolation, cycle dete
 | Skill registry adapter | `src/cv_agent/pipeline/skill_registry.py` |
 | REST endpoints | `src/cv_agent/web.py` — search `# CV-Playground` |
 | Frontend — init | `src/cv_agent/ui/app.js` — search `initPlayground` |
-| Frontend — HTML | `src/cv_agent/ui/index.html` — search `playground-sidebar` |
-| Frontend — CSS | `src/cv_agent/ui/style.css` — search `/* playground */` |
+| Frontend — HTML | `src/cv_agent/ui/index.html` — search `playground-panel` |
+| Frontend — CSS | `src/cv_agent/ui/style.css` — search `CV Playground` |
 | Saved pipelines | `output/.workflows/*.json` (files with `"nodes"` key) |
 
 ---
@@ -104,7 +106,7 @@ Expected: All tests pass (topological sort, fan-out, error isolation, cycle dete
 → Clear browser cache or do a hard refresh (`Cmd+Shift+R`). The toolbar button is added to `index.html`; a stale cached page won't show it.
 
 **Skill blocks not loading**
-→ `GET /api/skills` returned an error. Check the server console — usually a `build_tools()` import error in one of the tool modules.
+→ `GET /api/playground/skills` returned an error. Check the server console — usually a `build_tools()` import error in one of the tool modules.
 
 **Run button stays disabled**
 → The canvas is missing a required Inputs node or Outputs node. Both must be present and connected for Run to activate.

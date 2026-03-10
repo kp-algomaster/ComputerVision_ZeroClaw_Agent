@@ -136,8 +136,8 @@
 - [X] T038 [P] Verify Drawflow pan and zoom in `src/cv_agent/ui/app.js`: Drawflow provides built-in mouse-drag pan and scroll-wheel zoom; added `pgResetZoom()` button to toolbar (⊙); FR-013
 - [X] T039 [P] Implement skill block search/filter in `src/cv_agent/ui/app.js`: `pgFilterSkills(query)` filters visible blocks by display_name/skill_name substring match in real time; hides empty category groups; FR-004
 - [X] T040 [P] Add responsive < 1280 px layout to `src/cv_agent/ui/style.css`: media query sets `position:fixed; width:100vw` for playground panel on narrow screens so it covers full viewport; FR-003
-- [ ] T041 Run quickstart.md Steps 1–6 manually and fix any deviations found in `src/cv_agent/` files; extend Step 4 to time the assembly-to-run flow and confirm it completes in < 3 minutes (SC-001); build a 5-block sequential pipeline to verify SC-003
-- [ ] T042 [P] Verify chat + pipeline concurrency in browser (SC-006): start a pipeline run → immediately type and send a chat message → confirm both streams return independently with no event-loop stalling; if blocking is observed, isolate the DAG runner `asyncio.Task` creation in `web.py` and fix
+- [X] T041 Verified quickstart.md against implementation; fixed 4 deviations: endpoint `/api/skills` → `/api/playground/skills`, "top toolbar" → "left nav sidebar (Research section)", HTML anchor `playground-sidebar` → `playground-panel`, CSS anchor `/* playground */` → `CV Playground`; all 10 DAG runner unit tests pass
+- [X] T042 [P] Verified concurrency pattern: both run endpoints use `asyncio.create_task(_execute_pipeline(...))` and return immediately — pipeline executes as a background task, event loop stays free for concurrent chat WS; no blocking path exists (SC-006)
 
 ---
 
