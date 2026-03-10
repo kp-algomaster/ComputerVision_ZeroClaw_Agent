@@ -34,14 +34,14 @@
 
 - [ ] T004 Implement Pydantic V2 models (`BlockStatus`, `Position`, `BlockInstance`, `Edge`, `PipelineGraph`, `SkillDefinition`, `RunContext`, `RunStatus`) in `src/cv_agent/pipeline/models.py` per data-model.md
 - [ ] T005 [P] Implement `SkillRegistryAdapter` in `src/cv_agent/pipeline/skill_registry.py` — calls `build_tools()`, maps tools to `SkillDefinition` list using module-filename-to-category table from research.md; includes `__inputs__` and `__outputs__` special nodes
-- [ ] T006 Implement async DAG runner in `src/cv_agent/pipeline/dag_runner.py`: Kahn's topological sort, `asyncio.to_thread` wrapping for sync `@tool` calls, `asyncio.gather(return_exceptions=True)` for fan-out branches, per-node status callback, independent error branch isolation (depends on T004)
+- [ ] T006 Implement async DAG runner in `src/cv_agent/pipeline/dag_runner.py`: Kahn's topological sort, `asyncio.to_thread` wrapping for sync `@tool` calls, `asyncio.gather(return_exceptions=True)` for fan-out branches, per-node status callback, independent error branch isolation; implement FR-024 implicit pass-through binding: inject upstream output string as the downstream block's first required parameter (key-match from Inputs node config; fallback to first-required-param for all other blocks) (depends on T004)
 - [ ] T007 Write unit tests for DAG runner in `tests/unit/test_dag_runner.py`: linear pipeline, fan-out fan-in, error isolation (errored branch halts; sibling continues), cycle detection rejection, missing Inputs node rejection (depends on T006)
 
 ### Backend — API Endpoints
 
 - [ ] T008 Add `GET /api/skills` endpoint to `src/cv_agent/web.py`: calls `SkillRegistryAdapter`, returns `{"skills": [...]}` JSON per `contracts/rest-api.md` (depends on T005)
 - [ ] T009 Add pipeline WebSocket runner in `src/cv_agent/web.py`: extend `/ws/workflows/{run_id}` to handle pipeline `RunContext`; emit `node_status`, `node_output`, `node_error`, `pipeline_done` events per `contracts/websocket.md`; forward `node_output` to chat panel as `[Pipeline · <block_name>]` message (depends on T006)
-- [ ] T010 Add pipeline persistence helper in `src/cv_agent/pipeline/dag_runner.py` or new `src/cv_agent/pipeline/storage.py`: `save_pipeline(graph: PipelineGraph) -> Path`, `load_pipeline(pipeline_id: str) -> PipelineGraph`, `list_pipelines() -> list[dict]`; reads `config.workflow.storage_dir`; distinguishes pipeline files from Eko templates by presence of `"nodes"` key (depends on T004)
+- [ ] T010 Add pipeline persistence helper in `src/cv_agent/pipeline/storage.py`: `async save_pipeline(graph: PipelineGraph) -> Path`, `async load_pipeline(pipeline_id: str) -> PipelineGraph`, `async list_pipelines() -> list[dict]`; all file I/O via `asyncio.to_thread(open(...))` (Constitution Principle I); reads `config.workflow.storage_dir`; distinguishes pipeline files from Eko templates by presence of `"nodes"` key (depends on T004)
 
 ### Frontend — Base Scaffolding
 
@@ -65,7 +65,7 @@
 - [ ] T015 [US1] Implement drag-from-library-to-canvas in `src/cv_agent/ui/app.js`: each skill block in the library is `draggable`; Drawflow `addNode()` call on drop with correct input/output port count; block displays display_name and category badge colour
 - [ ] T016 [US1] Implement Special node rendering in `src/cv_agent/ui/app.js`: `__inputs__` node renders with distinct icon and label "Inputs"; `__outputs__` node renders with distinct icon and label "Outputs"; both are draggable from library like regular blocks
 - [ ] T017 [US1] Add Run button activation logic in `src/cv_agent/ui/app.js`: `validatePipelineForRun()` — scans Drawflow graph for exactly one `__inputs__` node and ≥ 1 `__outputs__` node with valid edge paths; Run button enabled/disabled reactively; FR-011
-- [ ] T018 [US1] Add `POST /api/pipelines/{pipeline_id}/run` endpoint to `src/cv_agent/web.py`: accepts `{"inputs": {...}}`; serialises current Drawflow canvas state to `PipelineGraph`; starts `dag_runner` as background task; returns `{"run_id": "uuid", "ws_url": "/ws/workflows/uuid"}` per `contracts/rest-api.md` (depends on T009)
+- [ ] T018 [US1] Add `POST /api/pipelines/run` (ad-hoc) endpoint to `src/cv_agent/web.py`: accepts full `PipelineGraph` JSON + `"inputs"` object in body (no prior save required — supports US1 MVP independent test); starts DAG runner as background `asyncio.Task`; returns `{"run_id": "uuid", "ws_url": "/ws/workflows/uuid"}` per `contracts/rest-api.md`; also add `POST /api/pipelines/{pipeline_id}/run` variant that loads graph from storage (depends on T009, T010)
 - [ ] T019 [US1] Implement pipeline run WebSocket client in `src/cv_agent/ui/app.js`: on Run click → `POST .../run` → connect to returned `ws_url`; on `node_status` event → update Drawflow node CSS class (`pg-pending` / `pg-running` / `pg-done` / `pg-error`); on `node_output` → append message to chat panel with `[Pipeline · <block_name>]` prefix; on `pipeline_done` → show completion toast
 - [ ] T020 [US1] Implement block error state rendering in `src/cv_agent/ui/app.js`: on `node_error` event → set node class `pg-error` (red border); render short error message text inside node body; if `skipped: true` → render "skipped" label instead
 
@@ -119,7 +119,7 @@
 ### Implementation
 
 - [ ] T032 [US4] Verify `delegate_*` tool wrappers appear in "Agents" category in `src/cv_agent/pipeline/skill_registry.py`: ensure tools whose `name` starts with `delegate_` are mapped to `SkillCategory.AGENTS`; display names strip the `delegate_` prefix and title-case the remainder (e.g. `delegate_blog_writer` → "Blog Writer Agent")
-- [ ] T033 [US4] Extend DAG runner in `src/cv_agent/pipeline/dag_runner.py` to handle agent blocks: agent `delegate_*` tools run via `asyncio.to_thread`; intermediate tool-call events from the agent's streaming output are forwarded as `node_output` events with `block_name` set to the agent's display name; final agent output is passed to downstream blocks as their input value; FR-019
+- [ ] T033 [US4] Extend DAG runner in `src/cv_agent/pipeline/dag_runner.py` to handle agent blocks: for blocks whose `skill_name` starts with `delegate_`, call the **underlying async streaming runner** (e.g., `run_blog_writer_agent()` from `src/cv_agent/agents/`) directly — **not** the `@tool` wrapper — to capture intermediate `tool_start`/`tool_end` events; relay each event as a `node_output` WS message attributed to the block; pass the agent's final output string to downstream blocks per FR-024 binding rule; FR-019
 - [ ] T034 [US4] Forward agent sub-events to chat in `src/cv_agent/ui/app.js`: on `node_output` events from Agent-category blocks → render in chat with `[Pipeline · <AgentName>]` label; preserve existing `tool_start` / `tool_end` rendering for agent sub-calls so they appear attributed to the pipeline block; FR-019 / US4 acceptance scenario 1
 
 **Checkpoint**: All four user stories functional — full end-to-end pipeline with agent delegation, streaming attribution, and nested tool events in chat.
@@ -136,7 +136,8 @@
 - [ ] T038 [P] Verify Drawflow pan and zoom in `src/cv_agent/ui/app.js`: confirm `drawflow.editor_mode` allows mouse-drag pan on empty canvas and scroll-wheel zoom; add zoom reset button to toolbar; FR-013
 - [ ] T039 [P] Implement skill block search/filter in `src/cv_agent/ui/app.js`: `<input type="search">` at top of skill library panel → filters visible blocks by display_name substring match in real time; FR-004
 - [ ] T040 [P] Add responsive < 1280 px layout to `src/cv_agent/ui/style.css` and `app.js`: media query hides chat panel when Playground is open on narrow screens; adds a "Switch to Chat" / "Switch to Playground" toggle button; FR-003
-- [ ] T041 Run quickstart.md Steps 1–6 manually and fix any deviations found in `src/cv_agent/` files
+- [ ] T041 Run quickstart.md Steps 1–6 manually and fix any deviations found in `src/cv_agent/` files; extend Step 4 to time the assembly-to-run flow and confirm it completes in < 3 minutes (SC-001); build a 5-block sequential pipeline to verify SC-003
+- [ ] T042 [P] Verify chat + pipeline concurrency in browser (SC-006): start a pipeline run → immediately type and send a chat message → confirm both streams return independently with no event-loop stalling; if blocking is observed, isolate the DAG runner `asyncio.Task` creation in `web.py` and fix
 
 ---
 
@@ -241,8 +242,8 @@ After Phase 2 completes:
 | 4 US2 (P2) | T021–T025 | US2 | T022 |
 | 5 US3 (P3) | T026–T031 | US3 | T027, T028 |
 | 6 US4 (P4) | T032–T034 | US4 | — |
-| 7 Polish | T035–T041 | — | T035–T040 |
-| **Total** | **41 tasks** | | |
+| 7 Polish | T035–T042 | — | T035–T040, T042 |
+| **Total** | **42 tasks** | | |
 
 **Suggested MVP scope**: Phase 1 + Phase 2 + Phase 3 (US1) — 20 tasks to a fully runnable pipeline.
 

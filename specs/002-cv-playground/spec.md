@@ -71,6 +71,8 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 1. **Given** an Agent block (e.g., Blog Writer) is placed on the canvas, **When** the pipeline runs, **Then** the agent's tool-start and tool-end events appear in the chat stream, attributed to that block.
 2. **Given** an Agent block output is wired to a second block input (e.g., Outputs), **Then** the second block receives the agent's final text output as its input value.
 
+> **Implementation note**: Agent blocks are executed by calling the underlying async streaming runner function (e.g., `run_blog_writer_agent()`) directly — **not** the synchronous `delegate_*` `@tool` wrapper. This is required to capture intermediate tool-call events. The `delegate_*` wrappers return only a final string and do not expose sub-events.
+
 ---
 
 ### Edge Cases
@@ -132,6 +134,10 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 - **FR-022**: Saved pipelines MUST persist to the existing `output/.workflows` storage directory and MUST appear in the existing **Workflows** section of the navigation sidebar.
 - **FR-023**: Users MUST be able to load any saved pipeline from a **Load** dropdown on the Playground toolbar, restoring all blocks, edges, and parameter values.
 
+**Data Binding**
+
+- **FR-024**: When the DAG runner passes the output of one block to the next, it MUST use **implicit single-value pass-through**: the upstream block's return value (a string) is injected as the value of the downstream block's **first required parameter** as declared in its parameter schema. If the user has already supplied a value for that parameter in the block's config, the pipeline output value overrides it at run time. This rule applies to all skill blocks and to the Inputs node (which passes its configured field values to the first downstream block's corresponding named parameters by key match, falling back to first-required-param if no key matches).
+
 ### Key Entities
 
 - **Pipeline Graph**: A directed acyclic graph consisting of nodes (block instances) and edges (data connections). Attributes: name, created_at, nodes[], edges[].
@@ -176,7 +182,7 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 - Block definitions (name, description, parameter schema) are served by a new lightweight REST endpoint (`/api/skills`) that reads from the live `build_tools()` registry — no static config file required.
 - No authentication or per-user isolation is required; the Playground shares the session context of the current chat.
 - The visual graph library used for the canvas is a pure-JS, MIT/BSD-licensed library (e.g., Drawflow or a custom SVG/Canvas implementation) requiring no new Python server dependencies.
-- Mobile support (< 1280 px) is out of scope for the initial release.
+- On screen widths < 1280 px the Playground occupies full width and the user can switch between chat and Playground views (FR-003). Full mobile-optimised layout is out of scope; switching views is sufficient.
 
 ## Clarifications
 
