@@ -11,6 +11,9 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <!-- Drawflow (MIT) — node graph for CV Playground -->
+    <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css">
 </head>
 
 <body>
@@ -65,6 +68,7 @@
                     <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
                     <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
+                    <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span class="nav-icon">⚡</span>Playground</li>
                     <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
                     <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
                 </ul>
@@ -912,6 +916,73 @@
         </section>
 
     </main>
+
+    <!-- ═══ CV Playground Panel ═══ -->
+    <aside id="playground-panel" class="pg-panel pg-closed" aria-label="CV Playground">
+
+        <!-- Toolbar -->
+        <div class="pg-toolbar">
+            <div class="pg-toolbar-left">
+                <span class="pg-title">⚡ Playground</span>
+            </div>
+            <div class="pg-toolbar-actions">
+                <button class="btn-sm" id="pgSaveBtn" onclick="pgSavePipeline()">💾 Save</button>
+                <div class="pg-load-wrap">
+                    <button class="btn-sm" id="pgLoadBtn" onclick="pgToggleLoadMenu()">📂 Load ▾</button>
+                    <div id="pgLoadMenu" class="pg-load-menu" hidden></div>
+                </div>
+                <button class="pg-run-btn" id="pgRunBtn" onclick="pgRunPipeline()" disabled>▶ Run</button>
+                <button class="pg-close-btn" onclick="togglePlayground()" title="Close Playground (Cmd+Shift+P)">✕</button>
+            </div>
+        </div>
+
+        <!-- Body: skill library | canvas + param panel -->
+        <div class="pg-body">
+
+            <!-- Skill Library -->
+            <div class="pg-library" id="pgLibrary">
+                <div class="pg-library-search">
+                    <input type="text" id="pgSkillSearch" placeholder="Search skills…" oninput="pgFilterSkills(this.value)">
+                </div>
+                <div class="pg-library-list" id="pgLibraryList">
+                    <p class="placeholder">Loading skills…</p>
+                </div>
+            </div>
+
+            <!-- Canvas + floating param panel -->
+            <div class="pg-canvas-wrap" id="pgCanvasWrap">
+                <div id="pgCanvas"></div>
+
+                <!-- Parameter panel (flyout over canvas) -->
+                <div class="pg-param-panel pg-param-closed" id="pgParamPanel">
+                    <div class="pg-param-header">
+                        <span class="pg-param-title" id="pgParamTitle">Block Config</span>
+                        <button class="pg-close-btn" onclick="pgCloseParamPanel()">✕</button>
+                    </div>
+                    <div class="pg-param-body" id="pgParamBody">
+                        <p class="placeholder">Click a block on the canvas to configure it.</p>
+                    </div>
+                    <div class="pg-param-footer">
+                        <button class="btn-sm" onclick="pgApplyParam()">Apply</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Save pipeline name dialog (inline, hidden) -->
+        <div class="pg-save-dialog" id="pgSaveDialog" hidden>
+            <div class="pg-save-dialog-inner">
+                <label for="pgPipelineName">Pipeline name</label>
+                <input type="text" id="pgPipelineName" placeholder="My Pipeline" maxlength="80">
+                <div class="pg-save-dialog-actions">
+                    <button class="btn-sm" onclick="pgConfirmSave()">Save</button>
+                    <button class="btn-sm" onclick="pgCancelSave()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+    </aside>
 
     <!-- ═══ Dataset Visualization Modal ═══ -->
     <div id="dsVizOverlay" class="dsviz-overlay" hidden onclick="if(event.target===this)closeDsViz()">

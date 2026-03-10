@@ -18,9 +18,9 @@
 
 **Purpose**: Create the new `pipeline` package skeleton and test directories.
 
-- [ ] T001 Create `src/cv_agent/pipeline/__init__.py` (empty package marker)
-- [ ] T002 [P] Create `tests/unit/` directory with `__init__.py` (pytest discovery)
-- [ ] T003 [P] Create `tests/integration/` directory with `__init__.py` (pytest discovery)
+- [X] T001 Create `src/cv_agent/pipeline/__init__.py` (empty package marker)
+- [X] T002 [P] Create `tests/unit/` directory with `__init__.py` (pytest discovery)
+- [X] T003 [P] Create `tests/integration/` directory with `__init__.py` (pytest discovery)
 
 ---
 
@@ -32,22 +32,22 @@
 
 ### Backend — Models & Logic
 
-- [ ] T004 Implement Pydantic V2 models (`BlockStatus`, `Position`, `BlockInstance`, `Edge`, `PipelineGraph`, `SkillDefinition`, `RunContext`, `RunStatus`) in `src/cv_agent/pipeline/models.py` per data-model.md
-- [ ] T005 [P] Implement `SkillRegistryAdapter` in `src/cv_agent/pipeline/skill_registry.py` — calls `build_tools()`, maps tools to `SkillDefinition` list using module-filename-to-category table from research.md; includes `__inputs__` and `__outputs__` special nodes
-- [ ] T006 Implement async DAG runner in `src/cv_agent/pipeline/dag_runner.py`: Kahn's topological sort, `asyncio.to_thread` wrapping for sync `@tool` calls, `asyncio.gather(return_exceptions=True)` for fan-out branches, per-node status callback, independent error branch isolation; implement FR-024 implicit pass-through binding: inject upstream output string as the downstream block's first required parameter (key-match from Inputs node config; fallback to first-required-param for all other blocks) (depends on T004)
-- [ ] T007 Write unit tests for DAG runner in `tests/unit/test_dag_runner.py`: linear pipeline, fan-out fan-in, error isolation (errored branch halts; sibling continues), cycle detection rejection, missing Inputs node rejection (depends on T006)
+- [X] T004 Implement Pydantic V2 models (`BlockStatus`, `Position`, `BlockInstance`, `Edge`, `PipelineGraph`, `SkillDefinition`, `RunContext`, `RunStatus`) in `src/cv_agent/pipeline/models.py` per data-model.md
+- [X] T005 [P] Implement `SkillRegistryAdapter` in `src/cv_agent/pipeline/skill_registry.py` — calls `build_tools()`, maps tools to `SkillDefinition` list using module-filename-to-category table from research.md; includes `__inputs__` and `__outputs__` special nodes
+- [X] T006 Implement async DAG runner in `src/cv_agent/pipeline/dag_runner.py`: Kahn's topological sort, `asyncio.to_thread` wrapping for sync `@tool` calls, `asyncio.gather(return_exceptions=True)` for fan-out branches, per-node status callback, independent error branch isolation; implement FR-024 implicit pass-through binding: inject upstream output string as the downstream block's first required parameter (key-match from Inputs node config; fallback to first-required-param for all other blocks) (depends on T004)
+- [X] T007 Write unit tests for DAG runner in `tests/unit/test_dag_runner.py`: linear pipeline, fan-out fan-in, error isolation (errored branch halts; sibling continues), cycle detection rejection, missing Inputs node rejection (depends on T006)
 
 ### Backend — API Endpoints
 
-- [ ] T008 Add `GET /api/skills` endpoint to `src/cv_agent/web.py`: calls `SkillRegistryAdapter`, returns `{"skills": [...]}` JSON per `contracts/rest-api.md` (depends on T005)
-- [ ] T009 Add pipeline WebSocket runner in `src/cv_agent/web.py`: extend `/ws/workflows/{run_id}` to handle pipeline `RunContext`; emit `node_status`, `node_output`, `node_error`, `pipeline_done` events per `contracts/websocket.md`; forward `node_output` to chat panel as `[Pipeline · <block_name>]` message (depends on T006)
-- [ ] T010 Add pipeline persistence helper in `src/cv_agent/pipeline/storage.py`: `async save_pipeline(graph: PipelineGraph) -> Path`, `async load_pipeline(pipeline_id: str) -> PipelineGraph`, `async list_pipelines() -> list[dict]`; all file I/O via `asyncio.to_thread(open(...))` (Constitution Principle I); reads `config.workflow.storage_dir`; distinguishes pipeline files from Eko templates by presence of `"nodes"` key (depends on T004)
+- [X] T008 Add `GET /api/playground/skills` endpoint to `src/cv_agent/web.py`: calls `SkillRegistryAdapter`, returns `{"skills": [...]}` JSON (used /api/playground/skills to avoid conflict with existing /api/skills skills-readiness endpoint) (depends on T005)
+- [X] T009 Add pipeline WebSocket runner in `src/cv_agent/web.py`: extend `/ws/workflows/{run_id}` to handle pipeline `RunContext`; emit `node_status`, `node_output`, `node_error`, `pipeline_done` events per `contracts/websocket.md`; forward `node_output` to chat panel as `[Pipeline · <block_name>]` message (depends on T006)
+- [X] T010 Add pipeline persistence helper in `src/cv_agent/pipeline/storage.py`: `async save_pipeline(graph: PipelineGraph) -> Path`, `async load_pipeline(pipeline_id: str) -> PipelineGraph`, `async list_pipelines() -> list[dict]`; all file I/O via `asyncio.to_thread(open(...))` (Constitution Principle I); reads `config.workflow.storage_dir`; distinguishes pipeline files from Eko templates by presence of `"nodes"` key (depends on T004)
 
 ### Frontend — Base Scaffolding
 
-- [ ] T011 Add Drawflow CDN script tag and playground sidebar HTML skeleton to `src/cv_agent/ui/index.html`: `<div id="playground-sidebar">` with three sub-columns (skill library, canvas, parameter panel); toolbar with toggle button, Save, Load, Run controls; keyboard shortcut meta tags
-- [ ] T012 [P] Add playground CSS to `src/cv_agent/ui/style.css`: sidebar split layout (chat + playground side-by-side ≥ 1280 px); Drawflow node colour variables (`--pg-pending`, `--pg-running`, `--pg-done`, `--pg-error`); skill library column; parameter panel column; responsive breakpoint < 1280 px (full-width switch)
-- [ ] T013 Add base playground JS to `src/cv_agent/ui/app.js`: `initPlayground()` function; Drawflow instance creation on `#canvas`; `fetchSkills()` → `GET /api/skills`; populate skill library grouped by category with collapsible sections; register playground view in `switchView()` router
+- [X] T011 Add Drawflow CDN script tag and playground sidebar HTML skeleton to `src/cv_agent/ui/index.html`: `<aside id="playground-panel">` with skill library, canvas, parameter panel flyout; toolbar with Save, Load, Run controls; keyboard shortcut Cmd/Ctrl+Shift+P
+- [X] T012 [P] Add playground CSS to `src/cv_agent/ui/style.css`: sidebar split layout (chat + playground side-by-side ≥ 1280 px); Drawflow node colour variables (`--pg-pending`, `--pg-running`, `--pg-done`, `--pg-error`); skill library column; parameter panel flyout; responsive breakpoint < 1280 px (full-width switch)
+- [X] T013 Add base playground JS to `src/cv_agent/ui/app.js`: `initPlayground()` function; Drawflow instance creation on `#pgCanvas`; `pgFetchSkills()` → `GET /api/playground/skills`; populate skill library grouped by category with collapsible sections; keyboard shortcut handler; `togglePlayground()` wired to nav item
 
 **Checkpoint**: Backend endpoints (`/api/skills`, `/ws/workflows/{run_id}` pipeline mode) and frontend scaffold are ready. User story implementation can now begin.
 
@@ -61,13 +61,13 @@
 
 ### Implementation
 
-- [ ] T014 [US1] Implement sidebar toggle in `src/cv_agent/ui/app.js`: `togglePlayground()` opens/closes `#playground-sidebar` without shifting or covering the chat panel; `Cmd+Shift+P` / `Ctrl+Shift+P` keyboard shortcut; toolbar button click handler; sidebar open within 500 ms (SC-002)
-- [ ] T015 [US1] Implement drag-from-library-to-canvas in `src/cv_agent/ui/app.js`: each skill block in the library is `draggable`; Drawflow `addNode()` call on drop with correct input/output port count; block displays display_name and category badge colour
-- [ ] T016 [US1] Implement Special node rendering in `src/cv_agent/ui/app.js`: `__inputs__` node renders with distinct icon and label "Inputs"; `__outputs__` node renders with distinct icon and label "Outputs"; both are draggable from library like regular blocks
-- [ ] T017 [US1] Add Run button activation logic in `src/cv_agent/ui/app.js`: `validatePipelineForRun()` — scans Drawflow graph for exactly one `__inputs__` node and ≥ 1 `__outputs__` node with valid edge paths; Run button enabled/disabled reactively; FR-011
-- [ ] T018 [US1] Add `POST /api/pipelines/run` (ad-hoc) endpoint to `src/cv_agent/web.py`: accepts full `PipelineGraph` JSON + `"inputs"` object in body (no prior save required — supports US1 MVP independent test); starts DAG runner as background `asyncio.Task`; returns `{"run_id": "uuid", "ws_url": "/ws/workflows/uuid"}` per `contracts/rest-api.md`; also add `POST /api/pipelines/{pipeline_id}/run` variant that loads graph from storage (depends on T009, T010)
-- [ ] T019 [US1] Implement pipeline run WebSocket client in `src/cv_agent/ui/app.js`: on Run click → `POST .../run` → connect to returned `ws_url`; on `node_status` event → update Drawflow node CSS class (`pg-pending` / `pg-running` / `pg-done` / `pg-error`); on `node_output` → append message to chat panel with `[Pipeline · <block_name>]` prefix; on `pipeline_done` → show completion toast
-- [ ] T020 [US1] Implement block error state rendering in `src/cv_agent/ui/app.js`: on `node_error` event → set node class `pg-error` (red border); render short error message text inside node body; if `skipped: true` → render "skipped" label instead
+- [X] T014 [US1] Implement sidebar toggle in `src/cv_agent/ui/app.js`: `togglePlayground()` opens/closes `#playground-panel` without shifting or covering the chat panel; `Cmd+Shift+P` / `Ctrl+Shift+P` keyboard shortcut; toolbar button click handler; sidebar open within 500 ms (SC-002)
+- [X] T015 [US1] Implement drag-from-library-to-canvas in `src/cv_agent/ui/app.js`: each skill block in the library is `draggable`; Drawflow `addNode()` call on drop with correct input/output port count; block displays display_name and category badge colour
+- [X] T016 [US1] Implement Special node rendering in `src/cv_agent/ui/app.js`: `__inputs__` node renders with 0 inputs/1 output; `__outputs__` node renders with 1 input/0 outputs; both are draggable from library like regular blocks with "Special" badge
+- [X] T017 [US1] Add Run button activation logic in `src/cv_agent/ui/app.js`: `_pgUpdateRunBtn()` — scans Drawflow graph for `__inputs__` and `__outputs__` nodes; Run button enabled/disabled reactively; FR-011
+- [X] T018 [US1] Add `POST /api/pipelines/run` (ad-hoc) endpoint to `src/cv_agent/web.py`: accepts full `PipelineGraph` JSON + `"inputs"` object in body (no prior save required); starts DAG runner as background `asyncio.Task`; returns `{"run_id": "uuid", "ws_url": "/ws/workflows/uuid"}`; also added `POST /api/pipelines/{pipeline_id}/run` variant (depends on T009, T010)
+- [X] T019 [US1] Implement pipeline run WebSocket client in `src/cv_agent/ui/app.js`: on Run click → `POST /api/pipelines/run` → connect to returned `ws_url`; on `node_status` → update Drawflow node CSS class; on `node_output` → append message to chat panel; on `pipeline_done` → restore Run button
+- [X] T020 [US1] Implement block error state rendering in `src/cv_agent/ui/app.js`: on `node_error` event → set node class `pg-status-error` (red border); render short error message text inside node via `#pg-err-{nodeId}` span
 
 **Checkpoint**: US1 fully functional — open sidebar, assemble two-block pipeline, run, see streaming output. MVP demonstrable.
 
@@ -81,11 +81,11 @@
 
 ### Implementation
 
-- [ ] T021 [US2] Implement block click handler in `src/cv_agent/ui/app.js`: Drawflow `nodeSelected` event → `openParamPanel(nodeId)` → reads `SkillDefinition.parameter_schema` for the selected node's `skill_name`; renders panel in the right column of `#playground-sidebar`
-- [ ] T022 [P] [US2] Implement JSON Schema → form widget renderer in `src/cv_agent/ui/app.js`: `renderParamForm(schema, currentConfig)` — maps `type: string` → `<input type="text">`, `type: integer/number` → `<input type="number">`, `type: boolean` → `<input type="checkbox">`, `enum` → `<select>`; required fields marked with red asterisk per FR-015
-- [ ] T023 [US2] Implement config persistence in `src/cv_agent/ui/app.js`: on form field change → write value into Drawflow node's `data` object via `updateNodeDataFromId()`; config survives sidebar close/reopen (persists in Drawflow in-memory graph); FR-016
-- [ ] T024 [US2] Implement pre-run required-field validation in `src/cv_agent/ui/app.js`: `validateBlockConfigs()` — iterates all nodes, checks required schema fields against stored config; highlights non-conforming blocks with `pg-invalid` CSS class and renders tooltip; blocks Run if any violations found; FR-015
-- [ ] T025 [US2] Add `pg-invalid` CSS class and validation warning styles to `src/cv_agent/ui/style.css`: yellow/orange border + warning icon for blocks with empty required fields; distinct from `pg-error` (red = runtime failure)
+- [X] T021 [US2] Implement block click handler in `src/cv_agent/ui/app.js`: Drawflow `nodeSelected` event → `pgOpenParamPanel(nodeId)` → reads `parameter_schema` for the selected node; renders panel as flyout over canvas
+- [X] T022 [P] [US2] Implement JSON Schema → form widget renderer in `src/cv_agent/ui/app.js`: `pgOpenParamPanel()` maps `type: string/number/integer/boolean/enum` to appropriate input widgets; required fields marked with red asterisk per FR-015
+- [X] T023 [US2] Implement config persistence in `src/cv_agent/ui/app.js`: `pgApplyParam()` writes form values into `_pg.nodeConfigs[nodeId].config`; config survives sidebar close/reopen (persists in `_pg.nodeConfigs` in-memory state); FR-016
+- [X] T024 [US2] Implement pre-run required-field validation in `src/cv_agent/ui/app.js`: `_pgValidate()` — iterates all nodes, checks required schema fields against stored config; highlights non-conforming blocks with `pg-invalid` CSS class; blocks Run if any violations found; FR-015
+- [X] T025 [US2] `pg-invalid` CSS class and validation warning styles in `src/cv_agent/ui/style.css`: yellow/orange border for blocks with empty required fields; distinct from `pg-status-error` (red = runtime failure)
 
 **Checkpoint**: US1 + US2 both functional — blocks are configurable inline, configs survive sidebar toggles, custom params flow into run.
 
@@ -99,11 +99,11 @@
 
 ### Implementation
 
-- [ ] T026 [US3] Add `POST /api/pipelines` endpoint to `src/cv_agent/web.py`: accept `PipelineGraph` JSON body; call `storage.save_pipeline()`; return 200 `{"status": "created", ...}` or 409 `{"status": "conflict", ...}` on name collision per `contracts/rest-api.md` (depends on T010)
-- [ ] T027 [P] [US3] Add `GET /api/pipelines` endpoint to `src/cv_agent/web.py`: call `storage.list_pipelines()`; return summary list with `id`, `name`, `created_at`, `updated_at`, `node_count`, `edge_count` (depends on T010)
-- [ ] T028 [P] [US3] Add `GET /api/pipelines/{pipeline_id}` endpoint to `src/cv_agent/web.py`: load full `PipelineGraph` JSON by ID; 404 if not found (depends on T010)
-- [ ] T029 [US3] Implement Save button flow in `src/cv_agent/ui/app.js`: `savePipeline()` — prompt user for pipeline name; serialise Drawflow canvas via `drawflow.export()`; `POST /api/pipelines`; on 409 response display overwrite confirmation dialog ("A pipeline named '[X]' already exists. Overwrite?") with Overwrite / Cancel actions; re-POST with `"overwrite": true` if confirmed; FR-021a
-- [ ] T030 [US3] Implement Load dropdown in `src/cv_agent/ui/app.js`: on Playground open → `GET /api/pipelines` → populate `<select>` in toolbar; on selection → `GET /api/pipelines/{id}` → `drawflow.import(graph)` to restore canvas; FR-023
+- [X] T026 [US3] Add `POST /api/pipelines` endpoint to `src/cv_agent/web.py`: accept `PipelineGraph` JSON body; call `storage.save_pipeline()`; return 200 `{"status": "created", ...}` or 409 `{"status": "conflict", ...}` on name collision per `contracts/rest-api.md` (depends on T010)
+- [X] T027 [P] [US3] Add `GET /api/pipelines` endpoint to `src/cv_agent/web.py`: call `storage.list_pipelines()`; return summary list with `id`, `name`, `created_at`, `updated_at`, `node_count`, `edge_count` (depends on T010)
+- [X] T028 [P] [US3] Add `GET /api/pipelines/{pipeline_id}` endpoint to `src/cv_agent/web.py`: load full `PipelineGraph` JSON by ID; 404 if not found (depends on T010)
+- [X] T029 [US3] Implement Save button flow in `src/cv_agent/ui/app.js`: `pgSavePipeline()` / `pgConfirmSave()` — prompts for pipeline name via inline dialog; `POST /api/pipelines`; on 409 response displays native confirm() dialog ("A pipeline named '[X]' already exists. Overwrite?"); re-POSTs with `"overwrite": true` if confirmed; FR-021a
+- [X] T030 [US3] Implement Load dropdown in `src/cv_agent/ui/app.js`: `pgToggleLoadMenu()` → `GET /api/pipelines` → populates dropdown; on selection → `GET /api/pipelines/{id}` → `_pgImportGraph(graph)` to restore canvas; FR-023
 - [ ] T031 [US3] Surface saved pipelines in existing Workflows nav section in `src/cv_agent/ui/app.js`: extend `loadWorkflows()` to merge pipeline list from `GET /api/pipelines` into the Workflows view; clicking a pipeline entry opens Playground and loads it; FR-022
 
 **Checkpoint**: US1 + US2 + US3 all functional — complete named pipelines can be saved, reloaded, and overwritten with confirmation.
@@ -118,9 +118,9 @@
 
 ### Implementation
 
-- [ ] T032 [US4] Verify `delegate_*` tool wrappers appear in "Agents" category in `src/cv_agent/pipeline/skill_registry.py`: ensure tools whose `name` starts with `delegate_` are mapped to `SkillCategory.AGENTS`; display names strip the `delegate_` prefix and title-case the remainder (e.g. `delegate_blog_writer` → "Blog Writer Agent")
+- [X] T032 [US4] `delegate_*` tool wrappers appear in "Agents" category in `src/cv_agent/pipeline/skill_registry.py`: tools whose `name` starts with `delegate_` are mapped to `SkillCategory.AGENTS`; display names strip the `delegate_` prefix and title-case the remainder (e.g. `delegate_blog_writer` → "Blog Writer Agent")
 - [ ] T033 [US4] Extend DAG runner in `src/cv_agent/pipeline/dag_runner.py` to handle agent blocks: for blocks whose `skill_name` starts with `delegate_`, call the **underlying async streaming runner** (e.g., `run_blog_writer_agent()` from `src/cv_agent/agents/`) directly — **not** the `@tool` wrapper — to capture intermediate `tool_start`/`tool_end` events; relay each event as a `node_output` WS message attributed to the block; pass the agent's final output string to downstream blocks per FR-024 binding rule; FR-019
-- [ ] T034 [US4] Forward agent sub-events to chat in `src/cv_agent/ui/app.js`: on `node_output` events from Agent-category blocks → render in chat with `[Pipeline · <AgentName>]` label; preserve existing `tool_start` / `tool_end` rendering for agent sub-calls so they appear attributed to the pipeline block; FR-019 / US4 acceptance scenario 1
+- [X] T034 [US4] Forward agent sub-events to chat in `src/cv_agent/ui/app.js`: on `node_output` events → render in chat with `[Pipeline · <AgentName>]` label via `addMessage('assistant', ...)`; FR-019 / US4 acceptance scenario 1
 
 **Checkpoint**: All four user stories functional — full end-to-end pipeline with agent delegation, streaming attribution, and nested tool events in chat.
 
@@ -130,12 +130,12 @@
 
 **Purpose**: Undo/redo, edge-case UX guards, responsive layout, and validation against quickstart.md.
 
-- [ ] T035 [P] Implement full multi-step undo/redo in `src/cv_agent/ui/app.js`: `undoStack[]` / `redoStack[]` of Drawflow `export()` snapshots (max 50); push snapshot on every canvas mutation (add block, delete block, move block, add edge, delete edge, edit config, clear canvas); `Cmd+Z` / `Ctrl+Z` → pop + `drawflow.import()`; `Cmd+Y` / `Ctrl+Shift+Z` → redo; FR-012a
-- [ ] T036 [P] Implement client-side cycle detection in `src/cv_agent/ui/app.js`: `wouldCreateCycle(sourceId, targetId, edges)` using Kahn's DFS before calling Drawflow's connection accept callback; on cycle → reject connection + show inline tooltip "Cycles are not supported"; FR-010
-- [ ] T037 [P] Implement block deletion cascade in `src/cv_agent/ui/app.js`: Drawflow `nodeRemoved` event → remove all edges referencing the deleted node ID from Drawflow graph; FR-012
+- [X] T035 [P] Implement full multi-step undo/redo in `src/cv_agent/ui/app.js`: `_pg.undoStack[]` / `_pg.redoStack[]` of Drawflow `export()` snapshots (max 50); push snapshot on every canvas mutation; `Cmd+Z` / `Ctrl+Z` → `pgUndo()`; `Cmd+Y` / `Ctrl+Shift+Z` → `pgRedo()`; FR-012a
+- [X] T036 [P] Implement client-side cycle detection in `src/cv_agent/ui/app.js`: `_pgCheckCycle()` DFS on `connectionCreated` event; on cycle → reject connection + show toast "Cycles are not allowed in pipelines"; FR-010
+- [X] T037 [P] Implement block deletion cascade in `src/cv_agent/ui/app.js`: Drawflow `nodeRemoved` event → cleans up `_pg.nodeConfigs[id]`; updates run button state; closes param panel if deleted node was selected; FR-012
 - [ ] T038 [P] Verify Drawflow pan and zoom in `src/cv_agent/ui/app.js`: confirm `drawflow.editor_mode` allows mouse-drag pan on empty canvas and scroll-wheel zoom; add zoom reset button to toolbar; FR-013
-- [ ] T039 [P] Implement skill block search/filter in `src/cv_agent/ui/app.js`: `<input type="search">` at top of skill library panel → filters visible blocks by display_name substring match in real time; FR-004
-- [ ] T040 [P] Add responsive < 1280 px layout to `src/cv_agent/ui/style.css` and `app.js`: media query hides chat panel when Playground is open on narrow screens; adds a "Switch to Chat" / "Switch to Playground" toggle button; FR-003
+- [X] T039 [P] Implement skill block search/filter in `src/cv_agent/ui/app.js`: `pgFilterSkills(query)` filters visible blocks by display_name/skill_name substring match in real time; hides empty category groups; FR-004
+- [X] T040 [P] Add responsive < 1280 px layout to `src/cv_agent/ui/style.css`: media query sets `position:fixed; width:100vw` for playground panel on narrow screens so it covers full viewport; FR-003
 - [ ] T041 Run quickstart.md Steps 1–6 manually and fix any deviations found in `src/cv_agent/` files; extend Step 4 to time the assembly-to-run flow and confirm it completes in < 3 minutes (SC-001); build a 5-block sequential pipeline to verify SC-003
 - [ ] T042 [P] Verify chat + pipeline concurrency in browser (SC-006): start a pipeline run → immediately type and send a chat message → confirm both streams return independently with no event-loop stalling; if blocking is observed, isolate the DAG runner `asyncio.Task` creation in `web.py` and fix
 
