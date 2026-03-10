@@ -84,6 +84,7 @@ Single-page app at `http://localhost:8420` with a collapsible sidebar containing
 | 🕸️ **Knowledge Graph** | Canvas-based interactive graph of connections between papers, concepts, equations, and specs. Nodes are draggable; edges show relationships. Displays node/edge count. |
 | 📝 **Specs** | Split-view: left panel lists all generated `spec.md` files by paper, right panel renders the selected spec with a **Raw** toggle for the source markdown. |
 | 📰 **Digests** | Split-view: left panel lists weekly digest files, right panel renders the selected digest as formatted markdown. |
+| ⚡ **Playground** | Graphical block-based pipeline builder. Drag skill blocks onto a canvas, wire them together, configure parameters inline, and execute DAG pipelines with per-node streaming status. Pipelines are saved to and loaded from `output/.workflows/`. Toggle with `Cmd/Ctrl+Shift+P`. |
 
 ---
 
@@ -95,6 +96,46 @@ Single-page app at `http://localhost:8420` with a collapsible sidebar containing
 | 💾 **Cache** | Disk-backed LLM response cache: entry count, total disk usage, and per-entry breakdown. **Clear Expired** removes stale entries without touching live cache. |
 | 🔧 **Debug** | Internal diagnostic information: loaded config values, environment flags, and runtime state. |
 | 📄 **Logs** | Live server log output streamed to the browser with auto-scroll, **Clear**, and **Refresh** controls. |
+
+---
+
+## CV Playground
+
+The Playground is a **graphical pipeline builder** — a collapsible right sidebar that sits alongside the live chat. Open it from the Research nav group (⚡ Playground) or press `Cmd/Ctrl+Shift+P`.
+
+### How it works
+
+1. **Browse skills** — the left column lists every registered tool and agent as a draggable block, grouped by category (Vision, Research, Content, Agents, Utility) with a real-time search filter.
+2. **Build a pipeline** — drag blocks onto the canvas; connect an output port to an input port to form a directed edge. The canvas prevents cycles (any edge that would create one is rejected with a toast).
+3. **Configure blocks** — click any block to open the parameter flyout panel on the right; fill in model names, prompts, thresholds, or any schema-defined field. Required fields missing at run time are highlighted in yellow.
+4. **Add Inputs / Outputs** — the special **Inputs** block defines pipeline entry values (image path, text, URL, etc.); the **Outputs** block captures the final result.
+5. **Run** — click **▶ Run**; the pipeline POSTs to `/api/pipelines/run`, receives a `run_id`, then opens a WebSocket stream. Each block cycles through: ⬜ Pending → 🔵 Running → 🟢 Done / 🔴 Error. Results stream into the chat panel labelled `[Pipeline · <skill>]`.
+6. **Undo / Redo** — `Cmd/Ctrl+Z` / `Cmd/Ctrl+Y` with a 50-step snapshot history.
+7. **Save / Load** — name and save a pipeline; reload it from the dropdown or from the Workflows nav section via **Open in Playground →**.
+
+### Skill block categories
+
+| Category | Example blocks |
+|----------|---------------|
+| Vision | analyze\_image, run\_ocr, segment\_with\_text |
+| Research | search\_arxiv, fetch\_arxiv\_paper, generate\_spec |
+| Content | draft\_blog\_post, text\_to\_diagram |
+| Agents | delegate\_blog\_writer, delegate\_paper\_to\_code, delegate\_data\_visualization, delegate\_model\_training, delegate\_website\_maintenance, delegate\_digest\_writer |
+| Utility | shell, file\_read, web\_search |
+| Special | Inputs, Outputs |
+
+### Key files
+
+| Component | File |
+|-----------|------|
+| DAG runner | `src/cv_agent/pipeline/dag_runner.py` |
+| Pydantic models | `src/cv_agent/pipeline/models.py` |
+| Skill registry adapter | `src/cv_agent/pipeline/skill_registry.py` |
+| REST endpoints | `src/cv_agent/web.py` (search `# CV-Playground`) |
+| Frontend JS | `src/cv_agent/ui/app.js` (search `initPlayground`) |
+| Frontend HTML | `src/cv_agent/ui/index.html` (search `playground-panel`) |
+| Frontend CSS | `src/cv_agent/ui/style.css` (search `CV Playground`) |
+| Saved pipelines | `output/.workflows/*.json` |
 
 ---
 
@@ -376,9 +417,13 @@ CV_Zero_Claw_Agent/
 │   │   ├── dataset_manager.py        # Dataset catalog, HF download (SSE), delete
 │   │   ├── server_manager.py         # Local inference server start/stop/health
 │   │   ├── ui/
-│   │   │   ├── index.html            # 15-view SPA shell
-│   │   │   ├── style.css             # Dark theme (GitHub-inspired)
-│   │   │   └── app.js                # View routing, chat WS, all loaders
+│   │   │   ├── index.html            # SPA shell (nav + playground panel)
+│   │   │   ├── style.css             # Dark theme (GitHub-inspired) + Playground styles
+│   │   │   └── app.js                # View routing, chat WS, all loaders, Playground JS
+│   │   ├── pipeline/
+│   │   │   ├── dag_runner.py         # Async DAG executor (topological sort, fan-out)
+│   │   │   ├── models.py             # PipelineGraph, BlockInstance, Edge Pydantic models
+│   │   │   └── skill_registry.py     # Adapter: build_tools() → playground skill list
 │   │   ├── servers/
 │   │   │   ├── img_gen.py            # Image generation server stub (FastAPI :7860)
 │   │   │   └── ocr_server.py         # OCR server stub (FastAPI :7861)
@@ -406,6 +451,7 @@ CV_Zero_Claw_Agent/
 ├── output/
 │   ├── .models/                      # Local HF model weights
 │   ├── .datasets/                    # Downloaded training datasets
+│   ├── .workflows/                   # Saved Playground pipelines (JSON)
 │   ├── fine-tuned/                   # Fine-tuning run outputs
 │   └── diagrams/                     # Text→Diagram outputs
 └── .env                              # Secrets (gitignored)
@@ -453,6 +499,18 @@ CV_Zero_Claw_Agent/
 | `GET` | `/api/powers` | List all powers with configuration status |
 | `POST` | `/api/powers/{id}/configure` | Save power credentials to `.env` |
 
+### Playground & Pipelines
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/playground/skills` | List all skill blocks (name, category, parameter schema) |
+| `POST` | `/api/pipelines/run` | Execute a pipeline DAG; returns `run_id` + WebSocket URL |
+| `POST` | `/api/pipelines` | Save a named pipeline to `output/.workflows/` |
+| `GET` | `/api/pipelines` | List all saved pipelines |
+| `GET` | `/api/pipelines/{id}` | Load a saved pipeline by name |
+| `DELETE` | `/api/pipelines/{id}` | Delete a saved pipeline |
+| `WS` | `/ws/workflows/{run_id}` | Stream per-node status events (`node_status`, `node_output`, `pipeline_done`) |
+
 ---
 
 ## Configuration
@@ -499,5 +557,6 @@ You are free to use, modify, and distribute this software for any purpose, inclu
 | [MLX](https://github.com/ml-explore/mlx) | MIT |
 | [Pydantic](https://github.com/pydantic/pydantic) | MIT |
 | [HuggingFace Hub](https://github.com/huggingface/huggingface_hub) | Apache 2.0 |
+| [Drawflow](https://github.com/jerosoler/Drawflow) | MIT |
 
 > **Model licenses** vary by provider. Check the model card on [HuggingFace](https://huggingface.co) or [Ollama Hub](https://ollama.com/library) before commercial use.
