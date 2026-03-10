@@ -54,7 +54,7 @@ After building and validating a pipeline, the researcher names it "Paper → Spe
 
 1. **Given** a pipeline is on the canvas, **When** the user enters a name and clicks Save, **Then** the pipeline is persisted and appears in the Workflows nav section under its name.
 2. **Given** a saved pipeline exists, **When** the user selects it from the Load list, **Then** the canvas clears and re-renders the saved graph with all blocks, edges, and parameter values intact.
-3. **Given** a saved pipeline is loaded, **When** the user modifies it and saves again, **Then** the previous version is overwritten (not duplicated).
+3. **Given** a saved pipeline is loaded and modified, **When** the user saves using the same name, **Then** a confirmation prompt appears and the previous version is overwritten only after the user confirms.
 
 ---
 
@@ -80,7 +80,8 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 - What happens when a required Inputs node is missing but the user clicks Run? The run is prevented; the missing Inputs node is highlighted.
 - What happens when the Playground is open and the user submits a chat message simultaneously? Both execute independently — the chat stream and the pipeline stream are separate.
 - What happens when the page is refreshed mid-run? The run terminates; on reload the canvas restores the last saved state (not the unsaved in-progress state).
-- What happens when a block's backing tool is unavailable (e.g., OCR server not running)? The block errors immediately with a "tool unavailable" message; other pipeline branches continue if they are independent.
+- What happens when a block's backing tool is unavailable (e.g., OCR server not running)? The block errors immediately with a "tool unavailable" message; concurrent branches that do not depend on the failed block continue executing.
+- What happens when a fan-out block feeds two downstream blocks and one of them errors? The errored branch halts at that block; the sibling branch continues independently.
 
 ---
 
@@ -108,6 +109,7 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 - **FR-010**: The canvas MUST prevent cyclic edges; an attempted cycle MUST be rejected with an inline tooltip.
 - **FR-011**: Every valid pipeline MUST include exactly one **Inputs** node and at least one **Outputs** node; the Run button MUST be disabled otherwise.
 - **FR-012**: Users MUST be able to delete a block (keyboard Delete / right-click menu) or an edge (click to select, then Delete).
+- **FR-012a**: The canvas MUST support full multi-step undo (Ctrl+Z / Cmd+Z) and redo (Ctrl+Y / Cmd+Shift+Z) for all canvas mutations: add block, move block, delete block, add edge, delete edge, edit block parameters, clear canvas.
 - **FR-013**: The canvas MUST support pan (click-drag on empty canvas) and zoom (scroll wheel).
 
 **Block Configuration**
@@ -118,14 +120,15 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 
 **Execution**
 
-- **FR-017**: Pressing **Run** MUST execute the pipeline DAG in topological order, passing each block's output as the next block's input where edges connect them.
+- **FR-017**: Pressing **Run** MUST execute the pipeline DAG in topological order. When a block's output fans out to multiple downstream blocks, those independent branches MUST run concurrently. Each downstream block receives the same output value from the shared upstream block.
 - **FR-018**: During execution, each block node MUST display a status indicator: `pending` (grey), `running` (blue pulse), `done` (green), `error` (red).
 - **FR-019**: Execution events (tool starts, outputs, errors) MUST stream to the main chat panel in real time, clearly labelled with the originating block name.
-- **FR-020**: Pipeline execution MUST use the existing `/ws/workflows/{run_id}` WebSocket stream protocol; no new streaming protocol is introduced.
+- **FR-020**: Pipeline execution MUST be handled by a new Python DAG runner that calls `@tool` functions directly in topological order. The existing `/ws/workflows/{run_id}` WebSocket stream protocol MUST be reused to deliver per-node status events and outputs to the frontend; no new streaming protocol is introduced.
 
 **Save & Load**
 
-- **FR-021**: Users MUST be able to name and save the current canvas state as a workflow template via a **Save** button.
+- **FR-021**: Users MUST be able to name and save the current canvas state as a **pipeline** via a **Save** button. The saved pipeline is stored as a workflow in the `output/.workflows` layer.
+- **FR-021a**: When saving with a name that already exists, the system MUST display a confirmation prompt ("A pipeline named '[X]' already exists. Overwrite?") with **Overwrite** and **Cancel** actions. The existing pipeline MUST only be replaced if the user confirms.
 - **FR-022**: Saved pipelines MUST persist to the existing `output/.workflows` storage directory and MUST appear in the existing **Workflows** section of the navigation sidebar.
 - **FR-023**: Users MUST be able to load any saved pipeline from a **Load** dropdown on the Playground toolbar, restoring all blocks, edges, and parameter values.
 
@@ -154,11 +157,33 @@ A researcher assembles a pipeline that delegates to the **Blog Writer** sub-agen
 
 ---
 
+## Terminology
+
+| Term | Definition | Avoid |
+|------|-----------|-------|
+| **Pipeline** | The visual directed acyclic graph the user assembles on the canvas — blocks wired together to process data. Used in all user-facing labels, FR text, and code identifiers for the canvas layer. | "Workflow" when referring to the canvas construct |
+| **Workflow** | The persisted representation of a pipeline stored in `output/.workflows` and listed in the **Workflows** navigation section. This is the storage/nav layer term inherited from the existing UI. | "Pipeline" when referring to the storage layer |
+| **Block** | A single node on the canvas representing one instantiated skill or agent. | "Node", "Step", "Tool" in user-facing text |
+| **Skill** | A registered `@tool` function available as a draggable block in the library. | "Tool" in user-facing labels (reserved for internal/code usage) |
+| **Canvas** | The interactive drawing surface where blocks and edges are placed. | "Board", "Graph area" |
+| **Edge** | A directed connection between an output port of one block and an input port of another. | "Link", "Arrow", "Connection" |
+
+---
+
 ## Assumptions
 
-- The existing `/api/workflows/templates` REST endpoint and `/ws/workflows/{run_id}` WebSocket protocol are used as-is; the Playground translates the visual graph into a workflow description accepted by the existing `WorkflowManager`.
-- The Eko sidecar (`workflow_manager.py`) accepts a JSON DAG description in addition to natural language; if not, a thin translation layer converts the graph to Eko-compatible natural language steps.
+- Pipeline execution does **not** route through the Eko sidecar. A new lightweight Python DAG runner in the backend executes `@tool` functions directly in topological order. The existing `/ws/workflows/{run_id}` WebSocket protocol is reused for streaming per-node status events to the frontend.
 - Block definitions (name, description, parameter schema) are served by a new lightweight REST endpoint (`/api/skills`) that reads from the live `build_tools()` registry — no static config file required.
 - No authentication or per-user isolation is required; the Playground shares the session context of the current chat.
 - The visual graph library used for the canvas is a pure-JS, MIT/BSD-licensed library (e.g., Drawflow or a custom SVG/Canvas implementation) requiring no new Python server dependencies.
 - Mobile support (< 1280 px) is out of scope for the initial release.
+
+## Clarifications
+
+### Session 2026-03-10
+
+- Q: Should pipeline execution route through the Eko sidecar or should the Python backend directly orchestrate tools in topological order? → A: Direct Python orchestration — a new lightweight DAG runner executes `@tool` functions in topological order without involving the Eko sidecar.
+- Q: Should the DAG runner support parallel fan-out (multiple blocks receiving the same output and running concurrently)? → A: Full DAG — fan-out supported; independent branches run concurrently.
+- Q: Should the canvas support undo/redo for the initial release? → A: Full multi-step undo/redo (Ctrl+Z / Ctrl+Y) for all canvas mutations.
+- Q: When saving a pipeline with a name that already exists, what should happen? → A: Confirmation prompt — "A pipeline named X already exists. Overwrite?" with Overwrite / Cancel.
+- Q: Which term should be canonical for the visual construct the user builds in the Playground? → A: "Pipeline" — canonical for the visual construct and all user-facing canvas labels; "Workflow" retained only for the storage layer (`output/.workflows`) and existing Workflows nav section.
