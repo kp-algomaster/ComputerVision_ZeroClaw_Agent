@@ -4592,9 +4592,8 @@ function togglePlayground() {
         // T016 — Replay queued events after panel opens
         if (_pg.df && _pg.liveQueue.length) _pgLiveReplayQueue();
     }
-    // Always sync sidebar badge
-    const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
-    if (sidebarBadge) sidebarBadge.classList.toggle('pg-live-active', _pg.liveMode);
+    // Always sync all live toggle buttons
+    _pgSyncLiveButtons();
 }
 
 // ── Drawflow init ──
@@ -5229,10 +5228,17 @@ function pgResetZoom() {
 // Live Playground (003-live-playground)
 // ═══════════════════════════════════════════════════════════════════════
 
+// Sync live toggle visual state across all button locations
+function _pgSyncLiveButtons() {
+    const active = _pg.liveMode;
+    for (const id of ['pgLiveToggle', 'pgLiveSidebarToggle', 'chatLiveToggle']) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('pg-live-active', active);
+    }
+}
+
 // T004 — Toggle Live mode on/off
 function pgToggleLive() {
-    const btn = document.getElementById('pgLiveToggle');
-
     if (!_pg.liveMode) {
         // Activating — check for non-empty canvas (US2 / T011-T013)
         if (_pg.df) {
@@ -5273,18 +5279,14 @@ function pgToggleLive() {
         _pg.liveSeqId = _pg.liveSeqId || 0;
         _pg.liveLastId = null;
         _pg.livePending = new Set();
-        btn.classList.add('pg-live-active');
-        const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
-        if (sidebarBadge) sidebarBadge.classList.add('pg-live-active');
+        _pgSyncLiveButtons();
 
         // FR-002 — open panel if closed
         if (!_pg.open) togglePlayground();
     } else {
         // T017 — Turning off: stop rendering new blocks, keep existing ones
         _pg.liveMode = false;
-        btn.classList.remove('pg-live-active');
-        const sidebarBadge = document.getElementById('pgLiveSidebarToggle');
-        if (sidebarBadge) sidebarBadge.classList.remove('pg-live-active');
+        _pgSyncLiveButtons();
         // FR-012 — do NOT close the playground panel
     }
 }
