@@ -778,6 +778,14 @@
                                 <p class="placeholder">No templates saved.</p>
                             </div>
                         </div>
+
+                        <!-- Saved Pipelines -->
+                        <div class="wf-templates-section" style="margin-top: 24px;">
+                            <h3 class="section-title">⚡ Saved Pipelines</h3>
+                            <div id="wfPipelinesList" class="file-list" style="margin-top: 8px;">
+                                <p class="placeholder">No pipelines saved.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- right column: live execution view -->
@@ -931,6 +939,7 @@
                     <button class="btn-sm" id="pgLoadBtn" onclick="pgToggleLoadMenu()">📂 Load ▾</button>
                     <div id="pgLoadMenu" class="pg-load-menu" hidden></div>
                 </div>
+                <button class="btn-sm" onclick="pgResetZoom()" title="Reset zoom">⊙</button>
                 <button class="pg-run-btn" id="pgRunBtn" onclick="pgRunPipeline()" disabled>▶ Run</button>
                 <button class="pg-close-btn" onclick="togglePlayground()" title="Close Playground (Cmd+Shift+P)">✕</button>
             </div>

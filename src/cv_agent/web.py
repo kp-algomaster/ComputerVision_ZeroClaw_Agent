@@ -3254,7 +3254,23 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                              "timestamp": datetime.utcnow().isoformat()}
                 await queue.put(err_event)
 
-        runner = DAGRunner(tool_map=tool_map, status_callback=_status_callback, skill_registry=adapter)
+        # T033: build agent runner map so delegate_* blocks call async runners directly
+        from cv_agent.agents.blog_writer import run_blog_writer_agent
+        from cv_agent.agents.paper_to_code import run_paper_to_code_agent
+        from cv_agent.agents.data_visualization import run_data_visualization_agent
+        from cv_agent.agents.website_maintenance import run_website_maintenance_agent
+        from cv_agent.agents.model_training import run_model_training_agent
+        from cv_agent.agents.digest import run_digest_agent as run_digest_writer_agent
+        _agent_runner_map = {
+            "delegate_blog_writer": lambda msg: run_blog_writer_agent(msg),
+            "delegate_paper_to_code": lambda msg: run_paper_to_code_agent(msg),
+            "delegate_data_visualization": lambda msg: run_data_visualization_agent(msg),
+            "delegate_website_maintenance": lambda msg: run_website_maintenance_agent(msg),
+            "delegate_model_training": lambda msg: run_model_training_agent(msg),
+            "delegate_digest_writer": lambda msg: run_digest_writer_agent(msg),
+        }
+        runner = DAGRunner(tool_map=tool_map, status_callback=_status_callback,
+                           skill_registry=adapter, agent_runner_map=_agent_runner_map)
         try:
             node_outputs = await runner.run(pipeline, inputs)
             # Emit node_output for each completed node

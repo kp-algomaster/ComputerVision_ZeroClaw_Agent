@@ -104,7 +104,7 @@
 - [X] T028 [P] [US3] Add `GET /api/pipelines/{pipeline_id}` endpoint to `src/cv_agent/web.py`: load full `PipelineGraph` JSON by ID; 404 if not found (depends on T010)
 - [X] T029 [US3] Implement Save button flow in `src/cv_agent/ui/app.js`: `pgSavePipeline()` / `pgConfirmSave()` — prompts for pipeline name via inline dialog; `POST /api/pipelines`; on 409 response displays native confirm() dialog ("A pipeline named '[X]' already exists. Overwrite?"); re-POSTs with `"overwrite": true` if confirmed; FR-021a
 - [X] T030 [US3] Implement Load dropdown in `src/cv_agent/ui/app.js`: `pgToggleLoadMenu()` → `GET /api/pipelines` → populates dropdown; on selection → `GET /api/pipelines/{id}` → `_pgImportGraph(graph)` to restore canvas; FR-023
-- [ ] T031 [US3] Surface saved pipelines in existing Workflows nav section in `src/cv_agent/ui/app.js`: extend `loadWorkflows()` to merge pipeline list from `GET /api/pipelines` into the Workflows view; clicking a pipeline entry opens Playground and loads it; FR-022
+- [X] T031 [US3] Surface saved pipelines in existing Workflows nav section in `src/cv_agent/ui/app.js`: extend `loadWorkflows()` to merge pipeline list from `GET /api/pipelines` into the Workflows view; clicking a pipeline entry opens Playground and loads it; FR-022
 
 **Checkpoint**: US1 + US2 + US3 all functional — complete named pipelines can be saved, reloaded, and overwritten with confirmation.
 
@@ -119,7 +119,7 @@
 ### Implementation
 
 - [X] T032 [US4] `delegate_*` tool wrappers appear in "Agents" category in `src/cv_agent/pipeline/skill_registry.py`: tools whose `name` starts with `delegate_` are mapped to `SkillCategory.AGENTS`; display names strip the `delegate_` prefix and title-case the remainder (e.g. `delegate_blog_writer` → "Blog Writer Agent")
-- [ ] T033 [US4] Extend DAG runner in `src/cv_agent/pipeline/dag_runner.py` to handle agent blocks: for blocks whose `skill_name` starts with `delegate_`, call the **underlying async streaming runner** (e.g., `run_blog_writer_agent()` from `src/cv_agent/agents/`) directly — **not** the `@tool` wrapper — to capture intermediate `tool_start`/`tool_end` events; relay each event as a `node_output` WS message attributed to the block; pass the agent's final output string to downstream blocks per FR-024 binding rule; FR-019
+- [X] T033 [US4] Extend DAG runner in `src/cv_agent/pipeline/dag_runner.py` to handle agent blocks: for blocks whose `skill_name` starts with `delegate_`, call the **underlying async runner** (e.g., `run_blog_writer_agent()`) directly via `agent_runner_map` — not the `@tool` wrapper; pass the agent's final output string to downstream blocks per FR-024 binding rule; FR-019
 - [X] T034 [US4] Forward agent sub-events to chat in `src/cv_agent/ui/app.js`: on `node_output` events → render in chat with `[Pipeline · <AgentName>]` label via `addMessage('assistant', ...)`; FR-019 / US4 acceptance scenario 1
 
 **Checkpoint**: All four user stories functional — full end-to-end pipeline with agent delegation, streaming attribution, and nested tool events in chat.
@@ -133,7 +133,7 @@
 - [X] T035 [P] Implement full multi-step undo/redo in `src/cv_agent/ui/app.js`: `_pg.undoStack[]` / `_pg.redoStack[]` of Drawflow `export()` snapshots (max 50); push snapshot on every canvas mutation; `Cmd+Z` / `Ctrl+Z` → `pgUndo()`; `Cmd+Y` / `Ctrl+Shift+Z` → `pgRedo()`; FR-012a
 - [X] T036 [P] Implement client-side cycle detection in `src/cv_agent/ui/app.js`: `_pgCheckCycle()` DFS on `connectionCreated` event; on cycle → reject connection + show toast "Cycles are not allowed in pipelines"; FR-010
 - [X] T037 [P] Implement block deletion cascade in `src/cv_agent/ui/app.js`: Drawflow `nodeRemoved` event → cleans up `_pg.nodeConfigs[id]`; updates run button state; closes param panel if deleted node was selected; FR-012
-- [ ] T038 [P] Verify Drawflow pan and zoom in `src/cv_agent/ui/app.js`: confirm `drawflow.editor_mode` allows mouse-drag pan on empty canvas and scroll-wheel zoom; add zoom reset button to toolbar; FR-013
+- [X] T038 [P] Verify Drawflow pan and zoom in `src/cv_agent/ui/app.js`: Drawflow provides built-in mouse-drag pan and scroll-wheel zoom; added `pgResetZoom()` button to toolbar (⊙); FR-013
 - [X] T039 [P] Implement skill block search/filter in `src/cv_agent/ui/app.js`: `pgFilterSkills(query)` filters visible blocks by display_name/skill_name substring match in real time; hides empty category groups; FR-004
 - [X] T040 [P] Add responsive < 1280 px layout to `src/cv_agent/ui/style.css`: media query sets `position:fixed; width:100vw` for playground panel on narrow screens so it covers full viewport; FR-003
 - [ ] T041 Run quickstart.md Steps 1–6 manually and fix any deviations found in `src/cv_agent/` files; extend Step 4 to time the assembly-to-run flow and confirm it completes in < 3 minutes (SC-001); build a 5-block sequential pipeline to verify SC-003

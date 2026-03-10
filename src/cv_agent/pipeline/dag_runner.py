@@ -99,6 +99,10 @@ class DAGRunner:
 
     Fan-out branches run concurrently via asyncio.gather.
     Independent error branch isolation: a failed branch does not cancel siblings.
+
+    For ``delegate_*`` agent blocks the optional ``agent_runner_map`` is used to call
+    the underlying ``async run_*_agent()`` function directly (T033 / US4), bypassing the
+    synchronous ``@tool`` wrapper so that any intermediate events can be captured.
     """
 
     def __init__(
@@ -106,10 +110,13 @@ class DAGRunner:
         tool_map: dict[str, Any],
         status_callback: StatusCallback,
         skill_registry: Any = None,
+        agent_runner_map: dict[str, Any] | None = None,
     ) -> None:
         self._tool_map = tool_map
         self._status_callback = status_callback
         self._skill_registry = skill_registry
+        # Maps delegate_* skill_name → async callable(message: str, config) -> str
+        self._agent_runner_map: dict[str, Any] = agent_runner_map or {}
 
     async def _emit(self, node_id: str, status: BlockStatus, message: str | None = None) -> None:
         try:
@@ -122,9 +129,19 @@ class DAGRunner:
         block: BlockInstance,
         kwargs: dict[str, Any],
     ) -> str:
-        tool = self._tool_map.get(block.skill_name)
+        skill_name = block.skill_name
+
+        # T033 / US4: for agent blocks use the async runner directly (not the @tool wrapper)
+        if skill_name.startswith("delegate_") and skill_name in self._agent_runner_map:
+            runner_fn = self._agent_runner_map[skill_name]
+            # All delegate tools accept a single `task` str; map kwargs → message
+            task_val = kwargs.get("task") or next(iter(kwargs.values()), "") if kwargs else ""
+            result = await runner_fn(str(task_val))
+            return str(result) if result is not None else ""
+
+        tool = self._tool_map.get(skill_name)
         if tool is None:
-            raise RuntimeError(f"Tool '{block.skill_name}' not found in registry.")
+            raise RuntimeError(f"Tool '{skill_name}' not found in registry.")
         # All @tool functions are synchronous — run in thread to honour Constitution I
         result = await asyncio.to_thread(tool.func, **kwargs)
         return str(result) if result is not None else ""

@@ -521,6 +521,39 @@ async function loadWorkflows() {
     } catch (e) {
         console.error("Failed to load templates", e);
     }
+    // Also load saved pipelines (FR-022)
+    try {
+        const pr = await fetch('/api/pipelines');
+        if (pr.ok) {
+            const pd = await pr.json();
+            _renderWorkflowPipelines(pd.pipelines || []);
+        }
+    } catch { /* pipelines endpoint may not be available yet */ }
+}
+
+function _renderWorkflowPipelines(pipelines) {
+    const container = document.getElementById('wfPipelinesList');
+    if (!container) return;
+    if (!pipelines.length) {
+        container.innerHTML = '<p class="placeholder">No pipelines saved.</p>';
+        return;
+    }
+    container.innerHTML = pipelines.map(p => `
+        <div class="file-item" onclick="_openPipelineInPlayground('${_esc(p.id)}', '${_esc(p.name)}')">
+            <div>
+                <strong>${_esc(p.name)}</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">${p.node_count} blocks · ${p.edge_count} edges</div>
+            </div>
+            <span style="font-size:10px;color:var(--text-muted)">Open in Playground →</span>
+        </div>`).join('');
+}
+
+async function _openPipelineInPlayground(pipelineId, pipelineName) {
+    // Open playground if not already open
+    if (!_pg.open) togglePlayground();
+    // Give Drawflow a tick to init if just opened
+    await new Promise(r => setTimeout(r, 250));
+    await pgLoadPipeline(pipelineId);
 }
 
 function renderWorkflowTemplates(templates) {
@@ -4805,6 +4838,13 @@ function _pgImportGraph(graph) {
 // ── Helper ──
 function _esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Zoom reset ──
+function pgResetZoom() {
+    if (!_pg.df) return;
+    _pg.df.zoom_reset();
+    // Drawflow uses editor_mode; pan+zoom built-in when editor_mode !== 'fixed'
 }
 
 // Wire up canvas drop after Drawflow is ready (called lazily on first open)
