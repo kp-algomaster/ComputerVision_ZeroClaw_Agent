@@ -5338,7 +5338,7 @@ function _pgLiveToolStart(name, input) {
 
     _pg._suppressSnapshot = true;
     const nodeId = _pg.df.addNode(
-        name, 0, 0, pos_x, pos_y,
+        name, 1, 1, pos_x, pos_y,
         `pg-live-block pg-status-running`, {}, html
     );
     _pg._suppressSnapshot = false;
@@ -5364,6 +5364,7 @@ function _pgLiveToolStart(name, input) {
     }
 
     _pg.livePending.add(toolKey);
+    _pg.liveLastId = nodeId;
     _pg.liveSeqId++;
 
     // T010 — Auto-fit: zoom out if block goes beyond visible canvas
