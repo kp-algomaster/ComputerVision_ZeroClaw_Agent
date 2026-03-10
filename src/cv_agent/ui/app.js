@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     loadChatModels();
     // Prefetch skills so pinned nav items can route immediately on first click
-    fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => {});
+    fetch('/api/skills').then(r => r.json()).then(d => { _skillsById = d || {}; }).catch(() => { });
+    initPlayground();
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -346,6 +347,8 @@ function connectWebSocket() {
             addMessage('assistant', data.content, data.html);
         } else if (data.type === 'stream_start') {
             _startStreamingMessage();
+            // Live Playground: clear canvas for new turn (T009)
+            _pgLiveClearTurn();
         } else if (data.type === 'stream_token') {
             _resetStreamTimeout();
             if (!_writingResponse) {
@@ -357,10 +360,14 @@ function connectWebSocket() {
             _resetStreamTimeout();
             document.getElementById('typingText').textContent = _toolStatusText(data.name);
             _showToolActivity(data.name, data.input);
+            // Live Playground: render block on canvas (T008)
+            if (_pg.liveMode) _pgLiveToolStart(data.name, data.input);
         } else if (data.type === 'tool_end') {
             _resetStreamTimeout();
             document.getElementById('typingText').textContent = 'Thinking…';
             _hideToolActivity(data.name, data.output);
+            // Live Playground: update block status (T008)
+            if (_pg.liveMode) _pgLiveToolEnd(data.name, data.output);
         } else if (data.type === 'stream_end') {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
@@ -669,6 +676,39 @@ async function loadWorkflows() {
     } catch (e) {
         console.error("Failed to load templates", e);
     }
+    // Also load saved pipelines (FR-022)
+    try {
+        const pr = await fetch('/api/pipelines');
+        if (pr.ok) {
+            const pd = await pr.json();
+            _renderWorkflowPipelines(pd.pipelines || []);
+        }
+    } catch { /* pipelines endpoint may not be available yet */ }
+}
+
+function _renderWorkflowPipelines(pipelines) {
+    const container = document.getElementById('wfPipelinesList');
+    if (!container) return;
+    if (!pipelines.length) {
+        container.innerHTML = '<p class="placeholder">No pipelines saved.</p>';
+        return;
+    }
+    container.innerHTML = pipelines.map(p => `
+        <div class="file-item" onclick="_openPipelineInPlayground('${_esc(p.id)}', '${_esc(p.name)}')">
+            <div>
+                <strong>${_esc(p.name)}</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">${p.node_count} blocks · ${p.edge_count} edges</div>
+            </div>
+            <span style="font-size:10px;color:var(--text-muted)">Open in Playground →</span>
+        </div>`).join('');
+}
+
+async function _openPipelineInPlayground(pipelineId, pipelineName) {
+    // Open playground if not already open
+    if (!_pg.open) togglePlayground();
+    // Give Drawflow a tick to init if just opened
+    await new Promise(r => setTimeout(r, 250));
+    await pgLoadPipeline(pipelineId);
 }
 
 function renderWorkflowTemplates(templates) {
@@ -1555,7 +1595,7 @@ async function restartLocalModelDownload() {
     const statusEl = document.getElementById('localModelStatus');
     if (restartBtn) restartBtn.disabled = true;
     if (_localModelDownloadReader) {
-        try { _localModelDownloadReader.cancel(); } catch {}
+        try { _localModelDownloadReader.cancel(); } catch { }
         _localModelDownloadReader = null;
     }
     statusEl.textContent = 'Wiping partial files…';
@@ -4024,11 +4064,11 @@ function loadSam3View() {
                 row.hidden = models.length < 2; // only show selector when there's a choice
             }
         }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 function _sam3InitUpload() {
-    const zone  = document.getElementById('sam3UploadZone');
+    const zone = document.getElementById('sam3UploadZone');
     const input = document.getElementById('sam3FileInput');
     const canvas = document.getElementById('sam3BoxCanvas');
     if (!zone || !input || !canvas) return;
@@ -4043,9 +4083,9 @@ function _sam3InitUpload() {
         if (e.dataTransfer.files[0]) _sam3HandleFile(e.dataTransfer.files[0]);
     });
 
-    canvas.addEventListener('mousedown',  _sam3MouseDown);
-    canvas.addEventListener('mousemove',  _sam3MouseMove);
-    canvas.addEventListener('mouseup',    _sam3MouseUp);
+    canvas.addEventListener('mousedown', _sam3MouseDown);
+    canvas.addEventListener('mousemove', _sam3MouseMove);
+    canvas.addEventListener('mouseup', _sam3MouseUp);
     canvas.addEventListener('mouseleave', _sam3MouseUp);
 
     // Re-compute geometry on resize
@@ -4099,7 +4139,7 @@ async function _sam3HandleFile(file) {
         sam3ClearBox();
         _sam3.imagePath = data.image_path;
 
-        const img  = document.getElementById('sam3Img');
+        const img = document.getElementById('sam3Img');
         const wrap = document.getElementById('sam3ImgWrap');
         const infoText = data.width && data.height ? `${data.width} × ${data.height} px` : 'Image loaded';
 
@@ -4124,13 +4164,13 @@ async function _sam3HandleFile(file) {
 }
 
 function _sam3SyncCanvas() {
-    const img    = document.getElementById('sam3Img');
+    const img = document.getElementById('sam3Img');
     const canvas = document.getElementById('sam3BoxCanvas');
-    const wrap   = document.getElementById('sam3ImgWrap');
+    const wrap = document.getElementById('sam3ImgWrap');
     if (!img || !canvas || !wrap) return;
 
     const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
-    canvas.width  = ww;
+    canvas.width = ww;
     canvas.height = wh;
 
     // Compute image display rect (object-fit: contain)
@@ -4138,10 +4178,10 @@ function _sam3SyncCanvas() {
     const wa = ww / wh;
     let dw, dh, ox, oy;
     if (ia > wa) { dw = ww; dh = ww / ia; ox = 0; oy = (wh - dh) / 2; }
-    else         { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
+    else { dh = wh; dw = wh * ia; ox = (ww - dw) / 2; oy = 0; }
 
     _sam3.imgRect = { x: ox, y: oy, w: dw, h: dh };
-    _sam3.scale   = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
+    _sam3.scale = { x: img.naturalWidth / dw, y: img.naturalHeight / dh };
 
     // Redraw any existing box
     if (_sam3.draw) _sam3DrawBoxOnCanvas(_sam3.draw);
@@ -4202,10 +4242,10 @@ function _sam3DrawBoxOnCanvas(d) {
     const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2);
     const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
 
-    ctx.fillStyle   = 'rgba(74,144,226,0.12)';
+    ctx.fillStyle = 'rgba(74,144,226,0.12)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#4a90e2';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth = 2;
     ctx.setLineDash([]);
     ctx.strokeRect(x, y, w, h);
 
@@ -4224,7 +4264,7 @@ function setSam3Mode(mode) {
     document.querySelectorAll('.sam3-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('sam3Tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
     document.getElementById('sam3TextPanel').hidden = mode !== 'text';
-    document.getElementById('sam3BoxPanel').hidden  = mode !== 'box';
+    document.getElementById('sam3BoxPanel').hidden = mode !== 'box';
 
     const canvas = document.getElementById('sam3BoxCanvas');
     if (canvas) canvas.style.pointerEvents = mode === 'box' ? 'auto' : 'none';
@@ -4271,7 +4311,7 @@ async function _sam3RunSegment(extra) {
 
         // Show result overlay
         const resultImg = document.getElementById('sam3ResultImg');
-        resultImg.src    = data.output_url + '?t=' + Date.now();
+        resultImg.src = data.output_url + '?t=' + Date.now();
         resultImg.hidden = false;
 
         // Populate result panel
@@ -4322,7 +4362,7 @@ function sam3NewImage() {
     sam3ClearResult();
     sam3ClearBox();
 
-    document.getElementById('sam3ImgWrap').hidden    = true;
+    document.getElementById('sam3ImgWrap').hidden = true;
     document.getElementById('sam3ImgToolbar').hidden = true;
     document.getElementById('sam3ImgInfo').textContent = '';
     document.getElementById('sam3UploadZone').hidden = false;
@@ -4368,11 +4408,11 @@ function loadOcrView() {
             badge.style.borderColor = '#5a4000';
             badge.style.color = '#c8a040';
         }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 function _ocrInitUpload() {
-    const zone  = document.getElementById('ocrUploadZone');
+    const zone = document.getElementById('ocrUploadZone');
     const input = document.getElementById('ocrFileInput');
     if (!zone || !input) return;
 
@@ -4397,30 +4437,30 @@ async function _ocrLoadFile(file) {
     if (data.error) { alert(data.error); return; }
     _ocr.imagePath = data.path;
 
-    const img    = document.getElementById('ocrImg');
-    const wrap   = document.getElementById('ocrImgWrap');
+    const img = document.getElementById('ocrImg');
+    const wrap = document.getElementById('ocrImgWrap');
     const toolbar = document.getElementById('ocrImgToolbar');
-    const zone   = document.getElementById('ocrUploadZone');
-    const info   = document.getElementById('ocrImgInfo');
+    const zone = document.getElementById('ocrUploadZone');
+    const info = document.getElementById('ocrImgInfo');
     img.src = data.url;
     img.onload = () => { if (info) info.textContent = `${img.naturalWidth} × ${img.naturalHeight}`; };
-    zone.hidden  = true;
-    wrap.hidden  = false;
+    zone.hidden = true;
+    wrap.hidden = false;
     toolbar.hidden = false;
     document.getElementById('ocrRunBtn').disabled = false;
-    document.getElementById('ocrResults').hidden   = true;
+    document.getElementById('ocrResults').hidden = true;
     document.getElementById('ocrResultImg').hidden = true;
-    document.getElementById('ocrError').hidden      = true;
+    document.getElementById('ocrError').hidden = true;
 }
 
 async function _ocrRun() {
     if (!_ocr.imagePath) return;
-    const btn   = document.getElementById('ocrRunBtn');
+    const btn = document.getElementById('ocrRunBtn');
     const errEl = document.getElementById('ocrError');
     const statEl = document.getElementById('ocrStatus');
     btn.disabled = true;
     btn.textContent = 'Running…';
-    errEl.hidden  = true;
+    errEl.hidden = true;
     statEl.hidden = false;
     statEl.textContent = 'Running OCR… loading models and extracting text';
 
@@ -4461,11 +4501,963 @@ async function _ocrRun() {
 
 function ocrNewImage() {
     _ocr.imagePath = null;
-    document.getElementById('ocrImgWrap').hidden    = true;
+    document.getElementById('ocrImgWrap').hidden = true;
     document.getElementById('ocrImgToolbar').hidden = true;
     document.getElementById('ocrUploadZone').hidden = false;
-    document.getElementById('ocrResults').hidden    = true;
-    document.getElementById('ocrResultImg').hidden  = true;
-    document.getElementById('ocrRunBtn').disabled   = true;
-    document.getElementById('ocrFileInput').value   = '';
+    document.getElementById('ocrResults').hidden = true;
+    document.getElementById('ocrResultImg').hidden = true;
+    document.getElementById('ocrRunBtn').disabled = true;
+    document.getElementById('ocrFileInput').value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CV Playground
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Playground state ──
+let _pg = {
+    df: null,               // Drawflow instance
+    open: false,            // sidebar visible
+    skills: [],             // SkillDefinition list from /api/playground/skills
+    nodeConfigs: {},        // nodeId → { skill_name, config, display_name }
+    selectedNode: null,     // currently selected drawflow node id
+    runWs: null,            // WebSocket for current run
+    runId: null,            // current run_id
+    currentPipelineId: null,// last loaded/saved pipeline id
+    undoStack: [],          // snapshot stack for undo
+    redoStack: [],          // snapshot stack for redo
+    _suppressSnapshot: false, // prevent recursive snapshot on restore
+    // ── Live mode (003-live-playground) ──
+    liveMode: false,        // FR-001: live toggle state
+    liveBlocks: {},         // toolKey → drawflow node id mapping
+    liveQueue: [],          // FR-011: events queued before canvas init
+    liveSeqId: 0,           // counter for left-to-right placement
+    liveLastId: null,       // previous block id (for edge drawing)
+    livePending: new Set(), // tool names currently running (parallel detection)
+};
+
+// Category → badge CSS class
+const _PG_BADGE = {
+    Vision: 'pg-cat-badge-vision',
+    Research: 'pg-cat-badge-research',
+    Content: 'pg-cat-badge-content',
+    Agents: 'pg-cat-badge-agents',
+    Utility: 'pg-cat-badge-utility',
+    Special: 'pg-cat-badge-special',
+};
+
+function initPlayground() {
+    // Keyboard shortcut: Cmd/Ctrl+Shift+P
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
+            e.preventDefault();
+            togglePlayground();
+        }
+        // Undo/Redo
+        if (_pg.open) {
+            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'z') {
+                e.preventDefault(); pgUndo();
+            }
+            if ((e.metaKey || e.ctrlKey) && (e.shiftKey && e.key === 'z' || e.key === 'y')) {
+                e.preventDefault(); pgRedo();
+            }
+        }
+    });
+
+    // Close load menu on outside click
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('pgLoadMenu');
+        if (menu && !menu.hidden && !e.target.closest('.pg-load-wrap')) {
+            menu.hidden = true;
+        }
+    });
+}
+
+function togglePlayground() {
+    const panel = document.getElementById('playground-panel');
+    const navItem = document.getElementById('nav-playground');
+    _pg.open = !_pg.open;
+    panel.classList.toggle('pg-closed', !_pg.open);
+    navItem.classList.toggle('pg-active', _pg.open);
+
+    if (_pg.open && !_pg.df) {
+        _pgInitDrawflow();
+        pgFetchSkills();
+    }
+
+    // T014 — Persist Live toggle visual across panel open/close
+    if (_pg.open) {
+        const liveBtn = document.getElementById('pgLiveToggle');
+        if (liveBtn) liveBtn.classList.toggle('pg-live-active', _pg.liveMode);
+        // T016 — Replay queued events after panel opens
+        if (_pg.df && _pg.liveQueue.length) _pgLiveReplayQueue();
+    }
+}
+
+// ── Drawflow init ──
+function _pgInitDrawflow() {
+    const el = document.getElementById('pgCanvas');
+    _pg.df = new Drawflow(el);
+    _pg.df.reroute = true;
+    _pg.df.start();
+
+    // Node selection → open param panel
+    _pg.df.on('nodeSelected', (id) => {
+        _pg.selectedNode = id;
+        pgOpenParamPanel(id);
+    });
+    _pg.df.on('nodeUnselected', () => {
+        // keep panel open so user can still edit
+    });
+
+    // Snapshot on mutations for undo/redo
+    const _snap = () => { if (!_pg._suppressSnapshot) _pgPushSnapshot(); };
+    _pg.df.on('nodeMoved', _snap);
+    _pg.df.on('nodeCreated', _snap);
+    _pg.df.on('nodeRemoved', (id) => {
+        delete _pg.nodeConfigs[id];
+        _pgUpdateRunBtn();
+        _snap();
+        if (_pg.selectedNode == id) pgCloseParamPanel();
+    });
+    _pg.df.on('connectionCreated', () => {
+        _pgCheckCycle();
+        _pgUpdateRunBtn();
+        _snap();
+    });
+    _pg.df.on('connectionRemoved', () => { _pgUpdateRunBtn(); _snap(); });
+
+    // Delete key removes selected node or edge
+    document.getElementById('pgCanvas').addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (_pg.selectedNode != null) {
+                _pg.df.removeNodeId(`node-${_pg.selectedNode}`);
+                _pg.selectedNode = null;
+            }
+        }
+    });
+    document.getElementById('pgCanvas').setAttribute('tabindex', '0');
+}
+
+// ── Skill library ──
+async function pgFetchSkills() {
+    try {
+        const r = await fetch('/api/playground/skills');
+        const d = await r.json();
+        _pg.skills = d.skills || [];
+        pgRenderLibrary(_pg.skills);
+    } catch {
+        document.getElementById('pgLibraryList').innerHTML = '<p class="placeholder">Failed to load skills.</p>';
+    }
+}
+
+function pgRenderLibrary(skills) {
+    const list = document.getElementById('pgLibraryList');
+    if (!skills.length) { list.innerHTML = '<p class="placeholder">No skills found.</p>'; return; }
+
+    // Group by category
+    const groups = {};
+    for (const s of skills) {
+        const cat = s.category || 'Utility';
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(s);
+    }
+
+    // Preferred category order
+    const order = ['Special', 'Vision', 'Research', 'Content', 'Agents', 'Utility'];
+    const cats = [...order.filter(c => groups[c]), ...Object.keys(groups).filter(c => !order.includes(c))];
+
+    list.innerHTML = cats.map(cat => {
+        const items = groups[cat].map(s => `
+            <div class="pg-skill-item" draggable="true"
+                data-skill="${_esc(s.name)}"
+                data-display="${_esc(s.display_name)}"
+                data-cat="${_esc(cat)}"
+                title="${_esc(s.description)}">
+                <span class="pg-skill-name">${_esc(s.display_name)}</span>
+                <span class="pg-skill-desc">${_esc(s.description)}</span>
+            </div>`).join('');
+        const badgeCls = _PG_BADGE[cat] || 'pg-cat-badge-utility';
+        return `
+            <div class="pg-cat-group">
+                <div class="pg-cat-title" onclick="pgToggleCategory(this)">
+                    <span><span class="pg-cat-badge ${badgeCls}">${_esc(cat)}</span></span>
+                    <span>−</span>
+                </div>
+                <div class="pg-cat-list">${items}</div>
+            </div>`;
+    }).join('');
+
+    // Drag-from-library handlers
+    list.querySelectorAll('.pg-skill-item').forEach(el => {
+        el.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('pg-skill', el.dataset.skill);
+            e.dataTransfer.setData('pg-display', el.dataset.display);
+            e.dataTransfer.setData('pg-cat', el.dataset.cat);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+    });
+}
+
+function pgToggleCategory(title) {
+    const list = title.nextElementSibling;
+    const icon = title.lastElementChild;
+    list.classList.toggle('collapsed');
+    icon.textContent = list.classList.contains('collapsed') ? '+' : '−';
+}
+
+function pgFilterSkills(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.pg-skill-item').forEach(el => {
+        const match = el.dataset.skill.toLowerCase().includes(q) ||
+            el.dataset.display.toLowerCase().includes(q);
+        el.style.display = match ? '' : 'none';
+    });
+    // Show/hide empty categories
+    document.querySelectorAll('.pg-cat-group').forEach(grp => {
+        const visible = [...grp.querySelectorAll('.pg-skill-item')].some(e => e.style.display !== 'none');
+        grp.style.display = visible ? '' : 'none';
+    });
+}
+
+// ── Canvas drag-drop ──
+function _pgSetupDrop() {
+    const wrap = document.getElementById('pgCanvasWrap');
+    wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    wrap.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const skillName = e.dataTransfer.getData('pg-skill');
+        const displayName = e.dataTransfer.getData('pg-display');
+        const cat = e.dataTransfer.getData('pg-cat');
+        if (!skillName) return;
+
+        // Convert drop position to canvas coordinates
+        const rect = document.getElementById('pgCanvas').getBoundingClientRect();
+        const pos_x = e.clientX - rect.left;
+        const pos_y = e.clientY - rect.top;
+
+        pgAddNode(skillName, displayName, cat, pos_x, pos_y);
+    });
+}
+
+function pgAddNode(skillName, displayName, cat, pos_x, pos_y) {
+    const isInputs = skillName === '__inputs__';
+    const isOutputs = skillName === '__outputs__';
+
+    const inputs = isInputs ? 0 : 1;
+    const outputs = isOutputs ? 0 : 1;
+
+    const badgeCls = _PG_BADGE[cat] || 'pg-cat-badge-utility';
+    const html = `
+        <div class="pg-node-inner">
+            <span class="pg-cat-badge ${badgeCls}">${_esc(cat)}</span>
+            <span class="pg-node-name">${_esc(displayName)}</span>
+            <span class="pg-node-error-msg" id="pg-err-_ID_" hidden></span>
+        </div>`;
+
+    const nodeId = _pg.df.addNode(
+        skillName, inputs, outputs, pos_x, pos_y, `pg-node-${cat.toLowerCase()}`, {}, html
+    );
+
+    // Store config
+    const skill = _pg.skills.find(s => s.name === skillName);
+    _pg.nodeConfigs[nodeId] = {
+        skill_name: skillName,
+        display_name: displayName,
+        category: cat,
+        config: {},
+        parameter_schema: skill ? skill.parameter_schema : { type: 'object', properties: {} },
+    };
+
+    // Fix error msg placeholder id
+    const errEl = document.getElementById(`pg-err-_ID_`);
+    if (errEl) errEl.id = `pg-err-${nodeId}`;
+
+    _pgUpdateRunBtn();
+    return nodeId;
+}
+
+// Ensure drop is set up after Drawflow init
+const _origPgInitDrawflow = _pgInitDrawflow;
+
+// ── Run button state ──
+function _pgUpdateRunBtn() {
+    const btn = document.getElementById('pgRunBtn');
+    if (!btn) return;
+    const nodes = _pg.df ? Object.keys(_pg.df.drawflow.drawflow.Home.data) : [];
+    const hasInputs = nodes.some(id => _pg.nodeConfigs[id]?.skill_name === '__inputs__');
+    const hasOutputs = nodes.some(id => _pg.nodeConfigs[id]?.skill_name === '__outputs__');
+    btn.disabled = !hasInputs || !hasOutputs;
+}
+
+// ── Cycle detection ──
+function _pgCheckCycle() {
+    if (!_pg.df) return;
+    const data = _pg.df.drawflow.drawflow.Home.data;
+    // Build adjacency list
+    const adj = {};
+    for (const id of Object.keys(data)) adj[id] = [];
+    for (const id of Object.keys(data)) {
+        const node = data[id];
+        for (const outKey of Object.keys(node.outputs || {})) {
+            for (const conn of (node.outputs[outKey].connections || [])) {
+                adj[id].push(String(conn.node));
+            }
+        }
+    }
+    // DFS cycle check
+    const visited = {}, recStack = {};
+    function dfs(v) {
+        visited[v] = recStack[v] = true;
+        for (const u of (adj[v] || [])) {
+            if (!visited[u] && dfs(u)) return true;
+            if (recStack[u]) return true;
+        }
+        recStack[v] = false;
+        return false;
+    }
+    for (const v of Object.keys(adj)) {
+        if (!visited[v] && dfs(v)) {
+            // Remove the last added connection
+            _pg.df.removeSingleConnection(
+                ...Object.values(_pg.df.drawflow.drawflow.Home.data)
+                    .flatMap(n => Object.values(n.outputs || {})
+                        .flatMap(o => (o.connections || []).map(c => [n.id, c.node, Object.keys(n.outputs)[0], 'input_1'])))
+                    .pop() || []
+            );
+            _pgShowToast('Cycles are not allowed in pipelines.');
+            return;
+        }
+    }
+}
+
+function _pgShowToast(msg) {
+    let t = document.getElementById('pgToast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'pgToast';
+        t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#f85149;color:#fff;padding:8px 14px;border-radius:6px;font-size:12px;z-index:1000;pointer-events:none;opacity:0;transition:opacity .2s';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+// ── Parameter panel ──
+function pgOpenParamPanel(nodeId) {
+    const cfg = _pg.nodeConfigs[nodeId];
+    if (!cfg) return;
+    _pg.selectedNode = nodeId;
+
+    document.getElementById('pgParamTitle').textContent = cfg.display_name || cfg.skill_name;
+
+    const schema = cfg.parameter_schema || { type: 'object', properties: {} };
+    const props = schema.properties || {};
+    const required = schema.required || [];
+    const body = document.getElementById('pgParamBody');
+
+    if (!Object.keys(props).length) {
+        body.innerHTML = '<p class="placeholder">No configurable parameters.</p>';
+    } else {
+        body.innerHTML = Object.entries(props).map(([key, def]) => {
+            const isReq = required.includes(key);
+            const val = cfg.config[key] !== undefined ? cfg.config[key] : (def.default !== undefined ? def.default : '');
+            const fieldType = def.type === 'number' || def.type === 'integer' ? 'number' : 'text';
+            return `
+                <div class="pg-field" data-key="${_esc(key)}">
+                    <label>${_esc(key)}${isReq ? '<span class="pg-required"> *</span>' : ''}</label>
+                    ${def.type === 'boolean'
+                    ? `<select data-field="${_esc(key)}"><option value="" ${val === '' ? 'selected' : ''}>—</option><option value="true" ${val === true || val === 'true' ? 'selected' : ''}>true</option><option value="false" ${val === false || val === 'false' ? 'selected' : ''}>false</option></select>`
+                    : `<input type="${fieldType}" data-field="${_esc(key)}" value="${_esc(String(val))}" placeholder="${_esc(def.description || '')}">`}
+                    ${def.description ? `<span class="pg-field-desc">${_esc(def.description)}</span>` : ''}
+                </div>`;
+        }).join('');
+    }
+
+    document.getElementById('pgParamPanel').classList.remove('pg-param-closed');
+}
+
+function pgCloseParamPanel() {
+    document.getElementById('pgParamPanel').classList.add('pg-param-closed');
+    _pg.selectedNode = null;
+}
+
+function pgApplyParam() {
+    if (_pg.selectedNode == null) return;
+    const cfg = _pg.nodeConfigs[_pg.selectedNode];
+    if (!cfg) return;
+
+    document.querySelectorAll('#pgParamBody [data-field]').forEach(el => {
+        const key = el.dataset.field;
+        let val = el.value;
+        if (el.tagName === 'SELECT' && val === '') val = '';
+        else if (val === 'true') val = true;
+        else if (val === 'false') val = false;
+        cfg.config[key] = val;
+    });
+
+    _pgUpdateRunBtn();
+    _pgPushSnapshot();
+}
+
+// ── Undo / Redo ──
+function _pgPushSnapshot() {
+    if (!_pg.df) return;
+    const snap = JSON.stringify({
+        df: _pg.df.export(),
+        nodeConfigs: _pg.nodeConfigs,
+    });
+    _pg.undoStack.push(snap);
+    if (_pg.undoStack.length > 50) _pg.undoStack.shift();
+    _pg.redoStack = [];
+}
+
+function pgUndo() {
+    if (_pg.undoStack.length < 2) return;
+    _pg.redoStack.push(_pg.undoStack.pop());
+    _pgRestoreSnapshot(_pg.undoStack[_pg.undoStack.length - 1]);
+}
+
+function pgRedo() {
+    if (!_pg.redoStack.length) return;
+    const snap = _pg.redoStack.pop();
+    _pg.undoStack.push(snap);
+    _pgRestoreSnapshot(snap);
+}
+
+function _pgRestoreSnapshot(snapStr) {
+    if (!snapStr || !_pg.df) return;
+    try {
+        const snap = JSON.parse(snapStr);
+        _pg._suppressSnapshot = true;
+        _pg.df.import(snap.df);
+        _pg.nodeConfigs = snap.nodeConfigs;
+        _pg._suppressSnapshot = false;
+        _pgUpdateRunBtn();
+    } catch { _pg._suppressSnapshot = false; }
+}
+
+// ── Pipeline serialisation ──
+function _pgBuildGraph(nameOverride) {
+    if (!_pg.df) return null;
+    const dfData = _pg.df.drawflow.drawflow.Home.data;
+    const nodes = Object.entries(dfData).map(([id, node]) => ({
+        id: String(id),
+        skill_name: _pg.nodeConfigs[id]?.skill_name || node.name,
+        category: _pg.nodeConfigs[id]?.category || 'Utility',
+        position: { x: node.pos_x, y: node.pos_y },
+        config: _pg.nodeConfigs[id]?.config || {},
+    }));
+    const edges = [];
+    for (const [id, node] of Object.entries(dfData)) {
+        for (const [outKey, outData] of Object.entries(node.outputs || {})) {
+            for (const conn of (outData.connections || [])) {
+                edges.push({
+                    source_node_id: String(id),
+                    source_port: outKey,
+                    target_node_id: String(conn.node),
+                    target_port: conn.output,
+                });
+            }
+        }
+    }
+    return { name: nameOverride || null, nodes, edges };
+}
+
+// ── Run pipeline ──
+async function pgRunPipeline() {
+    const btn = document.getElementById('pgRunBtn');
+    if (btn.disabled) return;
+
+    // Validate required fields
+    if (!_pgValidate()) return;
+
+    // Collect inputs from __inputs__ node config
+    let inputs = {};
+    const dfData = _pg.df.drawflow.drawflow.Home.data;
+    for (const [id, node] of Object.entries(dfData)) {
+        if (_pg.nodeConfigs[id]?.skill_name === '__inputs__') {
+            inputs = { ...(_pg.nodeConfigs[id]?.config || {}) };
+            break;
+        }
+    }
+
+    const graph = _pgBuildGraph();
+    graph.inputs = inputs;
+
+    // Reset node status
+    for (const id of Object.keys(dfData)) {
+        _pgSetNodeStatus(id, 'pending');
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Running…';
+
+    try {
+        const r = await fetch('/api/pipelines/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(graph),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const { run_id, ws_url } = await r.json();
+        _pg.runId = run_id;
+        _pgConnectRunWs(ws_url);
+    } catch (err) {
+        _pgShowToast(`Run failed: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = '▶ Run';
+    }
+}
+
+function _pgConnectRunWs(wsUrl) {
+    if (_pg.runWs) _pg.runWs.close();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    _pg.runWs = new WebSocket(`${proto}//${location.host}${wsUrl}`);
+
+    _pg.runWs.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+
+        if (msg.type === 'node_status') {
+            _pgSetNodeStatus(msg.node_id, msg.status);
+        } else if (msg.type === 'node_output') {
+            // Append to chat as pipeline result
+            const cfg = _pg.nodeConfigs[msg.node_id];
+            const label = cfg?.display_name || msg.node_id;
+            addMessage('assistant', `**[Pipeline] ${label}:**\n\n${msg.output}`);
+        } else if (msg.type === 'node_error') {
+            _pgSetNodeStatus(msg.node_id, 'error', msg.error);
+        } else if (msg.type === 'pipeline_done') {
+            _pgRunFinished();
+        }
+    };
+
+    _pg.runWs.onerror = () => { _pgRunFinished(); _pgShowToast('WebSocket error during run.'); };
+    _pg.runWs.onclose = () => _pgRunFinished();
+}
+
+function _pgSetNodeStatus(nodeId, status, errMsg) {
+    const el = document.getElementById(`node-${nodeId}`);
+    if (el) {
+        el.classList.remove('pg-status-pending', 'pg-status-running', 'pg-status-done', 'pg-status-error');
+        el.classList.add(`pg-status-${status}`);
+    }
+    if (errMsg) {
+        const errEl = document.getElementById(`pg-err-${nodeId}`);
+        if (errEl) { errEl.textContent = errMsg; errEl.hidden = false; }
+    }
+}
+
+function _pgRunFinished() {
+    const btn = document.getElementById('pgRunBtn');
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Run'; }
+    if (_pg.runWs) { _pg.runWs.close(); _pg.runWs = null; }
+}
+
+// ── Validation ──
+function _pgValidate() {
+    if (!_pg.df) return false;
+    const dfData = _pg.df.drawflow.drawflow.Home.data;
+    let valid = true;
+    for (const [id] of Object.entries(dfData)) {
+        const cfg = _pg.nodeConfigs[id];
+        if (!cfg) continue;
+        const schema = cfg.parameter_schema || {};
+        const required = schema.required || [];
+        const props = schema.properties || {};
+        const nodeEl = document.getElementById(`node-${id}`);
+        nodeEl?.classList.remove('pg-invalid');
+        for (const key of required) {
+            const val = cfg.config[key];
+            if (val === undefined || val === '') {
+                nodeEl?.classList.add('pg-invalid');
+                valid = false;
+            }
+        }
+    }
+    if (!valid) _pgShowToast('Some blocks have required fields missing. Click a block to configure it.');
+    return valid;
+}
+
+// ── Save pipeline ──
+function pgSavePipeline() {
+    const dlg = document.getElementById('pgSaveDialog');
+    dlg.hidden = false;
+    document.getElementById('pgPipelineName').focus();
+}
+
+function pgCancelSave() {
+    document.getElementById('pgSaveDialog').hidden = true;
+}
+
+async function pgConfirmSave(overwrite) {
+    const name = document.getElementById('pgPipelineName').value.trim();
+    if (!name) { _pgShowToast('Please enter a pipeline name.'); return; }
+
+    const graph = _pgBuildGraph(name);
+    if (overwrite) graph.overwrite = true;
+
+    try {
+        const r = await fetch('/api/pipelines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(graph),
+        });
+        const d = await r.json();
+        if (r.status === 409) {
+            if (confirm(`A pipeline named "${name}" already exists. Overwrite?`)) {
+                pgCancelSave();
+                await pgConfirmSave(true);
+            }
+            return;
+        }
+        if (!r.ok) throw new Error(d.detail || 'Save failed');
+        _pg.currentPipelineId = d.id;
+        pgCancelSave();
+        _pgShowToast(`Pipeline "${name}" saved.`);
+        // Refresh load menu next open
+    } catch (err) {
+        _pgShowToast(`Save failed: ${err.message}`);
+    }
+}
+
+// ── Load pipeline ──
+async function pgToggleLoadMenu() {
+    const menu = document.getElementById('pgLoadMenu');
+    if (!menu.hidden) { menu.hidden = true; return; }
+    menu.innerHTML = '<div class="pg-load-menu-item"><span class="lm-name">Loading…</span></div>';
+    menu.hidden = false;
+
+    try {
+        const r = await fetch('/api/pipelines');
+        const d = await r.json();
+        const pipelines = d.pipelines || [];
+        if (!pipelines.length) {
+            menu.innerHTML = '<div class="pg-load-menu-item"><span class="lm-name">No saved pipelines.</span></div>';
+        } else {
+            menu.innerHTML = pipelines.map(p => `
+                <div class="pg-load-menu-item" onclick="pgLoadPipeline('${_esc(p.id)}')">
+                    <span class="lm-name">${_esc(p.name)}</span>
+                    <span class="lm-meta">${p.node_count} blocks · ${p.edge_count} edges</span>
+                </div>`).join('');
+        }
+    } catch {
+        menu.innerHTML = '<div class="pg-load-menu-item"><span class="lm-name">Failed to load.</span></div>';
+    }
+}
+
+async function pgLoadPipeline(pipelineId) {
+    document.getElementById('pgLoadMenu').hidden = true;
+    try {
+        const r = await fetch(`/api/pipelines/${encodeURIComponent(pipelineId)}`);
+        if (!r.ok) throw new Error('Not found');
+        const graph = await r.json();
+        _pgImportGraph(graph);
+        _pg.currentPipelineId = pipelineId;
+        if (graph.name) document.getElementById('pgPipelineName').value = graph.name;
+    } catch (err) {
+        _pgShowToast(`Load failed: ${err.message}`);
+    }
+}
+
+function _pgImportGraph(graph) {
+    if (!_pg.df) return;
+    _pg._suppressSnapshot = true;
+    _pg.df.clear();
+    _pg.nodeConfigs = {};
+
+    const nodeIdMap = {}; // graph node id → drawflow node id (they may differ)
+    for (const node of (graph.nodes || [])) {
+        const skill = _pg.skills.find(s => s.name === node.skill_name);
+        const displayName = skill?.display_name || node.skill_name;
+        const dfId = pgAddNode(node.skill_name, displayName, node.category, node.position.x, node.position.y);
+        nodeIdMap[node.id] = dfId;
+        if (node.config) _pg.nodeConfigs[dfId].config = { ...node.config };
+    }
+
+    for (const edge of (graph.edges || [])) {
+        const srcId = nodeIdMap[edge.source_node_id];
+        const tgtId = nodeIdMap[edge.target_node_id];
+        if (srcId && tgtId) {
+            try {
+                _pg.df.addConnection(srcId, tgtId, edge.source_port || 'output_1', edge.target_port || 'input_1');
+            } catch { /* skip invalid connections */ }
+        }
+    }
+
+    _pg._suppressSnapshot = false;
+    _pgPushSnapshot();
+    _pgUpdateRunBtn();
+}
+
+// ── Helper ──
+function _esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Zoom reset ──
+function pgResetZoom() {
+    if (!_pg.df) return;
+    _pg.df.zoom_reset();
+    // Drawflow uses editor_mode; pan+zoom built-in when editor_mode !== 'fixed'
+}
+
+// Wire up canvas drop after Drawflow is ready (called lazily on first open)
+(function _patchTogglePlayground() {
+    const orig = togglePlayground;
+    // Drop setup happens once after Drawflow init inside togglePlayground
+    // We just need to ensure _pgSetupDrop is called after _pgInitDrawflow runs
+    window._pgDropSetup = false;
+    const origInit = window.initPlayground;
+    // After Drawflow init, register drop zone
+    const _checkDrop = setInterval(() => {
+        if (_pg.df && !window._pgDropSetup) {
+            _pgSetupDrop();
+            window._pgDropSetup = true;
+            clearInterval(_checkDrop);
+        }
+    }, 200);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Live Playground (003-live-playground)
+// ═══════════════════════════════════════════════════════════════════════
+
+// T004 — Toggle Live mode on/off
+function pgToggleLive() {
+    const btn = document.getElementById('pgLiveToggle');
+
+    if (!_pg.liveMode) {
+        // Activating — check for non-empty canvas (US2 / T011-T013)
+        if (_pg.df) {
+            const data = _pg.df.drawflow.drawflow.Home.data;
+            const manualNodes = Object.keys(data).filter(id =>
+                _pg.nodeConfigs[id] && _pg.nodeConfigs[id].liveSource !== 'live'
+            );
+            if (manualNodes.length > 0) {
+                // T012 — Non-destructive activation prompt
+                const choice = confirm(
+                    'The canvas has existing blocks.\n\nOK = Clear canvas and start Live mode\nCancel = Keep existing blocks and append live blocks'
+                );
+                if (choice) {
+                    // Clear all nodes
+                    _pg._suppressSnapshot = true;
+                    for (const id of Object.keys(data)) {
+                        try { _pg.df.removeNodeId(`node-${id}`); } catch { }
+                    }
+                    _pg.nodeConfigs = {};
+                    _pg._suppressSnapshot = false;
+                } else {
+                    // Append — offset live blocks to the right of existing nodes
+                    let maxX = 0;
+                    for (const id of Object.keys(data)) {
+                        const node = data[id];
+                        if (node.pos_x > maxX) maxX = node.pos_x;
+                    }
+                    _pg.liveSeqId = 0;
+                    _pg._liveOffsetX = maxX + 300;
+                }
+            }
+        }
+
+        _pg.liveMode = true;
+        _pg.liveBlocks = {};
+        _pg.liveQueue = [];
+        if (!_pg._liveOffsetX) _pg._liveOffsetX = 0;
+        _pg.liveSeqId = _pg.liveSeqId || 0;
+        _pg.liveLastId = null;
+        _pg.livePending = new Set();
+        btn.classList.add('pg-live-active');
+
+        // FR-002 — open panel if closed
+        if (!_pg.open) togglePlayground();
+    } else {
+        // T017 — Turning off: stop rendering new blocks, keep existing ones
+        _pg.liveMode = false;
+        btn.classList.remove('pg-live-active');
+        // FR-012 — do NOT close the playground panel
+    }
+}
+
+// T005 + T007 — Handle tool_start event in live mode
+function _pgLiveToolStart(name, input) {
+    if (!_pg.liveMode) return;
+
+    // T015 — Queue events if Drawflow not initialised
+    if (!_pg.df) {
+        _pg.liveQueue.push({ type: 'start', name, input });
+        return;
+    }
+
+    // Build a unique key for this tool call within the turn
+    let toolKey = name;
+    let suffix = 0;
+    while (_pg.liveBlocks[toolKey] !== undefined) {
+        suffix++;
+        toolKey = `${name}_${suffix}`;
+    }
+
+    // Determine if tool is known
+    const isKnown = _pg.skills.some(s => s.name === name);
+    const displayName = isKnown
+        ? (_pg.skills.find(s => s.name === name)?.display_name || name)
+        : name;
+    const cat = isKnown
+        ? (_pg.skills.find(s => s.name === name)?.category || 'Utility')
+        : 'Utility';
+
+    // Position: left-to-right, offset by liveSeqId
+    const baseX = (_pg._liveOffsetX || 0) + 200;
+    const pos_x = baseX + (_pg.liveSeqId * 220);
+    const pos_y = 200;
+
+    // Determine if this is a parallel call (another tool is still running)
+    const isParallel = _pg.livePending.size > 0;
+
+    // Create Drawflow node
+    const badgeCls = _PG_BADGE[cat] || 'pg-cat-badge-utility';
+    const unknownCls = isKnown ? '' : ' pg-live-unknown';
+    const html = `
+        <div class="pg-node-inner${unknownCls}">
+            <span class="pg-cat-badge ${badgeCls}">${_esc(cat)}</span>
+            <span class="pg-node-name">${_esc(displayName)}</span>
+            <span class="pg-live-status-icon">⏳</span>
+        </div>`;
+
+    _pg._suppressSnapshot = true;
+    const nodeId = _pg.df.addNode(
+        name, 0, 0, pos_x, pos_y,
+        `pg-live-block pg-status-running`, {}, html
+    );
+    _pg._suppressSnapshot = false;
+
+    // Store config for live block
+    _pg.nodeConfigs[nodeId] = {
+        skill_name: name,
+        display_name: displayName,
+        category: cat,
+        config: {},
+        liveSource: 'live',
+        liveKey: toolKey,
+        parameter_schema: { type: 'object', properties: {} },
+    };
+
+    _pg.liveBlocks[toolKey] = nodeId;
+
+    // Draw edge from previous sequential block (T005 / FR-005 / FR-013)
+    if (!isParallel && _pg.liveLastId != null) {
+        try {
+            _pg.df.addConnection(_pg.liveLastId, nodeId, 'output_1', 'input_1');
+        } catch { /* skip if ports don't match */ }
+    }
+
+    _pg.livePending.add(toolKey);
+    _pg.liveSeqId++;
+
+    // T010 — Auto-fit: zoom out if block goes beyond visible canvas
+    _pgLiveAutoFit(pos_x);
+}
+
+// T006 — Handle tool_end event in live mode
+function _pgLiveToolEnd(name, output) {
+    if (!_pg.liveMode) return;
+
+    // T015 — Queue if Drawflow not initialised
+    if (!_pg.df) {
+        _pg.liveQueue.push({ type: 'end', name, output });
+        return;
+    }
+
+    // Find the matching live block (find last created block with this tool name)
+    let toolKey = null;
+    for (const key of _pg.livePending) {
+        if (key === name || key.startsWith(name + '_')) {
+            toolKey = key;
+            break;
+        }
+    }
+
+    if (!toolKey) return; // no matching pending block
+
+    const nodeId = _pg.liveBlocks[toolKey];
+    if (nodeId == null) return;
+
+    // Determine success or error status
+    const isError = output && (
+        output.toLowerCase().includes('error:') ||
+        output.toLowerCase().includes('traceback') ||
+        output.toLowerCase().startsWith('error')
+    );
+
+    // Update node CSS class
+    const nodeEl = document.querySelector(`#node-${nodeId}`);
+    if (nodeEl) {
+        nodeEl.classList.remove('pg-status-running');
+        nodeEl.classList.add(isError ? 'pg-status-error' : 'pg-status-done');
+
+        // Update status icon
+        const icon = nodeEl.querySelector('.pg-live-status-icon');
+        if (icon) icon.textContent = isError ? '❌' : '✅';
+    }
+
+    // Remove from pending set
+    _pg.livePending.delete(toolKey);
+
+    // When all pending complete, update liveLastId for next sequential edge
+    if (_pg.livePending.size === 0) {
+        _pg.liveLastId = nodeId;
+    }
+}
+
+// T009 — Clear live blocks at turn boundary (called on stream_start)
+function _pgLiveClearTurn() {
+    if (!_pg.liveMode || !_pg.df) return;
+
+    // Remove all nodes tagged as live
+    _pg._suppressSnapshot = true;
+    const data = _pg.df.drawflow.drawflow.Home.data;
+    for (const id of Object.keys(data)) {
+        if (_pg.nodeConfigs[id]?.liveSource === 'live') {
+            try { _pg.df.removeNodeId(`node-${id}`); } catch { }
+            delete _pg.nodeConfigs[id];
+        }
+    }
+    _pg._suppressSnapshot = false;
+
+    // Reset live state
+    _pg.liveBlocks = {};
+    _pg.liveSeqId = 0;
+    _pg.liveLastId = null;
+    _pg.livePending = new Set();
+    _pg._liveOffsetX = 0;
+}
+
+// T010 — Auto-fit: zoom out if live blocks exceed visible canvas width
+function _pgLiveAutoFit(blockX) {
+    if (!_pg.df) return;
+    const canvas = document.getElementById('pgCanvas');
+    if (!canvas) return;
+    const visibleWidth = canvas.clientWidth;
+
+    // If block position exceeds 80% of visible width at current zoom, zoom out
+    if (blockX > visibleWidth * 0.8 / (_pg.df.zoom || 1)) {
+        const targetZoom = Math.max(0.3, (visibleWidth * 0.7) / (blockX + 200));
+        if (targetZoom < (_pg.df.zoom || 1)) {
+            _pg.df.zoom = targetZoom;
+            _pg.df.zoom_refresh();
+        }
+    }
+}
+
+// T016 — Replay queued live events after Drawflow init
+function _pgLiveReplayQueue() {
+    if (!_pg.liveQueue.length || !_pg.df) return;
+    const queue = _pg.liveQueue.splice(0);
+    for (const evt of queue) {
+        if (evt.type === 'start') _pgLiveToolStart(evt.name, evt.input);
+        else if (evt.type === 'end') _pgLiveToolEnd(evt.name, evt.output);
+    }
 }

@@ -3437,6 +3437,210 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         except WebSocketDisconnect:
             pass
 
+    # -------------------------------------------------------------------------
+    # CV-Playground endpoints
+    # -------------------------------------------------------------------------
+
+    from cv_agent.agent import build_tools
+    from cv_agent.pipeline.skill_registry import SkillRegistryAdapter
+    from cv_agent.pipeline.storage import (
+        list_pipelines as _list_pipelines,
+        load_pipeline as _load_pipeline,
+        save_pipeline as _save_pipeline,
+    )
+    from cv_agent.pipeline.models import PipelineGraph, BlockInstance, Edge, RunContext, RunStatus
+    from cv_agent.pipeline.dag_runner import DAGRunner
+
+    def _get_playground_tools() -> list:
+        try:
+            return build_tools(config)
+        except Exception as exc:
+            logger.warning("build_tools failed in playground: %s", exc)
+            return []
+
+    def _pipeline_storage_dir() -> str:
+        return config.workflow.storage_dir
+
+    def _make_tool_map(tools: list) -> dict:
+        return {t.name: t for t in tools}
+
+    @app.get("/api/playground/skills")
+    async def playground_skills():
+        """Return all available skill blocks derived from the live build_tools() registry."""
+        tools = await asyncio.to_thread(_get_playground_tools)
+        adapter = SkillRegistryAdapter(tools)
+        return {"skills": [s.model_dump() for s in adapter.list_skills()]}
+
+    # Active pipeline runs: run_id -> asyncio.Queue of WS events
+    _pipeline_run_queues: dict[str, asyncio.Queue] = {}
+
+    @app.websocket("/ws/workflows/{run_id}")
+    async def ws_pipeline(websocket: WebSocket, run_id: str):
+        """Stream pipeline execution events.  Also handles legacy Eko workflow streams."""
+        await websocket.accept()
+        queue = _pipeline_run_queues.get(run_id)
+        if queue is None:
+            # Legacy Eko path: proxy to Eko sidecar if configured
+            try:
+                wm = WorkflowManager(config)
+                async for event in wm.stream_workflow_status(run_id):
+                    await websocket.send_text(json.dumps(event))
+            except Exception as exc:
+                await websocket.send_text(json.dumps({"type": "error", "error": str(exc)}))
+            finally:
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+            return
+
+        # Pipeline run path: drain the queue
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=120)
+                except asyncio.TimeoutError:
+                    break
+                if event is None:  # sentinel — run finished
+                    break
+                await websocket.send_text(json.dumps(event))
+        except WebSocketDisconnect:
+            pass
+        finally:
+            _pipeline_run_queues.pop(run_id, None)
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+
+    async def _execute_pipeline(run_id: str, pipeline: PipelineGraph, inputs: dict) -> None:
+        """Background task: run DAG and push events to the WS queue."""
+        queue = _pipeline_run_queues[run_id]
+        tools = await asyncio.to_thread(_get_playground_tools)
+        tool_map = _make_tool_map(tools)
+        adapter = SkillRegistryAdapter(tools)
+
+        async def _status_callback(node_id: str, status, message: str | None = None):
+            event = {"type": "node_status", "run_id": run_id, "node_id": node_id,
+                     "status": status.value, "timestamp": datetime.utcnow().isoformat()}
+            await queue.put(event)
+            if status.value == "done":
+                pass  # output sent separately via node_output event
+            elif status.value == "error":
+                err_event = {"type": "node_error", "run_id": run_id, "node_id": node_id,
+                             "block_name": node_id, "error": message or "",
+                             "skipped": (message or "").startswith("Skipped"),
+                             "timestamp": datetime.utcnow().isoformat()}
+                await queue.put(err_event)
+
+        # T033: build agent runner map so delegate_* blocks call async runners directly
+        from cv_agent.agents.blog_writer import run_blog_writer_agent
+        from cv_agent.agents.paper_to_code import run_paper_to_code_agent
+        from cv_agent.agents.data_visualization import run_data_visualization_agent
+        from cv_agent.agents.website_maintenance import run_website_maintenance_agent
+        from cv_agent.agents.model_training import run_model_training_agent
+        from cv_agent.agents.digest import run_digest_agent as run_digest_writer_agent
+        _agent_runner_map = {
+            "delegate_blog_writer": lambda msg: run_blog_writer_agent(msg),
+            "delegate_paper_to_code": lambda msg: run_paper_to_code_agent(msg),
+            "delegate_data_visualization": lambda msg: run_data_visualization_agent(msg),
+            "delegate_website_maintenance": lambda msg: run_website_maintenance_agent(msg),
+            "delegate_model_training": lambda msg: run_model_training_agent(msg),
+            "delegate_digest_writer": lambda msg: run_digest_writer_agent(msg),
+        }
+        runner = DAGRunner(tool_map=tool_map, status_callback=_status_callback,
+                           skill_registry=adapter, agent_runner_map=_agent_runner_map)
+        try:
+            node_outputs = await runner.run(pipeline, inputs)
+            # Emit node_output for each completed node
+            for node in pipeline.nodes:
+                output = node_outputs.get(node.id)
+                if output is not None:
+                    block_name = node.skill_name.replace("__", "").replace("_", " ").title()
+                    out_event = {"type": "node_output", "run_id": run_id, "node_id": node.id,
+                                 "block_name": node.skill_name, "output": str(output),
+                                 "timestamp": datetime.utcnow().isoformat()}
+                    await queue.put(out_event)
+            errored = sum(1 for v in node_outputs.values() if v is None)
+            done_event = {"type": "pipeline_done", "run_id": run_id,
+                          "status": "partial_error" if errored else "done",
+                          "completed_nodes": len(node_outputs) - errored,
+                          "errored_nodes": errored,
+                          "timestamp": datetime.utcnow().isoformat()}
+            await queue.put(done_event)
+        except Exception as exc:
+            await queue.put({"type": "pipeline_done", "run_id": run_id, "status": "error",
+                             "completed_nodes": 0, "errored_nodes": len(pipeline.nodes),
+                             "error": str(exc), "timestamp": datetime.utcnow().isoformat()})
+        finally:
+            await queue.put(None)  # sentinel
+
+    @app.post("/api/pipelines/run")
+    async def pipeline_run_adhoc(request: Request):
+        """Ad-hoc pipeline run — full graph in body, no prior save required."""
+        body = await request.json()
+        inputs = body.pop("inputs", {})
+        try:
+            pipeline = PipelineGraph.model_validate(body)
+        except Exception as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=422)
+        run_id = str(uuid.uuid4())
+        _pipeline_run_queues[run_id] = asyncio.Queue()
+        asyncio.create_task(_execute_pipeline(run_id, pipeline, inputs))
+        return {"run_id": run_id, "ws_url": f"/ws/workflows/{run_id}"}
+
+    @app.post("/api/pipelines/{pipeline_id}/run")
+    async def pipeline_run_saved(pipeline_id: str, request: Request):
+        """Run a previously saved pipeline by ID."""
+        body = await request.json()
+        inputs = body.get("inputs", {})
+        try:
+            pipeline = await _load_pipeline(pipeline_id, _pipeline_storage_dir())
+        except FileNotFoundError:
+            return JSONResponse({"detail": "Pipeline not found."}, status_code=404)
+        run_id = str(uuid.uuid4())
+        _pipeline_run_queues[run_id] = asyncio.Queue()
+        asyncio.create_task(_execute_pipeline(run_id, pipeline, inputs))
+        return {"run_id": run_id, "ws_url": f"/ws/workflows/{run_id}"}
+
+    @app.post("/api/pipelines")
+    async def pipeline_save(request: Request):
+        """Save (create or overwrite) a named pipeline."""
+        body = await request.json()
+        overwrite = body.pop("overwrite", False)
+        try:
+            graph = PipelineGraph.model_validate(body)
+        except Exception as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=422)
+        if not graph.name:
+            return JSONResponse({"detail": "Pipeline name is required."}, status_code=422)
+        try:
+            file_path = await _save_pipeline(graph, _pipeline_storage_dir(), overwrite=overwrite)
+            status = "overwritten" if overwrite else "created"
+            return {"status": status, "id": file_path.stem, "name": graph.name,
+                    "filename": file_path.name}
+        except FileExistsError:
+            return JSONResponse({
+                "status": "conflict",
+                "message": f"A pipeline named '{graph.name}' already exists.",
+                "existing_id": __import__("re").sub(r"[^\w\s-]", "", graph.name.lower().replace(" ", "-"))
+            }, status_code=409)
+
+    @app.get("/api/pipelines")
+    async def pipeline_list():
+        """List all saved pipelines."""
+        pipelines = await _list_pipelines(_pipeline_storage_dir())
+        return {"pipelines": pipelines}
+
+    @app.get("/api/pipelines/{pipeline_id}")
+    async def pipeline_get(pipeline_id: str):
+        """Load a saved pipeline by ID."""
+        try:
+            graph = await _load_pipeline(pipeline_id, _pipeline_storage_dir())
+            return graph.model_dump(mode="json")
+        except FileNotFoundError:
+            return JSONResponse({"detail": "Pipeline not found."}, status_code=404)
+
     return app
 
 

@@ -202,9 +202,48 @@ Full `PipelineGraph` JSON (same schema as the POST request body).
 
 ---
 
+## POST /api/pipelines/run
+
+**Ad-hoc run** — execute the pipeline graph sent in the request body without requiring a prior save. This is the primary run endpoint used by the Playground canvas (supports US1 MVP: run without save/load).
+
+**Auth**: None
+**Content-Type**: `application/json`
+
+### Request Body
+
+Full `PipelineGraph` JSON (same schema as `POST /api/pipelines`) **plus** an `inputs` object:
+
+```json
+{
+  "name": null,
+  "nodes": [...],
+  "edges": [...],
+  "inputs": {
+    "image_path": "/path/to/image.png",
+    "text": "",
+    "url": ""
+  }
+}
+```
+
+`name` may be `null` for an ad-hoc run (pipeline is not persisted).
+
+### Response 200
+
+```json
+{
+  "run_id": "uuid",
+  "ws_url": "/ws/workflows/uuid"
+}
+```
+
+The client immediately connects to `ws_url` to receive streaming execution events.
+
+---
+
 ## POST /api/pipelines/{pipeline_id}/run
 
-Start a pipeline execution. Returns a `run_id` for WebSocket connection.
+**Saved-pipeline run** — execute a previously saved pipeline by ID. The graph is loaded from `output/.workflows/`; the client only needs to supply runtime `inputs`.
 
 **Auth**: None
 **Content-Type**: `application/json`
@@ -231,6 +270,12 @@ Start a pipeline execution. Returns a `run_id` for WebSocket connection.
 ```
 
 The client immediately connects to `ws_url` to receive streaming execution events.
+
+### Response 404
+
+```json
+{ "detail": "Pipeline not found." }
+```
 
 ---
 

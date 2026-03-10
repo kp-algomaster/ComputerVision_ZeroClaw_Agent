@@ -1,0 +1,7 @@
+{
+  "source_context": "Our model uses an encoder, cross-attention fusion, and decoder for segmentation.",
+  "communicative_intent": "Architecture overview of the proposed model.",
+  "diagram_type": "methodology",
+  "raw_data": null,
+  "aspect_ratio": null
+}

@@ -11,6 +11,9 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <!-- Drawflow (MIT) — node graph for CV Playground -->
+    <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css">
 </head>
 
 <body>
@@ -65,6 +68,8 @@
                     <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
                     <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
+                    <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span
+                            class="nav-icon">⚡</span>Playground</li>
                     <li class="nav-item" data-view="specs"><span class="nav-icon">📝</span>Specs</li>
                     <li class="nav-item" data-view="digests"><span class="nav-icon">📰</span>Digests</li>
                 </ul>
@@ -254,7 +259,9 @@
                             <div id="localModelProgressFill" class="pull-progress-fill" style="width:0%"></div>
                         </div>
                         <span id="localModelProgressPct" class="pull-progress-pct">0%</span>
-                        <button id="localModelRestartBtn" class="btn-restart-download" onclick="restartLocalModelDownload()" title="Wipe partial files and restart from 0">↺ Restart</button>
+                        <button id="localModelRestartBtn" class="btn-restart-download"
+                            onclick="restartLocalModelDownload()" title="Wipe partial files and restart from 0">↺
+                            Restart</button>
                     </div>
                     <div id="localModelCatalog">
                         <p class="placeholder">Loading…</p>
@@ -486,7 +493,8 @@
                             <input type="file" id="sam3FileInput" accept="image/*" hidden>
                             <div class="sam3-upload-content" id="sam3UploadContent">
                                 <div class="sam3-upload-icon">🖼️</div>
-                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); sam3ChooseImage()">browse</button></p>
+                                <p>Drop image here or <button class="btn-link"
+                                        onclick="event.stopPropagation(); sam3ChooseImage()">browse</button></p>
                                 <p class="sam3-upload-hint">JPEG · PNG · WebP</p>
                             </div>
                         </div>
@@ -511,8 +519,10 @@
                                 <span id="sam3ImageStatus" class="sam3-image-status">No image selected</span>
                             </div>
                             <div class="sam3-image-actions">
-                                <button class="btn-sm sam3-image-primary" id="sam3ChooseImageBtn" onclick="sam3ChooseImage()">Select Image</button>
-                                <button class="btn-sm" id="sam3ClearImageBtn" onclick="sam3NewImage()" hidden>Clear</button>
+                                <button class="btn-sm sam3-image-primary" id="sam3ChooseImageBtn"
+                                    onclick="sam3ChooseImage()">Select Image</button>
+                                <button class="btn-sm" id="sam3ClearImageBtn" onclick="sam3NewImage()"
+                                    hidden>Clear</button>
                             </div>
                         </div>
 
@@ -522,7 +532,8 @@
                         </div>
 
                         <div class="sam3-tabs">
-                            <button class="sam3-tab active" id="sam3TabText" onclick="setSam3Mode('text')">✏️ Text</button>
+                            <button class="sam3-tab active" id="sam3TabText" onclick="setSam3Mode('text')">✏️
+                                Text</button>
                             <button class="sam3-tab" id="sam3TabBox" onclick="setSam3Mode('box')">▭ Box</button>
                         </div>
 
@@ -530,8 +541,8 @@
                         <div id="sam3TextPanel" class="sam3-prompt-panel">
                             <label class="sam3-label" for="sam3TextPrompt">Describe what to segment</label>
                             <input id="sam3TextPrompt" type="text" class="sam3-input"
-                                   placeholder="e.g. person, the red car, cat on the left"
-                                   onkeydown="if(event.key==='Enter') sam3SegmentText()">
+                                placeholder="e.g. person, the red car, cat on the left"
+                                onkeydown="if(event.key==='Enter') sam3SegmentText()">
                             <button class="btn-sam3-run" id="sam3TextBtn" onclick="sam3SegmentText()">
                                 ✂️ Segment
                             </button>
@@ -539,12 +550,14 @@
 
                         <!-- Box prompt mode -->
                         <div id="sam3BoxPanel" class="sam3-prompt-panel" hidden>
-                            <p class="sam3-hint">Click and drag on the image to draw a bounding box around the object.</p>
+                            <p class="sam3-hint">Click and drag on the image to draw a bounding box around the object.
+                            </p>
                             <div id="sam3BoxInfo" class="sam3-box-info">No box drawn yet</div>
                             <button class="btn-sam3-run" id="sam3BoxBtn" onclick="sam3SegmentBox()" disabled>
                                 ✂️ Segment Selection
                             </button>
-                            <button class="btn-sm sam3-clear-box-btn" id="sam3ClearBoxBtn" onclick="sam3ClearBox()" hidden>
+                            <button class="btn-sm sam3-clear-box-btn" id="sam3ClearBoxBtn" onclick="sam3ClearBox()"
+                                hidden>
                                 ✕ Clear Box
                             </button>
                         </div>
@@ -591,7 +604,10 @@
         <!-- ═══ OCR Playground ═══ -->
         <section id="view-ocr" class="view">
             <div class="view-header">
-                <div><h2>📄 OCR · Text Extraction</h2><p class="view-sub">MLX Monkey OCR / PaddleOCR — Smart text extraction</p></div>
+                <div>
+                    <h2>📄 OCR · Text Extraction</h2>
+                    <p class="view-sub">MLX Monkey OCR / PaddleOCR — Smart text extraction</p>
+                </div>
             </div>
             <div class="view-scroll sam3-scroll">
                 <div class="sam3-layout">
@@ -601,7 +617,9 @@
                             <input type="file" id="ocrFileInput" accept="image/*" hidden>
                             <div class="sam3-upload-content" id="ocrUploadContent">
                                 <div class="sam3-upload-icon">🖼️</div>
-                                <p>Drop image here or <button class="btn-link" onclick="event.stopPropagation(); document.getElementById('ocrFileInput').click()">browse</button></p>
+                                <p>Drop image here or <button class="btn-link"
+                                        onclick="event.stopPropagation(); document.getElementById('ocrFileInput').click()">browse</button>
+                                </p>
                                 <p class="sam3-upload-hint">JPEG · PNG · WebP · BMP</p>
                             </div>
                         </div>
@@ -798,6 +816,14 @@
                                 <p class="placeholder">No templates saved.</p>
                             </div>
                         </div>
+
+                        <!-- Saved Pipelines -->
+                        <div class="wf-templates-section" style="margin-top: 24px;">
+                            <h3 class="section-title">⚡ Saved Pipelines</h3>
+                            <div id="wfPipelinesList" class="file-list" style="margin-top: 8px;">
+                                <p class="placeholder">No pipelines saved.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- right column: live execution view -->
@@ -936,6 +962,78 @@
         </section>
 
     </main>
+
+    <!-- ═══ CV Playground Panel ═══ -->
+    <aside id="playground-panel" class="pg-panel pg-closed" aria-label="CV Playground">
+
+        <!-- Toolbar -->
+        <div class="pg-toolbar">
+            <div class="pg-toolbar-left">
+                <span class="pg-title">⚡ Playground</span>
+                <button class="btn-sm pg-live-btn" id="pgLiveToggle" onclick="pgToggleLive()"
+                    title="Toggle Live mode — auto-render tool calls as blocks">🔗 Live</button>
+            </div>
+            <div class="pg-toolbar-actions">
+                <button class="btn-sm" id="pgSaveBtn" onclick="pgSavePipeline()">💾 Save</button>
+                <div class="pg-load-wrap">
+                    <button class="btn-sm" id="pgLoadBtn" onclick="pgToggleLoadMenu()">📂 Load ▾</button>
+                    <div id="pgLoadMenu" class="pg-load-menu" hidden></div>
+                </div>
+                <button class="btn-sm" onclick="pgResetZoom()" title="Reset zoom">⊙</button>
+                <button class="pg-run-btn" id="pgRunBtn" onclick="pgRunPipeline()" disabled>▶ Run</button>
+                <button class="pg-close-btn" onclick="togglePlayground()"
+                    title="Close Playground (Cmd+Shift+P)">✕</button>
+            </div>
+        </div>
+
+        <!-- Body: skill library | canvas + param panel -->
+        <div class="pg-body">
+
+            <!-- Skill Library -->
+            <div class="pg-library" id="pgLibrary">
+                <div class="pg-library-search">
+                    <input type="text" id="pgSkillSearch" placeholder="Search skills…"
+                        oninput="pgFilterSkills(this.value)">
+                </div>
+                <div class="pg-library-list" id="pgLibraryList">
+                    <p class="placeholder">Loading skills…</p>
+                </div>
+            </div>
+
+            <!-- Canvas + floating param panel -->
+            <div class="pg-canvas-wrap" id="pgCanvasWrap">
+                <div id="pgCanvas"></div>
+
+                <!-- Parameter panel (flyout over canvas) -->
+                <div class="pg-param-panel pg-param-closed" id="pgParamPanel">
+                    <div class="pg-param-header">
+                        <span class="pg-param-title" id="pgParamTitle">Block Config</span>
+                        <button class="pg-close-btn" onclick="pgCloseParamPanel()">✕</button>
+                    </div>
+                    <div class="pg-param-body" id="pgParamBody">
+                        <p class="placeholder">Click a block on the canvas to configure it.</p>
+                    </div>
+                    <div class="pg-param-footer">
+                        <button class="btn-sm" onclick="pgApplyParam()">Apply</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Save pipeline name dialog (inline, hidden) -->
+        <div class="pg-save-dialog" id="pgSaveDialog" hidden>
+            <div class="pg-save-dialog-inner">
+                <label for="pgPipelineName">Pipeline name</label>
+                <input type="text" id="pgPipelineName" placeholder="My Pipeline" maxlength="80">
+                <div class="pg-save-dialog-actions">
+                    <button class="btn-sm" onclick="pgConfirmSave()">Save</button>
+                    <button class="btn-sm" onclick="pgCancelSave()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+    </aside>
 
     <!-- ═══ Dataset Visualization Modal ═══ -->
     <div id="dsVizOverlay" class="dsviz-overlay" hidden onclick="if(event.target===this)closeDsViz()">

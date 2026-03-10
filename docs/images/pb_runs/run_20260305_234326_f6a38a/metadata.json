@@ -1,0 +1,58 @@
+{
+  "run_id": "run_20260305_234326_f6a38a",
+  "timestamp": "2026-03-05T23:45:41.064858",
+  "vlm_provider": "gemini",
+  "vlm_model": "gemini-2.0-flash",
+  "image_provider": "google_imagen",
+  "image_model": "gemini-3-pro-image-preview",
+  "refinement_iterations": 2,
+  "seed": null,
+  "config_snapshot": {
+    "vlm_provider": "gemini",
+    "vlm_model": "gemini-2.0-flash",
+    "image_provider": "google_imagen",
+    "image_model": "gemini-3-pro-image-preview",
+    "num_retrieval_examples": 10,
+    "refinement_iterations": 2,
+    "auto_refine": false,
+    "max_iterations": 30,
+    "optimize_inputs": false,
+    "output_resolution": "2k",
+    "reference_set_path": "data/reference_sets",
+    "guidelines_path": "data/guidelines",
+    "cache_dir": null,
+    "output_dir": "/Users/tyretitans/CV_Robotiscs_Lab/CV_Zero_Claw_Agent/docs/images/pb_runs",
+    "output_format": "png",
+    "save_iterations": true,
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_vlm_model": null,
+    "openai_image_model": null,
+    "aws_region": "us-east-1",
+    "aws_profile": null,
+    "bedrock_vlm_model": null,
+    "bedrock_image_model": null,
+    "ollama_base_url": "http://localhost:11434/v1",
+    "ollama_vlm_model": "qwen2.5-vl:7b",
+    "ollama_code_model": null,
+    "skip_ssl_verification": false
+  },
+  "timing": {
+    "total_seconds": 134.79586449998897,
+    "optimize_seconds": 0.0,
+    "retrieval_seconds": 1.5125027857720852e-05,
+    "planning_seconds": 8.063906750059687,
+    "styling_seconds": 6.29367537505459,
+    "iterations": [
+      {
+        "iteration": 1,
+        "visualizer_seconds": 46.41293320793193,
+        "critic_seconds": 15.575413207989186
+      },
+      {
+        "iteration": 2,
+        "visualizer_seconds": 53.4866686250316,
+        "critic_seconds": 4.701444291975349
+      }
+    ]
+  }
+}
