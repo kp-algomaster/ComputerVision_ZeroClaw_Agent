@@ -338,7 +338,7 @@ pip install -e ".[dev]"
 cp .env.example .env   # add API keys
 ```
 
-> **ZeroClaw shim:** `zeroclaw-tools` is not yet on PyPI. The repo ships a local compatibility shim at `src/zeroclaw_tools/` that provides the identical `@tool` / `create_agent` API via LangChain + LangGraph. Once the real package is published, replace with `pip install zeroclaw-tools` and delete `src/zeroclaw_tools/`.
+> **ZeroClaw shim:** `zeroclaw-tools` is not yet on PyPI. The repo ships a local compatibility shim at `src/zeroclaw_tools/` that provides the identical `@tool` / `create_agent` API via LangChain + LangGraph in pure Python. Once the real high-performance Rust-backed package is published, replace with `pip install zeroclaw-tools` and delete `src/zeroclaw_tools/` to transparently unlock native memory efficiency and performance gains while keeping zero code changes.
 
 ### Launch
 
@@ -463,8 +463,8 @@ CV_Zero_Claw_Agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `LLM_MODEL` | `qwen3.5:latest` | LLM model tag |
-| `OLLAMA_VISION_MODEL` | `qwen3.5:latest` | Vision model tag |
+| `LLM_MODEL` | `qwen3.5:9b` | LLM model tag |
+| `OLLAMA_VISION_MODEL` | `qwen2.5-vl:7b` | Vision model tag |
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible base URL |
 | `CV_SSL_VERIFY` | `false` | Verify TLS certificates for outbound HTTP(S); set `false` for self-signed chains or set a PEM bundle path |
 | `HF_TOKEN` | — | HuggingFace Hub token (required for gated models: SAM 3, DeepGen 1.0) |

@@ -4358,12 +4358,12 @@ function loadOcrView() {
         const badge = document.getElementById('ocrStatusBadge');
         if (!badge) return;
         if (d.ready) {
-            badge.textContent = '✓ PaddleOCR ready';
+            badge.textContent = '✓ OCR Engine Ready';
             badge.style.background = '#1a3320';
             badge.style.borderColor = '#1a5c30';
             badge.style.color = '#4caf7a';
         } else {
-            badge.textContent = '⚠️ PaddleOCR not installed';
+            badge.textContent = '⚠️ OCR Engine not installed';
             badge.style.background = '#332200';
             badge.style.borderColor = '#5a4000';
             badge.style.color = '#c8a040';
@@ -4422,7 +4422,7 @@ async function _ocrRun() {
     btn.textContent = 'Running…';
     errEl.hidden  = true;
     statEl.hidden = false;
-    statEl.textContent = 'Running OCR… (first run downloads models ~0.5 GB)';
+    statEl.textContent = 'Running OCR… loading models and extracting text';
 
     const lang = document.getElementById('ocrLangSelect')?.value || 'en';
     try {

@@ -2176,11 +2176,11 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             ),
             "document_extraction": _skill(
                 "OCR · Text Extraction", "📄", "vision",
-                "Extract text from images and documents in 80+ languages using PaddleOCR (Apache 2.0). Auto-downloads models on first use.",
-                "ready" if has_paddle_ocr else "needs-install", ["shell", "file_read", "file_write"],
-                missing=[] if has_paddle_ocr else ["paddleocr"],
-                packages=[] if has_paddle_ocr else ["paddleocr", "paddlepaddle"],
-                install=None if has_paddle_ocr else "pip install paddleocr paddlepaddle",
+                "Extract text from images and documents using Apple MLX-accelerated Monkey OCR (v1.5) or PaddleOCR (multi-language).",
+                "ready" if has_any_ocr else "needs-install", ["shell", "file_read", "file_write"],
+                missing=[] if has_any_ocr else ["paddleocr", "mlx-vlm"],
+                packages=[] if has_any_ocr else ["paddleocr", "paddlepaddle", "mlx-vlm"],
+                install=None if has_any_ocr else "pip install paddleocr paddlepaddle mlx-vlm",
                 view="ocr",
             ),
             "paper_to_spec": _skill(
@@ -2503,15 +2503,23 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     @app.get("/api/ocr/status")
     async def ocr_status():
         import importlib.util as _ilu
-        has_pkg = _ilu.find_spec("paddleocr") is not None
-        return JSONResponse({"ready": has_pkg, "message": "PaddleOCR ready" if has_pkg else "paddleocr not installed"})
+        has_paddle = _ilu.find_spec("paddleocr") is not None
+        has_mlx = _ilu.find_spec("mlx_vlm") is not None
+        from cv_agent.local_model_manager import is_model_downloaded
+        import asyncio
+        has_monkey = await asyncio.to_thread(is_model_downloaded, "monkey-ocr")
+        has_pkg = has_paddle or (has_mlx and has_monkey)
+        return JSONResponse({"ready": has_pkg, "message": "OCR Engine ready" if has_pkg else "OCR engine not installed"})
 
     @app.post("/api/ocr/run")
     async def ocr_run(body: dict):
-        """Run PaddleOCR on an uploaded image."""
+        """Run OCR on an uploaded image."""
         import json as _json
         from pathlib import Path as _P
         from cv_agent.tools.ocr import run_ocr
+        import importlib.util as _ilu
+        from cv_agent.local_model_manager import is_model_downloaded
+        import asyncio
 
         image_path = body.get("image_path", "")
         lang = body.get("lang", "en")
@@ -2520,11 +2528,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             return JSONResponse({"error": "image_path is required"}, status_code=400)
         if not _P(image_path).exists():
             return JSONResponse({"error": f"Image not found: {image_path}"}, status_code=404)
+        
+        has_paddle = _ilu.find_spec("paddleocr") is not None
+        has_monkey = await asyncio.to_thread(is_model_downloaded, "monkey-ocr") and _ilu.find_spec("mlx_vlm") is not None
+        
+        engine = "monkeyocr" if has_monkey else "paddleocr"
 
         try:
             result_json = await asyncio.to_thread(
                 run_ocr.invoke,
-                {"image_path": image_path, "lang": lang, "render_overlay": True},
+                {"image_path": image_path, "lang": lang, "engine": engine, "render_overlay": True},
             )
             result = _json.loads(result_json)
         except Exception as exc:

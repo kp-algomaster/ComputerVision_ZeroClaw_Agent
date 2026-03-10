@@ -35,7 +35,7 @@ class VisionConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     provider: str = "ollama"
-    model: str = "qwen2.5:7b"
+    model: str = "qwen3.5:9b"
     api_key: str = ""
     base_url: str = "http://localhost:11434/v1"
     temperature: float = 0.3
