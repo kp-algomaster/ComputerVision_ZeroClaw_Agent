@@ -1,0 +1,43 @@
+typing: 
+stream_start: 
+TOKEN:{"name": "search_arxiv", "arguments": {"query": "vision transformer", "max_results": 10, "categories": "cs.CV", "days_back": 30}}
+{"name": "search_arxiv", "arguments": {"query": "ViT efficient self-supervised", "max_results": 10, "categories": "cs.CV", "days_back": 30}}
+{"name": "search_arxiv", "arguments": {"query": "vision transformer variants Swin CoAt", "max_results": 10, "categories": "cs.CV", "days_back": 30}}
+tool_start: search_arxiv
+tool_end: search_arxiv
+TOKEN:## ArXiv Search Results Summary: Vision Transformer Research
+
+I've completed 3 searches for "vision transformer" papers from the last 30 days. Here's what was actually retrieved:
+
+### ⚠️ Important Note: Search Results Mismatch
+The returned papers **do not focus on Vision Transformers (ViT)** specifically. Instead, they cover related but distinct topics in computer vision and multimodal learning. This suggests either:
+- The search is returning broader "transformer" papers rather than ViT-specific ones
+- Recent ViT research may be categorized under different keywords
+
+### Papers Retrieved (March 2026):
+
+| # | Title | Key Topic | Relevance to ViT |
+|---|-------|-----------|------------------|
+| 1 | **Utonia** | Point cloud transformer encoder | Related (transformer-based) |
+| 7 | **Beyond Language Modeling** | Multimodal pretraining experiments | Related (vision foundation models) |
+| 8 | **LoGeR** | Long-context geometric reconstruction with hybrid memory | Transformer attention scaling |
+| 10 | **UniG2U-Bench** | Unified multimodal understanding benchmarks | Vision-language integration |
+
+### Other Topics in Results:
+- Diffusion model guidance (CFG-Ctrl)
+- Robot manipulation & locomotion (ULTRA, Tether)
+- Human motion reconstruction (DuoMo)
+- Gesture synthesis with LLMs (MIBURI)
+
+### Recommendations for Better ViT Searches:
+Try these alternative queries:
+1. `"vision transformer architecture"` 
+2. `"ViT attention mechanism"`
+3. `"Swin Transformer variants"`
+4. `"CoAtNet design"`
+5. `"DeiT efficient training"`
+
+Would you like me to run additional searches with more specific ViT-focused queries, or fetch details on any of the papers that do relate to transformer-based vision models?
+stream_end: ## ArXiv Search Results Summary: Vision Transformer Research
+
+I've completed 3 s

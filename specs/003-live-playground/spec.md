@@ -4,6 +4,12 @@
 **Created**: 2026-03-10
 **Status**: Draft
 
+## Clarifications
+
+### Session 2026-03-10
+
+- Q: Does `/ws/chat` currently emit `type="tool_call"` / `type="tool_result"` events, or does the server need updating? → A: `/ws/chat` already emits these events — this feature is frontend-only; no server-side protocol changes are required.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Live toggle activates real-time DAG visualisation (Priority: P1)

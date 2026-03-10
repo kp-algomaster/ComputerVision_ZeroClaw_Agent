@@ -1,0 +1,7 @@
+{
+  "source_context": "Encoder extracts visual tokens, cross-attention fuses prompt features, decoder predicts segmentation mask.",
+  "communicative_intent": "Method pipeline overview",
+  "diagram_type": "methodology",
+  "raw_data": null,
+  "aspect_ratio": null
+}

@@ -1,0 +1,53 @@
+{
+  "run_id": "run_20260304_170317_5286e9",
+  "timestamp": "2026-03-04T17:04:27.376664",
+  "vlm_provider": "ollama",
+  "vlm_model": "llava:13b",
+  "image_provider": "matplotlib",
+  "image_model": "matplotlib/qwen2.5-coder:latest",
+  "refinement_iterations": 1,
+  "seed": null,
+  "config_snapshot": {
+    "vlm_provider": "ollama",
+    "vlm_model": "gemini-2.0-flash",
+    "image_provider": "matplotlib",
+    "image_model": "gemini-3-pro-image-preview",
+    "num_retrieval_examples": 10,
+    "refinement_iterations": 1,
+    "auto_refine": false,
+    "max_iterations": 1,
+    "optimize_inputs": false,
+    "output_resolution": "2k",
+    "reference_set_path": "data/reference_sets",
+    "guidelines_path": "data/guidelines",
+    "cache_dir": null,
+    "output_dir": "./output/diagrams",
+    "output_format": "png",
+    "save_iterations": true,
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_vlm_model": null,
+    "openai_image_model": null,
+    "aws_region": "us-east-1",
+    "aws_profile": null,
+    "bedrock_vlm_model": null,
+    "bedrock_image_model": null,
+    "ollama_base_url": "http://localhost:11434/v1",
+    "ollama_vlm_model": "llava:13b",
+    "ollama_code_model": "qwen2.5-coder:latest",
+    "skip_ssl_verification": false
+  },
+  "timing": {
+    "total_seconds": 69.6142014580546,
+    "optimize_seconds": 0.0,
+    "retrieval_seconds": 1.2708012945950031e-05,
+    "planning_seconds": 16.962035916978493,
+    "styling_seconds": 22.37192279205192,
+    "iterations": [
+      {
+        "iteration": 1,
+        "visualizer_seconds": 20.96319608297199,
+        "critic_seconds": 9.288590416079387
+      }
+    ]
+  }
+}
