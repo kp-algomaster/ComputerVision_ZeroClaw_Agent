@@ -39,11 +39,12 @@ def httpx_verify() -> bool | str:
     - `true` / `1` / `on`: enable certificate verification
     - any other non-empty string: treat as a CA bundle path
 
-    The default is `false` to tolerate self-signed corporate or local proxy CAs.
+    The default is `true` for security. Set to `false` if behind self-signed
+    corporate or local proxy CAs.
     """
-    raw = os.environ.get("CV_SSL_VERIFY", "false").strip()
+    raw = os.environ.get("CV_SSL_VERIFY", "true").strip()
     if not raw:
-        verify: bool | str = False
+        verify: bool | str = True
     else:
         normalized = raw.lower()
         if normalized in _TRUEY:
