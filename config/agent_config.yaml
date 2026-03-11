@@ -174,3 +174,13 @@ labelling:
   data_dir: "${OUTPUT_DIR:-./output}/.label-studio"
   auto_restart: true
   api_token: "${LABEL_STUDIO_TOKEN:-}"
+
+# GitHub Copilot SDK integration (005-copilot-sdk-chat)
+copilot:
+  enabled: true
+  default_model: "qwen3-coder:30b"
+  session_timeout_s: 120
+  byok_provider:
+    type: openai
+    base_url: http://localhost:11434/v1
+    api_key: ollama

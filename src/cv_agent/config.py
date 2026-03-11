@@ -190,6 +190,19 @@ class LabellingConfig(BaseModel):
     api_token: str = Field(default="")
 
 
+class CopilotConfig(BaseModel):
+    enabled: bool = False
+    github_token: str = Field(
+        default_factory=lambda: os.environ.get("COPILOT_GITHUB_TOKEN", ""),
+        exclude=True,
+    )
+    byok_provider: dict | None = None
+    default_model: str = ""
+    cli_path: str | None = None
+    cli_url: str | None = None
+    session_timeout_s: int = 120
+
+
 class AgentConfig(BaseModel):
     name: str = "CV Research Agent"
     description: str = "Autonomous computer vision research agent"
@@ -207,6 +220,7 @@ class AgentConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     labelling: LabellingConfig = Field(default_factory=LabellingConfig)
+    copilot: CopilotConfig = Field(default_factory=CopilotConfig)
 
 def _resolve_env_vars(data: dict | list | str) -> dict | list | str:
     """Recursively resolve ${VAR:-default} patterns in config values."""

@@ -25,6 +25,9 @@
   <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
     <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
   </marker>
+  <marker id="arrowhead-copilot" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="rgba(139,92,246,0.85)" stroke="rgba(139,92,246,0.85)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
 </defs>
 <g class="subgraph" data-id="UI" data-label="Web UI  •  :8420">
   <rect x="40" y="40" width="235.19400000000002" height="210.70000000000002" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
@@ -184,4 +187,59 @@
   <rect x="165.0035" y="1418.6000000000004" width="76.036" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
   <text x="203.0215" y="1437.0500000000004" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Apple</text>
 </g>
+
+<!-- ── Copilot SDK subgraph ───────────────────────────────────────────────── -->
+<g class="subgraph" data-id="COPILOT" data-label="Copilot SDK  (005-copilot-sdk-chat)">
+  <rect x="455" y="258" width="334" height="260" rx="0" ry="0" fill="rgba(139,92,246,0.04)" stroke="rgba(139,92,246,0.5)" stroke-width="1" stroke-dasharray="5,3" />
+  <rect x="455" y="258" width="334" height="28" rx="0" ry="0" fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.5)" stroke-width="1" stroke-dasharray="5,3" />
+  <text x="467" y="272" font-size="12" font-weight="600" fill="rgba(139,92,246,0.9)" dy="4.2">Copilot SDK  (005-copilot-sdk-chat)</text>
+</g>
+
+<!-- CopilotManager node -->
+<g class="node" data-id="COPILOT_MGR" data-label="CopilotManager" data-shape="rectangle">
+  <rect x="471" y="302" width="160" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
+  <text x="551" y="320.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">CopilotManager</text>
+</g>
+
+<!-- CopilotStreamBridge node -->
+<g class="node" data-id="COPILOT_BRIDGE" data-label="CopilotStreamBridge" data-shape="rectangle">
+  <rect x="471" y="356" width="195" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
+  <text x="568.5" y="374.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">CopilotStreamBridge</text>
+</g>
+
+<!-- copilot_skills node -->
+<g class="node" data-id="COPILOT_SKILLS" data-label="copilot_skills.py" data-shape="rectangle">
+  <rect x="471" y="410" width="165" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
+  <text x="553.5" y="428.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">copilot_skills.py</text>
+</g>
+
+<!-- BYOK / Ollama node -->
+<g class="node" data-id="COPILOT_BYOK" data-label="BYOK · Ollama :11434/v1" data-shape="rectangle">
+  <rect x="471" y="464" width="208" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.05)" stroke="rgba(139,92,246,0.35)" stroke-width="0.75" stroke-dasharray="3,2" />
+  <text x="575" y="482.45" text-anchor="middle" font-size="12" font-weight="400" fill="rgba(109,40,217,0.85)" dy="4.55">BYOK · Ollama :11434/v1</text>
+</g>
+
+<!-- Edge: Web UI → CopilotManager (dashed purple, "copilot.enabled") -->
+<polyline class="edge" data-from="UI" data-to="COPILOT_MGR" data-style="dashed"
+  points="275.194,145.45 365,145.45 365,320.95 471,320.95"
+  fill="none" stroke="rgba(139,92,246,0.75)" stroke-width="1.25" stroke-dasharray="6,3"
+  marker-end="url(#arrowhead-copilot)" />
+<g class="edge-label" data-from="UI" data-to="COPILOT_MGR" data-label="copilot.enabled">
+  <rect x="297" y="130.45" width="102" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="rgba(139,92,246,0.3)" stroke-width="1" />
+  <text x="348" y="145.6" text-anchor="middle" font-size="11" font-weight="400" fill="rgba(109,40,217,0.85)" dy="3.85">copilot.enabled</text>
+</g>
+
+<!-- Internal edges within Copilot SDK subgraph -->
+<polyline class="edge" data-from="COPILOT_MGR" data-to="COPILOT_BRIDGE"
+  points="551,338.9 551,356"
+  fill="none" stroke="rgba(139,92,246,0.6)" stroke-width="1"
+  marker-end="url(#arrowhead-copilot)" />
+<polyline class="edge" data-from="COPILOT_BRIDGE" data-to="COPILOT_SKILLS"
+  points="551,392.9 551,410"
+  fill="none" stroke="rgba(139,92,246,0.6)" stroke-width="1"
+  marker-end="url(#arrowhead-copilot)" />
+<polyline class="edge" data-from="COPILOT_SKILLS" data-to="COPILOT_BYOK"
+  points="551,446.9 551,464"
+  fill="none" stroke="rgba(139,92,246,0.45)" stroke-width="1" stroke-dasharray="4,2"
+  marker-end="url(#arrowhead-copilot)" />
 </svg>

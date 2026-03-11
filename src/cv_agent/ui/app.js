@@ -347,7 +347,7 @@ function connectWebSocket() {
         } else if (data.type === 'message') {
             addMessage('assistant', data.content, data.html);
         } else if (data.type === 'stream_start') {
-            _startStreamingMessage();
+            _startStreamingMessage(data);
             // Live Playground: clear canvas for new turn (T009)
             _pgLiveClearTurn();
         } else if (data.type === 'stream_token') {
@@ -384,14 +384,14 @@ function connectWebSocket() {
             if (_streamTimeout) clearTimeout(_streamTimeout);
             document.getElementById('typingIndicator').hidden = true;
             _clearStream();
-            addMessage('system', `Error: ${data.content}`);
+            addMessage('system', `Error: ${data.message || data.content || 'unknown error'}`);
         }
     };
     ws.onclose = () => setTimeout(connectWebSocket, 3000);
     ws.onerror = () => console.error('WebSocket error');
 }
 
-function _startStreamingMessage() {
+function _startStreamingMessage(data) {
     const container = document.getElementById('chatMessages');
     _streamingContent = '';
     _hadToolCalls = false;
@@ -406,6 +406,14 @@ function _startStreamingMessage() {
     const label = document.createElement('div');
     label.className = 'message-label';
     label.textContent = 'CV Assistant';
+
+    if (data && data.copilot) {
+        const badge = document.createElement('span');
+        badge.className = 'copilot-badge';
+        badge.title = `GitHub Copilot SDK · ${data.model || ''}`.trim().replace(/·\s*$/, '');
+        badge.textContent = '✦ Copilot';
+        label.appendChild(badge);
+    }
 
     // Tool activity area (hidden until a tool is called)
     _toolActivity = document.createElement('div');
