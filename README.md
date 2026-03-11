@@ -41,7 +41,7 @@ When `copilot.enabled: true` in `config/agent_config.yaml`, the Web UI chat rout
 
 Single-page app at `http://localhost:8420` with a collapsible sidebar containing 6 navigation groups and 17 views.
 
-![CV Assistant SPA — 6 navigation groups and 17 views](docs/images/webui.png)
+![CV Assistant SPA — conversation left, live playground right](docs/diagrams/webui.svg)
 
 ---
 
