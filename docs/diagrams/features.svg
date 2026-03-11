@@ -1,152 +1,205 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" style="font-family:'Inter',system-ui,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" width="1200" height="720" style="font-family:'Inter',system-ui,sans-serif">
+<defs>
+  <linearGradient id="g-research" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#6366f1"/></linearGradient>
+  <linearGradient id="g-inference" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient>
+  <linearGradient id="g-knowledge" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#34d399"/></linearGradient>
+  <linearGradient id="g-training"  x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f97316"/><stop offset="100%" stop-color="#fb923c"/></linearGradient>
+  <linearGradient id="g-agents"    x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ec4899"/><stop offset="100%" stop-color="#f472b6"/></linearGradient>
+  <linearGradient id="g-integr"    x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#fbbf24"/></linearGradient>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0f0f20" stroke-width="0.5"/>
+  </pattern>
+</defs>
 
-<!-- ── Background ── -->
-<rect width="1200" height="680" fill="#08080f"/>
+<rect width="1200" height="720" fill="#07070e"/>
+<rect width="1200" height="720" fill="url(#grid)"/>
 
-<!-- ── Title ── -->
-<text x="600" y="38" text-anchor="middle" font-size="17" font-weight="700" fill="#e2e8f0">CV Zero Claw Agent  —  Feature Domains</text>
-<line x1="100" y1="50" x2="1100" y2="50" stroke="#1e1e35" stroke-width="1"/>
+<!-- Header -->
+<text x="600" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="#f1f5f9" letter-spacing="0.5">CV Zero Claw Agent</text>
+<text x="600" y="60" text-anchor="middle" font-size="12" fill="#475569" letter-spacing="1">FEATURE DOMAINS</text>
+<line x1="120" y1="72" x2="1080" y2="72" stroke="#1e1e35" stroke-width="1"/>
 
-<!-- ══════════════════════════════════════════════════════════
-     Card 1 — Research Automation
-     ══════════════════════════════════════════════════════════ -->
-<rect x="20"  y="64" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="20"  y="64" width="375" height="36"  rx="8" fill="#111128"/>
-<rect x="20"  y="86" width="375" height="14"  fill="#111128"/>
-<text x="38" y="86" font-size="13" font-weight="700" fill="#60a5fa">🔬  Research Automation</text>
+<!-- ══ CARD 1: Research Automation ══ -->
+<rect x="22" y="82" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="22" y="82" width="374" height="4" rx="2" fill="url(#g-research)"/>
+<circle cx="56" cy="112" r="16" fill="#1e3a5f"/>
+<text x="56" y="118" text-anchor="middle" font-size="15">🔬</text>
+<text x="80" y="107" font-size="13" font-weight="700" fill="#93c5fd">Research Automation</text>
+<text x="80" y="121" font-size="9.5" fill="#334155">discovery · extraction · digests</text>
+<line x1="38" y1="135" x2="382" y2="135" stroke="#141430" stroke-width="1"/>
+<rect x="34" y="143" width="8" height="8" rx="2" fill="#3b82f6"/>
+<text x="48" y="151" font-size="10.5" font-weight="600" fill="#93c5fd">Paper Discovery</text>
+<text x="48" y="165" font-size="9.5" fill="#475569">· arXiv: cs.CV · cs.AI · cs.LG · cs.RO</text>
+<text x="48" y="178" font-size="9.5" fill="#475569">· Papers With Code  ·  Semantic Scholar</text>
+<text x="48" y="191" font-size="9.5" fill="#475569">· Keyword queries  ·  PDF fetch &amp; cache</text>
+<rect x="34" y="204" width="8" height="8" rx="2" fill="#3b82f6"/>
+<text x="48" y="212" font-size="10.5" font-weight="600" fill="#93c5fd">Extraction Pipeline</text>
+<text x="48" y="226" font-size="9.5" fill="#475569">· Equations · architectures · datasets · metrics</text>
+<text x="48" y="239" font-size="9.5" fill="#475569">· Loss functions · ablation results</text>
+<text x="48" y="252" font-size="9.5" fill="#475569">· Spec generation (Markdown · LaTeX) → vault</text>
+<rect x="34" y="265" width="8" height="8" rx="2" fill="#3b82f6"/>
+<text x="48" y="273" font-size="10.5" font-weight="600" fill="#93c5fd">Digests</text>
+<text x="48" y="287" font-size="9.5" fill="#475569">· Weekly digest via digest_writer agent</text>
+<text x="48" y="300" font-size="9.5" fill="#475569">· Auto-blog  ·  Knowledge graph indexing</text>
+<rect x="34" y="354" width="60" height="14" rx="7" fill="#1e3a5f"/>
+<text x="64" y="365" text-anchor="middle" font-size="8" fill="#93c5fd">arXiv</text>
+<rect x="100" y="354" width="84" height="14" rx="7" fill="#1e3a5f"/>
+<text x="142" y="365" text-anchor="middle" font-size="8" fill="#93c5fd">Semantic Scholar</text>
+<rect x="190" y="354" width="80" height="14" rx="7" fill="#1e3a5f"/>
+<text x="230" y="365" text-anchor="middle" font-size="8" fill="#93c5fd">Papers With Code</text>
 
-<text x="38" y="122" font-size="11" font-weight="600" fill="#94a3b8">Paper Discovery</text>
-<text x="38" y="138" font-size="10.5" fill="#64748b">· Continuous arXiv monitor (cs.CV · cs.AI · cs.LG · cs.RO)</text>
-<text x="38" y="153" font-size="10.5" fill="#64748b">· Papers With Code  ·  Semantic Scholar</text>
-<text x="38" y="168" font-size="10.5" fill="#64748b">· Configurable keyword queries  ·  PDF fetch &amp; cache</text>
+<!-- ══ CARD 2: Local AI Inference ══ -->
+<rect x="413" y="82" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="413" y="82" width="374" height="4" rx="2" fill="url(#g-inference)"/>
+<circle cx="447" cy="112" r="16" fill="#2e1b5f"/>
+<text x="447" y="118" text-anchor="middle" font-size="15">⚡</text>
+<text x="471" y="107" font-size="13" font-weight="700" fill="#c4b5fd">Local AI Inference</text>
+<text x="471" y="121" font-size="9.5" fill="#334155">vision · LLM · text-to-diagram · Apple Silicon</text>
+<line x1="425" y1="135" x2="775" y2="135" stroke="#141430" stroke-width="1"/>
+<rect x="425" y="143" width="8" height="8" rx="2" fill="#8b5cf6"/>
+<text x="439" y="151" font-size="10.5" font-weight="600" fill="#c4b5fd">Vision Models</text>
+<text x="439" y="165" font-size="9.5" fill="#475569">· Ollama: qwen2.5-vl:7b / :72b  ·  llava:13b</text>
+<text x="439" y="178" font-size="9.5" fill="#475569">· MLX (Apple Silicon): qwen2.5-VL-4bit</text>
+<text x="439" y="191" font-size="9.5" fill="#475569">· SAM 3 segmentation  ·  Apple Neural Engine</text>
+<rect x="425" y="204" width="8" height="8" rx="2" fill="#8b5cf6"/>
+<text x="439" y="212" font-size="10.5" font-weight="600" fill="#c4b5fd">LLM</text>
+<text x="439" y="226" font-size="9.5" fill="#475569">· qwen2.5-coder  ·  qwen3-coder:30b  ·  BYOK</text>
+<text x="439" y="239" font-size="9.5" fill="#475569">· llmfit hardware probe → auto model selection</text>
+<rect x="425" y="258" width="354" height="66" rx="6" fill="#1a0a2e" stroke="#7c3aed" stroke-width="1"/>
+<rect x="425" y="258" width="4" height="66" rx="2" fill="#8b5cf6"/>
+<text x="437" y="275" font-size="10.5" font-weight="600" fill="#c4b5fd">🍌  Text → Diagram  (Paperbanana)</text>
+<text x="437" y="289" font-size="9.5" fill="#475569">· 4-phase: optimizer → planner → visualizer → critic</text>
+<text x="437" y="302" font-size="9.5" fill="#475569">· Iterative VLM refinement  ·  output/diagrams/</text>
+<text x="437" y="315" font-size="9.5" fill="#475569">· Providers: Ollama · Gemini · OpenAI · OpenRouter</text>
+<rect x="425" y="354" width="64" height="14" rx="7" fill="#2e1b5f"/>
+<text x="457" y="365" text-anchor="middle" font-size="8" fill="#c4b5fd">Ollama</text>
+<rect x="495" y="354" width="50" height="14" rx="7" fill="#2e1b5f"/>
+<text x="520" y="365" text-anchor="middle" font-size="8" fill="#c4b5fd">MLX</text>
+<rect x="551" y="354" width="86" height="14" rx="7" fill="#2e1b5f"/>
+<text x="594" y="365" text-anchor="middle" font-size="8" fill="#c4b5fd">Apple Silicon</text>
 
-<text x="38" y="190" font-size="11" font-weight="600" fill="#94a3b8">Extraction Pipeline</text>
-<text x="38" y="206" font-size="10.5" fill="#64748b">· Multi-faceted: equations · architectures · datasets</text>
-<text x="38" y="221" font-size="10.5" fill="#64748b">· Loss functions · metrics · ablation results</text>
-<text x="38" y="236" font-size="10.5" fill="#64748b">· Spec generation (Markdown · LaTeX) → vault</text>
+<!-- ══ CARD 3: Knowledge Management ══ -->
+<rect x="804" y="82" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="804" y="82" width="374" height="4" rx="2" fill="url(#g-knowledge)"/>
+<circle cx="838" cy="112" r="16" fill="#064e3b"/>
+<text x="838" y="118" text-anchor="middle" font-size="15">🕸️</text>
+<text x="862" y="107" font-size="13" font-weight="700" fill="#6ee7b7">Knowledge Management</text>
+<text x="862" y="121" font-size="9.5" fill="#334155">graph · vault · search · spec generation</text>
+<line x1="816" y1="135" x2="1166" y2="135" stroke="#141430" stroke-width="1"/>
+<rect x="816" y="143" width="8" height="8" rx="2" fill="#10b981"/>
+<text x="830" y="151" font-size="10.5" font-weight="600" fill="#6ee7b7">Knowledge Graph</text>
+<text x="830" y="165" font-size="9.5" fill="#475569">· Obsidian vault  ·  hierarchical markdown notes</text>
+<text x="830" y="178" font-size="9.5" fill="#475569">· Entities: paper · method · dataset · architecture</text>
+<text x="830" y="191" font-size="9.5" fill="#475569">· Links: proposes · uses · extends · cites</text>
+<rect x="816" y="204" width="8" height="8" rx="2" fill="#10b981"/>
+<text x="830" y="212" font-size="10.5" font-weight="600" fill="#6ee7b7">Vault Viewer</text>
+<text x="830" y="226" font-size="9.5" fill="#475569">· Live Markdown render in browser  ·  graph topology</text>
+<text x="830" y="239" font-size="9.5" fill="#475569">· Sync browser tab with Obsidian toggle</text>
+<text x="830" y="252" font-size="9.5" fill="#475569">· Full-text search across all vault nodes</text>
+<rect x="816" y="265" width="8" height="8" rx="2" fill="#10b981"/>
+<text x="830" y="273" font-size="10.5" font-weight="600" fill="#6ee7b7">Spec Generator</text>
+<text x="830" y="287" font-size="9.5" fill="#475569">· Paper → structured spec.md (Pydantic schema)</text>
+<text x="830" y="300" font-size="9.5" fill="#475569">· Extract equations · architectures · training details</text>
+<rect x="816" y="354" width="66" height="14" rx="7" fill="#064e3b"/>
+<text x="849" y="365" text-anchor="middle" font-size="8" fill="#6ee7b7">Obsidian</text>
+<rect x="888" y="354" width="52" height="14" rx="7" fill="#064e3b"/>
+<text x="914" y="365" text-anchor="middle" font-size="8" fill="#6ee7b7">Pydantic</text>
+<rect x="946" y="354" width="76" height="14" rx="7" fill="#064e3b"/>
+<text x="984" y="365" text-anchor="middle" font-size="8" fill="#6ee7b7">Full-text search</text>
 
-<text x="38" y="258" font-size="11" font-weight="600" fill="#94a3b8">Digests</text>
-<text x="38" y="274" font-size="10.5" fill="#64748b">· Weekly digest (Monday) via digest_writer agent</text>
-<text x="38" y="289" font-size="10.5" fill="#64748b">· Auto-blog via blog_writer sub-agent</text>
-<text x="38" y="304" font-size="10.5" fill="#64748b">· Knowledge graph indexing (entities · links · Obsidian)</text>
+<!-- ══ CARD 4: ML Training Pipeline ══ -->
+<rect x="22" y="398" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="22" y="398" width="374" height="4" rx="2" fill="url(#g-training)"/>
+<circle cx="56" cy="428" r="16" fill="#431407"/>
+<text x="56" y="434" text-anchor="middle" font-size="15">🏋️</text>
+<text x="80" y="423" font-size="13" font-weight="700" fill="#fdba74">ML Training Pipeline</text>
+<text x="80" y="437" font-size="9.5" fill="#334155">datasets · fine-tuning · labelling · LoRA</text>
+<line x1="38" y1="451" x2="382" y2="451" stroke="#141430" stroke-width="1"/>
+<rect x="34" y="459" width="8" height="8" rx="2" fill="#f97316"/>
+<text x="48" y="467" font-size="10.5" font-weight="600" fill="#fdba74">Datasets</text>
+<text x="48" y="481" font-size="9.5" fill="#475569">· HuggingFace Hub + Kaggle one-click download</text>
+<text x="48" y="494" font-size="9.5" fill="#475569">· 11 pre-configured CV datasets (COCO · road-damage…)</text>
+<text x="48" y="507" font-size="9.5" fill="#475569">· SSE progress bar  ·  annotation-aware image grid</text>
+<rect x="34" y="520" width="8" height="8" rx="2" fill="#f97316"/>
+<text x="48" y="528" font-size="10.5" font-weight="600" fill="#fdba74">Fine-Tuning</text>
+<text x="48" y="542" font-size="9.5" fill="#475569">· HuggingFace Trainer  ·  LoRA / QLoRA support</text>
+<text x="48" y="555" font-size="9.5" fill="#475569">· paper_to_code agent: paper → training script</text>
+<rect x="34" y="566" width="354" height="66" rx="6" fill="#1c0e00" stroke="#ea580c" stroke-width="1"/>
+<rect x="34" y="566" width="4" height="66" rx="2" fill="#f97316"/>
+<text x="46" y="583" font-size="10.5" font-weight="600" fill="#fdba74">🏷  Labelling  (Label Studio ≥ 1.10)</text>
+<text x="46" y="597" font-size="9.5" fill="#475569">· Embedded at :8080  ·  auto-import datasets</text>
+<text x="46" y="610" font-size="9.5" fill="#475569">· YOLO / COCO export  ·  output/.label-studio/</text>
+<text x="46" y="623" font-size="9.5" fill="#475569">· SQLite DB  ·  output/labels/</text>
+<rect x="34" y="672" width="90" height="14" rx="7" fill="#431407"/>
+<text x="79" y="683" text-anchor="middle" font-size="8" fill="#fdba74">HuggingFace</text>
+<rect x="130" y="672" width="52" height="14" rx="7" fill="#431407"/>
+<text x="156" y="683" text-anchor="middle" font-size="8" fill="#fdba74">Kaggle</text>
+<rect x="188" y="672" width="82" height="14" rx="7" fill="#431407"/>
+<text x="229" y="683" text-anchor="middle" font-size="8" fill="#fdba74">Label Studio</text>
 
-<!-- ══════════════════════════════════════════════════════════
-     Card 2 — Local AI Inference
-     ══════════════════════════════════════════════════════════ -->
-<rect x="413" y="64" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="413" y="64" width="375" height="36"  rx="8" fill="#111128"/>
-<rect x="413" y="86" width="375" height="14"  fill="#111128"/>
-<text x="431" y="86" font-size="13" font-weight="700" fill="#a78bfa">⚡  Local AI Inference</text>
+<!-- ══ CARD 5: Agent Ecosystem ══ -->
+<rect x="413" y="398" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="413" y="398" width="374" height="4" rx="2" fill="url(#g-agents)"/>
+<circle cx="447" cy="428" r="16" fill="#500724"/>
+<text x="447" y="434" text-anchor="middle" font-size="15">🤖</text>
+<text x="471" y="423" font-size="13" font-weight="700" fill="#f9a8d4">Agent Ecosystem</text>
+<text x="471" y="437" font-size="9.5" fill="#334155">LangGraph · sub-agents · live playground</text>
+<line x1="425" y1="451" x2="775" y2="451" stroke="#141430" stroke-width="1"/>
+<rect x="425" y="459" width="8" height="8" rx="2" fill="#ec4899"/>
+<text x="439" y="467" font-size="10.5" font-weight="600" fill="#f9a8d4">Core Agent</text>
+<text x="439" y="481" font-size="9.5" fill="#475569">· LangGraph ReAct orchestrator  ·  tool-call decoder</text>
+<text x="439" y="494" font-size="9.5" fill="#475569">· llmfit hardware probe  ·  async streaming WebSocket</text>
+<text x="439" y="507" font-size="9.5" fill="#475569">· ✦ GitHub Copilot SDK (BYOK Ollama / GH token)</text>
+<rect x="425" y="520" width="8" height="8" rx="2" fill="#ec4899"/>
+<text x="439" y="528" font-size="10.5" font-weight="600" fill="#f9a8d4">Sub-Agents</text>
+<text x="439" y="542" font-size="9.5" fill="#475569">· blog_writer  ·  paper_to_code  ·  data_visualization</text>
+<text x="439" y="555" font-size="9.5" fill="#475569">· model_training  ·  website_maintenance  ·  digest_writer</text>
+<rect x="425" y="566" width="354" height="66" rx="6" fill="#200820" stroke="#db2777" stroke-width="1"/>
+<rect x="425" y="566" width="4" height="66" rx="2" fill="#ec4899"/>
+<text x="437" y="583" font-size="10.5" font-weight="600" fill="#f9a8d4">⚡  Live Playground</text>
+<text x="437" y="597" font-size="9.5" fill="#475569">· Drag-and-drop DAG canvas  ·  WebSocket real-time exec</text>
+<text x="437" y="610" font-size="9.5" fill="#475569">· Sequential / Parallel modes  ·  per-node status</text>
+<text x="437" y="623" font-size="9.5" fill="#475569">· Save workflows → output/.workflows/</text>
+<rect x="425" y="672" width="70" height="14" rx="7" fill="#500724"/>
+<text x="460" y="683" text-anchor="middle" font-size="8" fill="#f9a8d4">LangGraph</text>
+<rect x="501" y="672" width="76" height="14" rx="7" fill="#500724"/>
+<text x="539" y="683" text-anchor="middle" font-size="8" fill="#f9a8d4">Copilot SDK</text>
+<rect x="583" y="672" width="60" height="14" rx="7" fill="#500724"/>
+<text x="613" y="683" text-anchor="middle" font-size="8" fill="#f9a8d4">FastAPI</text>
 
-<text x="431" y="122" font-size="11" font-weight="600" fill="#94a3b8">Vision Models</text>
-<text x="431" y="138" font-size="10.5" fill="#64748b">· Ollama: qwen2.5-vl:7b / :72b  ·  llava:13b  ·  llava-next</text>
-<text x="431" y="153" font-size="10.5" fill="#64748b">· MLX (Apple Silicon): qwen2.5-VL-4bit  ·  llava-1.5-7b</text>
-<text x="431" y="168" font-size="10.5" fill="#64748b">· SAM 3 segmentation  ·  Apple Neural Engine</text>
+<!-- ══ CARD 6: Integrations & Channels ══ -->
+<rect x="804" y="398" width="374" height="300" rx="10" fill="#0d0d1c" stroke="#1e2040" stroke-width="1"/>
+<rect x="804" y="398" width="374" height="4" rx="2" fill="url(#g-integr)"/>
+<circle cx="838" cy="428" r="16" fill="#451a03"/>
+<text x="838" y="434" text-anchor="middle" font-size="15">🔌</text>
+<text x="862" y="423" font-size="13" font-weight="700" fill="#fde68a">Integrations &amp; Channels</text>
+<text x="862" y="437" font-size="9.5" fill="#334155">messaging · cloud APIs · scheduler · models</text>
+<line x1="816" y1="451" x2="1166" y2="451" stroke="#141430" stroke-width="1"/>
+<rect x="816" y="459" width="8" height="8" rx="2" fill="#f59e0b"/>
+<text x="830" y="467" font-size="10.5" font-weight="600" fill="#fde68a">Messaging</text>
+<text x="830" y="481" font-size="9.5" fill="#475569">· Telegram  ·  Discord  ·  Slack  ·  Email (SMTP)</text>
+<text x="830" y="494" font-size="9.5" fill="#475569">· GitHub Copilot ✦  ·  Issues &amp; PR comments</text>
+<text x="830" y="507" font-size="9.5" fill="#475569">· Google Drive  ·  Brave Search  ·  AWS S3</text>
+<rect x="816" y="520" width="8" height="8" rx="2" fill="#f59e0b"/>
+<text x="830" y="528" font-size="10.5" font-weight="600" fill="#fde68a">Powers  (configure in UI)</text>
+<text x="830" y="542" font-size="9.5" fill="#475569">· HuggingFace Hub  ·  Kaggle  ·  Semantic Scholar</text>
+<text x="830" y="555" font-size="9.5" fill="#475569">· OpenAI · Anthropic · Gemini (cloud LLM fallback)</text>
+<rect x="816" y="566" width="354" height="66" rx="6" fill="#1a1000" stroke="#d97706" stroke-width="1"/>
+<rect x="816" y="566" width="4" height="66" rx="2" fill="#f59e0b"/>
+<text x="828" y="583" font-size="10.5" font-weight="600" fill="#fde68a">⏱  Jobs &amp; Server</text>
+<text x="828" y="597" font-size="9.5" fill="#475569">· Cron scheduler  ·  job history &amp; re-run</text>
+<text x="828" y="610" font-size="9.5" fill="#475569">· Server: start · stop · restart · logs</text>
+<text x="828" y="623" font-size="9.5" fill="#475569">· Model catalog: pull · delete · VRAM usage</text>
+<rect x="816" y="672" width="60" height="14" rx="7" fill="#451a03"/>
+<text x="846" y="683" text-anchor="middle" font-size="8" fill="#fde68a">Telegram</text>
+<rect x="882" y="672" width="52" height="14" rx="7" fill="#451a03"/>
+<text x="908" y="683" text-anchor="middle" font-size="8" fill="#fde68a">Discord</text>
+<rect x="940" y="672" width="56" height="14" rx="7" fill="#451a03"/>
+<text x="968" y="683" text-anchor="middle" font-size="8" fill="#fde68a">AWS S3</text>
+<rect x="1002" y="672" width="54" height="14" rx="7" fill="#451a03"/>
+<text x="1029" y="683" text-anchor="middle" font-size="8" fill="#fde68a">Runpod</text>
 
-<text x="431" y="190" font-size="11" font-weight="600" fill="#94a3b8">LLM</text>
-<text x="431" y="206" font-size="10.5" fill="#64748b">· qwen2.5-coder:latest  ·  qwen3-coder:30b</text>
-<text x="431" y="221" font-size="10.5" fill="#64748b">· Any Ollama-compatible model  ·  BYOK via .env</text>
-<text x="431" y="236" font-size="10.5" fill="#64748b">· llmfit hardware probe → auto model selection</text>
-
-<text x="431" y="258" font-size="11" font-weight="600" fill="#94a3b8">Text → Diagram  (Paperbanana)</text>
-<text x="431" y="274" font-size="10.5" fill="#64748b">· 4-phase pipeline: optimizer → planner → visualizer → critic</text>
-<text x="431" y="289" font-size="10.5" fill="#64748b">· Iterative refinement loop  ·  output/diagrams/</text>
-<text x="431" y="304" font-size="10.5" fill="#64748b">· Providers: Ollama · Gemini · OpenAI · OpenRouter</text>
-
-<!-- ══════════════════════════════════════════════════════════
-     Card 3 — Knowledge Management
-     ══════════════════════════════════════════════════════════ -->
-<rect x="806" y="64" width="374" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="806" y="64" width="374" height="36"  rx="8" fill="#111128"/>
-<rect x="806" y="86" width="374" height="14"  fill="#111128"/>
-<text x="824" y="86" font-size="13" font-weight="700" fill="#34d399">🕸️  Knowledge Management</text>
-
-<text x="824" y="122" font-size="11" font-weight="600" fill="#94a3b8">Knowledge Graph</text>
-<text x="824" y="138" font-size="10.5" fill="#64748b">· Obsidian vault  ·  hierarchical markdown notes</text>
-<text x="824" y="153" font-size="10.5" fill="#64748b">· Entity types: paper · method · dataset · architecture</text>
-<text x="824" y="168" font-size="10.5" fill="#64748b">· Link types: proposes · uses · extends · cites · outperforms</text>
-
-<text x="824" y="190" font-size="11" font-weight="600" fill="#94a3b8">Vault Viewer</text>
-<text x="824" y="206" font-size="10.5" fill="#64748b">· Live Markdown render in browser  ·  graph topology</text>
-<text x="824" y="221" font-size="10.5" fill="#64748b">· Sync browser tab with Obsidian toggle</text>
-<text x="824" y="236" font-size="10.5" fill="#64748b">· Full-text search across all vault nodes</text>
-
-<text x="824" y="258" font-size="11" font-weight="600" fill="#94a3b8">Spec Generator</text>
-<text x="824" y="274" font-size="10.5" fill="#64748b">· Paper → structured spec.md (Pydantic schema)</text>
-<text x="824" y="289" font-size="10.5" fill="#64748b">· Extract: equations · architectures · training details</text>
-<text x="824" y="304" font-size="10.5" fill="#64748b">· Auto-index into knowledge graph on save</text>
-
-<!-- ══════════════════════════════════════════════════════════
-     Card 4 — ML Training Pipeline
-     ══════════════════════════════════════════════════════════ -->
-<rect x="20"  y="350" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="20"  y="350" width="375" height="36"  rx="8" fill="#111128"/>
-<rect x="20"  y="372" width="375" height="14"  fill="#111128"/>
-<text x="38" y="372" font-size="13" font-weight="700" fill="#fb923c">🏋️  ML Training Pipeline</text>
-
-<text x="38" y="408" font-size="11" font-weight="600" fill="#94a3b8">Datasets</text>
-<text x="38" y="424" font-size="10.5" fill="#64748b">· HuggingFace Hub + Kaggle search &amp; one-click download</text>
-<text x="38" y="439" font-size="10.5" fill="#64748b">· 11 pre-configured CV datasets (COCO · ImageNet · road-damage…)</text>
-<text x="38" y="454" font-size="10.5" fill="#64748b">· SSE progress bar  ·  annotation-aware image grid viewer</text>
-
-<text x="38" y="476" font-size="11" font-weight="600" fill="#94a3b8">Fine-Tuning</text>
-<text x="38" y="492" font-size="10.5" fill="#64748b">· HuggingFace Trainer  ·  LoRA / QLoRA support</text>
-<text x="38" y="507" font-size="10.5" fill="#64748b">· model_training sub-agent  ·  output/fine-tuned/</text>
-<text x="38" y="522" font-size="10.5" fill="#64748b">· paper_to_code agent: paper → training script</text>
-
-<text x="38" y="544" font-size="11" font-weight="600" fill="#94a3b8">Labelling  (Label Studio)</text>
-<text x="38" y="560" font-size="10.5" fill="#64748b">· Label Studio ≥ 1.10 embedded at :8080</text>
-<text x="38" y="575" font-size="10.5" fill="#64748b">· Auto-import downloaded datasets  ·  YOLO / COCO export</text>
-<text x="38" y="590" font-size="10.5" fill="#64748b">· output/.label-studio/  ·  output/labels/</text>
-
-<!-- ══════════════════════════════════════════════════════════
-     Card 5 — Agent Ecosystem
-     ══════════════════════════════════════════════════════════ -->
-<rect x="413" y="350" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="413" y="350" width="375" height="36"  rx="8" fill="#111128"/>
-<rect x="413" y="372" width="375" height="14"  fill="#111128"/>
-<text x="431" y="372" font-size="13" font-weight="700" fill="#f472b6">🤖  Agent Ecosystem</text>
-
-<text x="431" y="408" font-size="11" font-weight="600" fill="#94a3b8">Core Agent</text>
-<text x="431" y="424" font-size="10.5" fill="#64748b">· LangGraph ReAct orchestrator  ·  tool-call decoder</text>
-<text x="431" y="439" font-size="10.5" fill="#64748b">· llmfit hardware probe  ·  async streaming WebSocket</text>
-<text x="431" y="454" font-size="10.5" fill="#64748b">· ✦ Copilot SDK mode (BYOK Ollama / GitHub token)</text>
-
-<text x="431" y="476" font-size="11" font-weight="600" fill="#94a3b8">Sub-Agents</text>
-<text x="431" y="492" font-size="10.5" fill="#64748b">· blog_writer  ·  paper_to_code  ·  data_visualization</text>
-<text x="431" y="507" font-size="10.5" fill="#64748b">· model_training  ·  website_maintenance  ·  digest_writer</text>
-<text x="431" y="522" font-size="10.5" fill="#64748b">· Each overridable via MODEL_OVERRIDE env var</text>
-
-<text x="431" y="544" font-size="11" font-weight="600" fill="#94a3b8">⚡ Live Playground</text>
-<text x="431" y="560" font-size="10.5" fill="#64748b">· Drag-and-drop DAG canvas  ·  WebSocket real-time exec</text>
-<text x="431" y="575" font-size="10.5" fill="#64748b">· Sequential / Parallel modes  ·  save → output/.workflows/</text>
-<text x="431" y="590" font-size="10.5" fill="#64748b">· Per-node status: done · running · pending · error</text>
-
-<!-- ══════════════════════════════════════════════════════════
-     Card 6 — Integrations & Channels
-     ══════════════════════════════════════════════════════════ -->
-<rect x="806" y="350" width="374" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
-<rect x="806" y="350" width="374" height="36"  rx="8" fill="#111128"/>
-<rect x="806" y="372" width="374" height="14"  fill="#111128"/>
-<text x="824" y="372" font-size="13" font-weight="700" fill="#fbbf24">🔌  Integrations &amp; Channels</text>
-
-<text x="824" y="408" font-size="11" font-weight="600" fill="#94a3b8">Messaging</text>
-<text x="824" y="424" font-size="10.5" fill="#64748b">· Telegram  ·  Discord  ·  Slack  ·  Email (SMTP)</text>
-<text x="824" y="439" font-size="10.5" fill="#64748b">· GitHub Copilot ✦  ·  GitHub Issues &amp; PR comments</text>
-<text x="824" y="454" font-size="10.5" fill="#64748b">· Google Drive  ·  Brave Search  ·  AWS S3</text>
-
-<text x="824" y="476" font-size="11" font-weight="600" fill="#94a3b8">Powers (configure in UI)</text>
-<text x="824" y="492" font-size="10.5" fill="#64748b">· HuggingFace Hub  ·  Kaggle  ·  Semantic Scholar API</text>
-<text x="824" y="507" font-size="10.5" fill="#64748b">· OpenAI · Anthropic · Google Gemini (cloud LLM)</text>
-<text x="824" y="522" font-size="10.5" fill="#64748b">· Runpod · Lambda · Vast.ai (cloud GPU)</text>
-
-<text x="824" y="544" font-size="11" font-weight="600" fill="#94a3b8">Jobs &amp; Server</text>
-<text x="824" y="560" font-size="10.5" fill="#64748b">· Cron-style job scheduler  ·  job history &amp; re-run</text>
-<text x="824" y="575" font-size="10.5" fill="#64748b">· Server management: start · stop · restart · logs</text>
-<text x="824" y="590" font-size="10.5" fill="#64748b">· Model catalog: pull · delete · VRAM/RAM usage</text>
-
-<!-- ── Footer ── -->
-<line x1="100" y1="630" x2="1100" y2="630" stroke="#1e1e35" stroke-width="1"/>
-<text x="600" y="650" text-anchor="middle" font-size="9.5" fill="#252540">CV Zero Claw Agent  ·  http://localhost:8420  ·  Python 3.12  ·  LangGraph · LangChain · FastAPI · Paperbanana · Label Studio · GitHub Copilot SDK</text>
-<text x="600" y="666" text-anchor="middle" font-size="9.5" fill="#1e1e35">Dependency policy: MIT · Apache 2.0 · BSD only</text>
+<!-- Footer -->
+<line x1="120" y1="706" x2="1080" y2="706" stroke="#1e1e35" stroke-width="1"/>
+<text x="600" y="717" text-anchor="middle" font-size="9" fill="#1e2040">localhost:8420  ·  Python 3.12  ·  LangGraph · FastAPI · Paperbanana · Label Studio · GitHub Copilot SDK  ·  MIT / Apache 2.0 / BSD</text>
 </svg>
