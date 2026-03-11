@@ -151,10 +151,32 @@ class CopilotStreamBridge:
             send_task.cancel()
             yield {"type": "cancelled"}
 
+        except asyncio.TimeoutError:
+            send_task.cancel()
+            yield {
+                "type": "error",
+                "message": (
+                    "The request timed out waiting for the model to finish. "
+                    "Agentic tasks with many tool calls can take a long time — "
+                    "increase `copilot.session_timeout_s` in agent_config.yaml (current default: 600s)."
+                ),
+            }
+
         except Exception as exc:
             send_task.cancel()
-            logger.exception("Copilot stream error")
-            yield {"type": "error", "message": str(exc)}
+            msg = str(exc)
+            if "waiting for session.idle" in msg or "Timeout after" in msg:
+                yield {
+                    "type": "error",
+                    "message": (
+                        f"Session idle timeout ({timeout}s). "
+                        "The agentic run used too many tool calls. "
+                        "Increase `copilot.session_timeout_s` in agent_config.yaml."
+                    ),
+                }
+            else:
+                logger.exception("Copilot stream error")
+                yield {"type": "error", "message": msg}
 
         finally:
             try:

@@ -200,7 +200,7 @@ class CopilotConfig(BaseModel):
     default_model: str = ""
     cli_path: str | None = None
     cli_url: str | None = None
-    session_timeout_s: int = 120
+    session_timeout_s: int = 600
 
 
 class AgentConfig(BaseModel):

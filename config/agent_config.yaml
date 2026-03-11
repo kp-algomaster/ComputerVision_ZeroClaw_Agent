@@ -179,7 +179,7 @@ labelling:
 copilot:
   enabled: true
   default_model: "qwen3-coder:30b"
-  session_timeout_s: 120
+  session_timeout_s: 600
   byok_provider:
     type: openai
     base_url: http://localhost:11434/v1
