@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,20 @@ _NON_CHAT_MODEL_MARKERS = (
 
 # Re-apply .env with override so vars added after initial startup are picked up
 _load_dotenv_startup(_PROJECT_ROOT / ".env", override=True)
+
+
+async def _async_gen(sync_gen_fn, *args):
+    """Wrap a synchronous generator function in an async generator via to_thread."""
+    import concurrent.futures
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        gen = await loop.run_in_executor(pool, lambda: sync_gen_fn(*args))
+        while True:
+            try:
+                item = await loop.run_in_executor(pool, next, gen)
+                yield item
+            except StopIteration:
+                break
 
 
 def _is_chat_model_compatible(model_name: str, capabilities: list[str] | None) -> bool:
@@ -3640,6 +3655,172 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             return graph.model_dump(mode="json")
         except FileNotFoundError:
             return JSONResponse({"detail": "Pipeline not found."}, status_code=404)
+
+    # ── Labelling (Label Studio) ─────────────────────────────────────────────
+
+    @app.on_event("startup")
+    async def _startup_labelling() -> None:
+        from cv_agent.server_manager import enable_auto_restart, register_label_studio
+        register_label_studio(config.labelling)
+        if config.labelling.auto_restart:
+            await enable_auto_restart("label-studio")
+
+    @app.post("/api/labelling/start")
+    async def labelling_start():
+        from cv_agent.server_manager import _BY_ID, check_health, start_server
+        await start_server("label-studio")
+        spec = _BY_ID.get("label-studio")
+        for _ in range(60):
+            if spec and await check_health(spec, timeout=1.0):
+                cfg_ls = config.labelling
+                return JSONResponse({
+                    "status": "ready",
+                    "url": f"http://localhost:{cfg_ls.port}",
+                    "host": cfg_ls.host,
+                    "port": cfg_ls.port,
+                })
+            await asyncio.sleep(1.0)
+        return JSONResponse({"status": "starting", "message": "Label Studio is starting up."})
+
+    @app.post("/api/labelling/stop")
+    async def labelling_stop():
+        from cv_agent.server_manager import disable_auto_restart, stop_server
+        await disable_auto_restart("label-studio")
+        msg = await stop_server("label-studio")
+        return JSONResponse({"message": msg})
+
+    @app.get("/api/labelling/status")
+    async def labelling_status():
+        from cv_agent.server_manager import _BY_ID, _procs, _label_studio_binary, check_health
+        if not _label_studio_binary():
+            return JSONResponse({"status": "not_installed", "port": config.labelling.port})
+        spec = _BY_ID.get("label-studio")
+        if not spec:
+            return JSONResponse({"status": "not_registered"})
+        proc = _procs.get("label-studio")
+        proc_running = proc is not None and proc.returncode is None
+        healthy = await check_health(spec, timeout=1.0) if proc_running else False
+        cfg_ls = config.labelling
+        return JSONResponse({
+            "status": "ready" if healthy else ("starting" if proc_running else "stopped"),
+            "url": f"http://localhost:{cfg_ls.port}",
+            "host": cfg_ls.host,
+            "port": cfg_ls.port,
+            "pid": proc.pid if proc_running and proc else None,
+        })
+
+    @app.post("/api/labelling/install")
+    async def labelling_install():
+        """Install label-studio into the current venv and re-register the server."""
+        from fastapi.responses import StreamingResponse as _SR
+
+        async def _stream():
+            import subprocess
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "label-studio>=1.10.0",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for line in proc.stdout:
+                yield f"data: {json.dumps({'line': line.decode().rstrip()})}\n\n"
+            rc = await proc.wait()
+            if rc == 0:
+                from cv_agent.server_manager import register_label_studio
+                register_label_studio(config.labelling)
+                yield f"data: {json.dumps({'done': True, 'success': True})}\n\n"
+            else:
+                yield f"data: {json.dumps({'done': True, 'success': False, 'rc': rc})}\n\n"
+
+        return _SR(
+            _stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.post("/api/labelling/projects")
+    async def labelling_create_project(body: dict):
+        from cv_agent.labelling_client import LabelStudioClient
+        dataset_name = body.get("dataset_name", "dataset")
+        from datetime import datetime
+        title = f"{datetime.now():%Y-%m-%d}_{dataset_name.lower().replace(' ', '_')}"
+        client = LabelStudioClient(config.labelling)
+        project = await asyncio.to_thread(client.create_project, title)
+        return JSONResponse(project)
+
+    @app.get("/api/labelling/projects")
+    async def labelling_list_projects():
+        from cv_agent.labelling_client import LabelStudioClient
+        client = LabelStudioClient(config.labelling)
+        try:
+            projects = await asyncio.to_thread(client.list_projects)
+        except Exception:
+            return JSONResponse({"projects": [], "error": "Label Studio is not running"})
+        return JSONResponse({"projects": projects})
+
+    @app.get("/api/labelling/projects/{project_id}/import-stream")
+    async def labelling_import_stream(project_id: int, image_dir: str = ""):
+        from fastapi.responses import StreamingResponse as _SR
+        from cv_agent.labelling_client import LabelStudioClient
+
+        async def _stream():
+            client = LabelStudioClient(config.labelling)
+            async for event in _async_gen(client.import_images, project_id, image_dir):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        return _SR(
+            _stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.post("/api/labelling/projects/{project_id}/export")
+    async def labelling_export(project_id: int, body: dict):
+        from cv_agent.labelling_client import LabelStudioClient, export_path
+        fmt = body.get("export_format", "COCO").upper()
+        dataset_name = body.get("dataset_name", str(project_id))
+        client = LabelStudioClient(config.labelling)
+        export_id = await asyncio.to_thread(client.trigger_export, project_id, fmt)
+        ready = await asyncio.to_thread(client.poll_export, project_id, export_id)
+        if not ready:
+            return JSONResponse({"error": "Export timed out or failed."}, status_code=500)
+        data = await asyncio.to_thread(client.download_export, project_id, export_id)
+        dest = export_path(dataset_name, fmt, project_id)
+        await asyncio.to_thread(lambda: (dest.parent.mkdir(parents=True, exist_ok=True), dest.write_bytes(data)))
+        return JSONResponse({"output_path": str(dest), "format": fmt, "project_id": project_id})
+
+    @app.get("/api/labelling/nodes")
+    async def labelling_list_nodes():
+        from cv_agent.tools.labelling import _pending_nodes
+        return JSONResponse({"nodes": list(_pending_nodes.values())})
+
+    @app.post("/api/labelling/complete/{node_id}")
+    async def labelling_complete_node(node_id: str, body: dict = {}):
+        from cv_agent.tools.labelling import _pending_nodes
+        node = _pending_nodes.get(node_id)
+        if not node:
+            return JSONResponse({"error": "Unknown node_id"}, status_code=404)
+        if node["status"] == "completed":
+            return JSONResponse({"ok": True, "message": "Already completed."})
+        node["status"] = "completed"
+        # Auto-export if project_id is known
+        project_id = node.get("project_id")
+        fmt = node.get("export_format", "COCO")
+        if project_id:
+            from cv_agent.labelling_client import LabelStudioClient, export_path
+            client = LabelStudioClient(config.labelling)
+            try:
+                export_id = await asyncio.to_thread(client.trigger_export, project_id, fmt)
+                ready = await asyncio.to_thread(client.poll_export, project_id, export_id)
+                if ready:
+                    data = await asyncio.to_thread(client.download_export, project_id, export_id)
+                    dest = export_path(node.get("dataset_name", str(project_id)), fmt, project_id)
+                    await asyncio.to_thread(
+                        lambda: (dest.parent.mkdir(parents=True, exist_ok=True), dest.write_bytes(data))
+                    )
+                    node["export_path"] = str(dest)
+            except Exception as exc:
+                logger.warning("Auto-export failed for node %s: %s", node_id, exc)
+        return JSONResponse({"ok": True, "node_id": node_id, "export_path": node.get("export_path")})
 
     return app
 

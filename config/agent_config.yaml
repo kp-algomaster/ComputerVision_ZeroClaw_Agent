@@ -166,3 +166,11 @@ agents:
   digest_writer:
     enabled: true
     model_override: "${DIGEST_WRITER_MODEL:-}"
+
+# Label Studio annotation platform
+labelling:
+  port: "${LABEL_STUDIO_PORT:-8080}"
+  host: "0.0.0.0"
+  data_dir: "${OUTPUT_DIR:-./output}/.label-studio"
+  auto_restart: true
+  api_token: "${LABEL_STUDIO_TOKEN:-}"

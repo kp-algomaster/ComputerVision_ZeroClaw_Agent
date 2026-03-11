@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from cv_agent.http_client import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -18,6 +22,7 @@ class ServerSpec:
     managed: bool = True            # False = external (e.g. Ollama)
     device: str = "auto"            # mps | cuda | cpu | auto
     start_cmd: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)  # extra env vars for subprocess
 
 
 SERVER_REGISTRY: list[ServerSpec] = [
@@ -65,6 +70,63 @@ SERVER_REGISTRY: list[ServerSpec] = [
 _BY_ID: dict[str, ServerSpec] = {s.id: s for s in SERVER_REGISTRY}
 _procs: dict[str, asyncio.subprocess.Process] = {}
 _device_overrides: dict[str, str] = {}
+_restart_tasks: dict[str, asyncio.Task] = {}
+
+
+def _label_studio_binary() -> str | None:
+    """Return the path to the label-studio binary in the current venv, or None if not installed."""
+    candidate = Path(sys.executable).parent / "label-studio"
+    return str(candidate) if candidate.exists() else None
+
+
+def register_label_studio(cfg: "LabellingConfig") -> None:
+    """Register Label Studio as a managed server using live config values."""
+    binary = _label_studio_binary() or "label-studio"
+    spec = ServerSpec(
+        id="label-studio",
+        name="Label Studio",
+        description="Open-source data labelling and annotation platform",
+        url=f"http://localhost:{cfg.port}",
+        health_path="/api/health",
+        managed=True,
+        device="cpu",
+        start_cmd=[
+            binary,
+            "start",
+            "--port", str(cfg.port),
+            "--host", cfg.host,
+            "--data-dir", cfg.data_dir,
+            "--no-browser",
+        ],
+        env={
+            # Allow iframe embedding from any origin (mitigates X-Frame-Options block)
+            "LABEL_STUDIO_DISABLE_SECURE_COOKIE": "true",
+            "LABEL_STUDIO_ALLOW_ORIGIN": "*",
+        },
+    )
+    _BY_ID["label-studio"] = spec
+    if not any(s.id == "label-studio" for s in SERVER_REGISTRY):
+        SERVER_REGISTRY.append(spec)
+
+
+async def _auto_restart_loop(server_id: str) -> None:
+    while True:
+        await asyncio.sleep(5)
+        proc = _procs.get(server_id)
+        if proc is not None and proc.returncode is not None:
+            logger.warning("server %s exited (rc=%d) — restarting", server_id, proc.returncode)
+            await start_server(server_id)
+
+
+async def enable_auto_restart(server_id: str) -> None:
+    if server_id not in _restart_tasks or _restart_tasks[server_id].done():
+        _restart_tasks[server_id] = asyncio.create_task(_auto_restart_loop(server_id))
+
+
+async def disable_auto_restart(server_id: str) -> None:
+    task = _restart_tasks.pop(server_id, None)
+    if task and not task.done():
+        task.cancel()
 
 
 async def check_health(spec: ServerSpec, timeout: float = 2.0) -> bool:
@@ -86,7 +148,7 @@ async def start_server(server_id: str) -> str:
     if server_id in _procs and _procs[server_id].returncode is None:
         return f"{spec.name} is already running."
     device = _device_overrides.get(server_id, spec.device)
-    env_extra = {"DEVICE": device}
+    env_extra = {"DEVICE": device, **spec.env}
     import os
     env = {**os.environ, **env_extra}
     proc = await asyncio.create_subprocess_exec(
@@ -105,6 +167,7 @@ async def stop_server(server_id: str) -> str:
         return f"Unknown server: {server_id}"
     if not spec.managed:
         return f"{spec.name} is externally managed."
+    await disable_auto_restart(server_id)
     proc = _procs.get(server_id)
     if proc is None or proc.returncode is not None:
         return f"{spec.name} is not running."

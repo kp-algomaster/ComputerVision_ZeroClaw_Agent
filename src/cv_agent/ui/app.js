@@ -121,6 +121,7 @@ function switchView(view) {
         workflows: loadWorkflows,
         sam3: loadSam3View,
         ocr: loadOcrView,
+        labelling: loadLabellingView,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -5470,4 +5471,145 @@ function _pgLiveReplayQueue() {
         if (evt.type === 'start') _pgLiveToolStart(evt.name, evt.input);
         else if (evt.type === 'end') _pgLiveToolEnd(evt.name, evt.output);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Labelling (Label Studio)
+// ═══════════════════════════════════════════════════════════════════════
+
+let _lsStatusPoll = null;
+
+async function loadLabellingView() {
+    await lsRefreshStatus();
+}
+
+async function lsRefreshStatus() {
+    try {
+        const r = await fetch('/api/labelling/status');
+        const d = await r.json();
+        _lsApplyStatus(d);
+        await lsLoadPendingNodes();
+    } catch (e) {
+        document.getElementById('lsStatusText').textContent = 'Error contacting server';
+    }
+}
+
+function _lsApplyStatus(d) {
+    const dot = document.getElementById('lsStatusDot');
+    const text = document.getElementById('lsStatusText');
+    const urlEl = document.getElementById('lsAccessUrl');
+    const wrapper = document.getElementById('lsIframeWrapper');
+    const startBtn = document.getElementById('lsStartBtn');
+    const stopBtn = document.getElementById('lsStopBtn');
+    const installBtn = document.getElementById('lsInstallBtn');
+    if (!dot) return;
+
+    const statusLabels = {
+        ready: 'Ready', stopped: 'Stopped', starting: 'Starting…',
+        restarting: 'Restarting…', error: 'Error',
+        not_installed: 'Not installed', not_registered: 'Not registered',
+    };
+    dot.className = 'status-dot' + (d.status === 'ready' ? ' online'
+        : ['starting', 'restarting'].includes(d.status) ? ' pending' : '');
+    text.textContent = statusLabels[d.status] || d.status;
+
+    if (d.status === 'not_installed') {
+        if (installBtn) installBtn.style.display = '';
+        startBtn.style.display = 'none';
+        stopBtn.disabled = true;
+        urlEl.style.display = 'none';
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    if (installBtn) installBtn.style.display = 'none';
+    startBtn.style.display = '';
+
+    if (d.status === 'ready') {
+        const displayUrl = `http://${location.hostname}:${d.port}`;
+        urlEl.textContent = `Open at ${displayUrl}`;
+        urlEl.href = displayUrl;
+        urlEl.style.display = '';
+        wrapper.style.display = '';
+        const iframe = document.getElementById('lsIframe');
+        const loginUrl = `http://${location.hostname}:${d.port}/user/login/`;
+        if (iframe.src !== loginUrl) iframe.src = loginUrl;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        clearInterval(_lsStatusPoll);
+        _lsStatusPoll = null;
+    } else {
+        urlEl.style.display = 'none';
+        wrapper.style.display = 'none';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+}
+
+function lsStart() {
+    document.getElementById('lsStatusText').textContent = 'Starting…';
+    document.getElementById('lsStartBtn').disabled = true;
+    fetch('/api/labelling/start', { method: 'POST' }).catch(() => {});
+    if (!_lsStatusPoll) {
+        _lsStatusPoll = setInterval(lsRefreshStatus, 3000);
+    }
+}
+
+async function lsStop() {
+    await fetch('/api/labelling/stop', { method: 'POST' });
+    document.getElementById('lsIframe').src = '';
+    setTimeout(lsRefreshStatus, 500);
+}
+
+async function lsInstall() {
+    const installBtn = document.getElementById('lsInstallBtn');
+    const log = document.getElementById('lsInstallLog');
+    const text = document.getElementById('lsStatusText');
+    installBtn.disabled = true;
+    log.style.display = '';
+    log.textContent = '';
+    text.textContent = 'Installing…';
+    const es = new EventSource('/api/labelling/install');
+    es.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        if (d.line) { log.textContent += d.line + '\n'; log.scrollTop = log.scrollHeight; }
+        if (d.done) {
+            es.close();
+            installBtn.disabled = false;
+            if (d.success) {
+                log.textContent += '\n✓ Label Studio installed successfully.\n';
+                setTimeout(() => { log.style.display = 'none'; lsRefreshStatus(); }, 2000);
+            } else {
+                text.textContent = 'Install failed (rc=' + d.rc + ')';
+            }
+        }
+    };
+    es.onerror = () => { es.close(); text.textContent = 'Install error'; installBtn.disabled = false; };
+}
+
+async function lsLoadPendingNodes() {
+    try {
+        const r = await fetch('/api/labelling/nodes');
+        const d = await r.json();
+        const container = document.getElementById('lsPendingNodes');
+        if (!container) return;
+        const nodes = d.nodes || [];
+        if (!nodes.length) { container.innerHTML = ''; return; }
+        container.innerHTML = '<h4 style="margin:0 0 8px;font-size:0.85rem;opacity:0.7;">Pending DAG Nodes</h4>' +
+            nodes.map(n => `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg2);border-radius:6px;margin-bottom:6px;font-size:0.82rem;">
+                <span style="font-weight:600;">${n.dataset_name}</span>
+                <span style="opacity:0.6;">${n.node_id}</span>
+                <span style="opacity:0.6;">${n.images_imported || 0} images</span>
+                <span style="flex:1;"></span>
+                ${n.status === 'pending'
+                    ? `<button class="btn-sm" onclick="lsMarkComplete('${n.node_id}')">✓ Mark Complete</button>`
+                    : `<span style="color:var(--green);">✓ Done${n.export_path ? ' — ' + n.export_path : ''}</span>`}
+            </div>`).join('');
+    } catch (e) { /* silent */ }
+}
+
+async function lsMarkComplete(nodeId) {
+    await fetch(`/api/labelling/complete/${nodeId}`, { method: 'POST' });
+    await lsLoadPendingNodes();
 }

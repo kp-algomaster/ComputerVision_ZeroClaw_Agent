@@ -85,6 +85,7 @@ Single-page app at `http://localhost:8420` with a collapsible sidebar containing
 | 📝 **Specs** | Split-view: left panel lists all generated `spec.md` files by paper, right panel renders the selected spec with a **Raw** toggle for the source markdown. |
 | 📰 **Digests** | Split-view: left panel lists weekly digest files, right panel renders the selected digest as formatted markdown. |
 | ⚡ **Playground** | Graphical block-based pipeline builder. Drag skill blocks onto a canvas, wire them together, configure parameters inline, and execute DAG pipelines with per-node streaming status. Pipelines are saved to and loaded from `output/.workflows/`. Toggle with `Cmd/Ctrl+Shift+P`. |
+| 🏷️ **Labelling** | Embedded Label Studio annotation platform. One-click start/stop of a managed Label Studio subprocess (port 8080), with the annotation workspace loaded directly in the sidebar via iframe. Supports bounding boxes, polygons, keypoints, and segmentation masks. Includes SSE import progress, COCO/YOLO/VOC export, and DAG workflow node integration via a Mark Complete button. |
 
 ---
 
@@ -136,6 +137,92 @@ The Playground is a **graphical pipeline builder** — a collapsible right sideb
 | Frontend HTML | `src/cv_agent/ui/index.html` (search `playground-panel`) |
 | Frontend CSS | `src/cv_agent/ui/style.css` (search `CV Playground`) |
 | Saved pipelines | `output/.workflows/*.json` |
+
+---
+
+## Live Playground
+
+The **Live Playground** adds real-time per-node status streaming to every pipeline run. A persistent badge in the sidebar nav shows pipeline activity at a glance — toggle it with `Cmd/Ctrl+Shift+P` or click ⚡ Playground in the Research group.
+
+![Live Playground — real-time drag-and-drop pipeline builder with live node status streaming via WebSocket](docs/images/live_playground.png)
+
+### How live execution works
+
+1. Click **▶ Run** — the pipeline POSTs to `/api/pipelines/run` and receives a `run_id`
+2. A WebSocket opens at `/ws/workflows/{run_id}` and streams `node_status` events as each block executes
+3. Node borders update in real time: ⬜ Pending → 🔵 Running (pulsing) → 🟢 Done → 🔴 Error
+4. The sidebar **Live** badge pulses orange during execution and turns solid green on completion
+5. Results appear inline in each node's output panel as they arrive — no page reload needed
+
+### Key files
+
+| Component | File |
+|-----------|------|
+| Live badge | `src/cv_agent/ui/index.html` (search `live-badge`) |
+| Status WebSocket listener | `src/cv_agent/ui/app.js` (search `_playgroundLiveWs`) |
+| WebSocket endpoint | `src/cv_agent/web.py` (search `/ws/workflows`) |
+| Node status events | `src/cv_agent/pipeline/dag_runner.py` |
+
+---
+
+## Labelling
+
+The **Labelling** view integrates [Label Studio](https://github.com/HumanSignal/label-studio) (Apache 2.0) as a fully managed annotation platform — no separate installation or manual setup required.
+
+![Labelling — Label Studio managed subprocess with iframe embedding, SSE import progress, and DAG workflow node integration](docs/images/labelling.png)
+
+### How it works
+
+1. **Start** — click **▶ Start** in the Labelling sidebar view; the agent launches Label Studio as a subprocess on port 8080 (configurable via `LABEL_STUDIO_PORT`). The first run takes ~60 s for Django migrations; subsequent starts are instant.
+2. **Annotate** — the Label Studio workspace loads directly in the sidebar via iframe (`/user/login/`). Every project includes all four annotation types (bounding box, polygon, keypoint, segmentation mask) so config is never locked after annotations are created.
+3. **Import** — images upload in the background via SSE; a live progress bar shows `n / total` files as they are indexed.
+4. **Export** — trigger COCO JSON, YOLO TXT, or Pascal VOC XML export from the agent; the file is written to `output/labels/{date}_{dataset}/{format}/{project_id}.{ext}`.
+5. **DAG node** — use `create_labelling_dag_node` in a workflow to pause a pipeline at a labelling step. A **Mark Complete** button appears in the sidebar; clicking it triggers auto-export and signals the next DAG node.
+
+### Agent tools
+
+| Tool | Description |
+|------|-------------|
+| `start_labelling_server` | Start Label Studio and wait up to 60 s for ready |
+| `create_labelling_project` | Create a project; optionally import images immediately |
+| `list_labelling_projects` | List all projects with task and annotation counts |
+| `export_annotations` | Export to COCO / YOLO / VOC; writes to `output/labels/` |
+| `create_labelling_dag_node` | Register a labelling checkpoint in a workflow DAG |
+
+### REST endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/labelling/start` | Start Label Studio; polls health for up to 60 s |
+| `POST` | `/api/labelling/stop` | Stop Label Studio and disable auto-restart |
+| `GET` | `/api/labelling/status` | Returns `not_installed` / `stopped` / `starting` / `ready` |
+| `POST` | `/api/labelling/install` | SSE stream — install `label-studio` into the venv |
+| `POST` | `/api/labelling/projects` | Create a new project |
+| `GET` | `/api/labelling/projects` | List all projects |
+| `GET` | `/api/labelling/projects/{id}/import-stream` | SSE — stream per-file import progress |
+| `POST` | `/api/labelling/projects/{id}/export` | Trigger export and write to `output/labels/` |
+| `GET` | `/api/labelling/nodes` | List pending DAG labelling nodes |
+| `POST` | `/api/labelling/complete/{node_id}` | Mark node complete; triggers auto-export |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LABEL_STUDIO_PORT` | `8080` | Port Label Studio binds to |
+| `LABEL_STUDIO_TOKEN` | *(empty)* | API token (optional for local use) |
+| `OUTPUT_DIR` | `./output` | Base dir for `.label-studio/` data and exports |
+
+### Key files
+
+| Component | File |
+|-----------|------|
+| REST client | `src/cv_agent/labelling_client.py` |
+| Agent tools | `src/cv_agent/tools/labelling.py` |
+| API endpoints | `src/cv_agent/web.py` (search `# ── Labelling`) |
+| Server lifecycle | `src/cv_agent/server_manager.py` (`register_label_studio`) |
+| Frontend | `src/cv_agent/ui/index.html` (`view-labelling`) · `app.js` (`loadLabellingView`) |
+| Annotations output | `output/labels/{YYYY-MM-DD}_{dataset}/{coco\|yolo\|voc}/` |
+| Label Studio DB | `output/.label-studio/` *(gitignored)* |
 
 ---
 
@@ -235,6 +322,7 @@ Skills show three states in the UI:
 | 🕸️ | Knowledge Graph | Research | Obsidian vault · graph.py | ✅ Ready |
 | ∑ | Equation Extraction | Research | LaTeX parser · PDF tools | ✅ Ready |
 | 🧭 | Text → Diagram | Research | paperbanana · Ollama · matplotlib | 📦 `pip install -e paperbanana/` |
+| 🏷️ | Labelling | Vision | Label Studio ≥ 1.10 (Apache 2.0) | 📦 `pip install label-studio` (auto-installs via UI) |
 | 🏆 | Kaggle Competition | ML / Training | Kaggle API | ⚡ Needs Power (Kaggle) |
 | 🎯 | Model Fine-Tuning | ML / Training | HuggingFace Trainer (local) | ✅ Ready (with HF_TOKEN) |
 | 📊 | Dataset Analysis | ML / Training | shell · file_read · analyze_image | ✅ Ready |
@@ -271,6 +359,7 @@ The **Models** view includes a server management panel for local inference serve
 | Ollama | `http://localhost:11434` | Managed externally — always shown |
 | Image Generation | `http://localhost:7860` | Start/stop; device: GPU / CPU / Auto |
 | OCR Service | `http://localhost:7861` | Start/stop; device: CPU |
+| Label Studio | `http://localhost:8080` | Start/stop from Labelling view; auto-restarts on crash |
 
 Each server shows a live Connected / Disconnected status badge and supports Restart, Stop, and device-selector controls.
 
@@ -560,5 +649,6 @@ You are free to use, modify, and distribute this software for any purpose, inclu
 | [Pydantic](https://github.com/pydantic/pydantic) | MIT |
 | [HuggingFace Hub](https://github.com/huggingface/huggingface_hub) | Apache 2.0 |
 | [Drawflow](https://github.com/jerosoler/Drawflow) | MIT |
+| [Label Studio](https://github.com/HumanSignal/label-studio) | Apache 2.0 |
 
 > **Model licenses** vary by provider. Check the model card on [HuggingFace](https://huggingface.co) or [Ollama Hub](https://ollama.com/library) before commercial use.

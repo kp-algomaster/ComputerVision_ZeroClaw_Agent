@@ -29,6 +29,13 @@ from cv_agent.tools.spec_generator import generate_spec, generate_spec_from_url
 from cv_agent.tools.text_to_diagram import text_to_diagram
 from cv_agent.tools.segment_anything import segment_with_text, segment_with_box, segment_video
 from cv_agent.tools.ocr import run_ocr
+from cv_agent.tools.labelling import (
+    start_labelling_server,
+    create_labelling_project,
+    list_labelling_projects,
+    export_annotations,
+    create_labelling_dag_node,
+)
 from cv_agent.tools.hardware_probe import (
     check_runnable_models,
     list_available_models,
@@ -251,6 +258,12 @@ def build_tools(config: AgentConfig) -> list:
         segment_video,
         # PaddleOCR
         run_ocr,
+        # Label Studio labelling
+        start_labelling_server,
+        create_labelling_project,
+        list_labelling_projects,
+        export_annotations,
+        create_labelling_dag_node,
     ]
 
     # Add MLX tools if available on Apple Silicon
