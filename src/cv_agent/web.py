@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from dotenv import load_dotenv as _load_dotenv_startup
 from cv_agent.config import AgentConfig, load_config
+from cv_agent.copilot_session import CopilotStreamBridge, ModelOption, copilot_manager
 
 logger = logging.getLogger(__name__)
 
@@ -324,99 +325,149 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
     async def ws_chat(websocket: WebSocket):
         await websocket.accept()
         history: list[Any] = []
+        ws_id = str(id(websocket))
+
+        async def _run_copilot(user_text: str, requested_model: str) -> str:
+            """Run one Copilot turn, streaming events to the WebSocket. Returns final content."""
+            state = await copilot_manager.get_or_create_session(ws_id, requested_model)
+            state.is_running = True
+            final_content = ""
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "stream_start",
+                    "role": "assistant",
+                    "model": state.model_id or requested_model,
+                    "copilot": True,
+                }))
+                timeout = config.copilot.session_timeout_s
+                async for event in CopilotStreamBridge.stream(state.session, user_text, timeout):
+                    if event["type"] == "stream_end":
+                        final_content = event.get("content", "")
+                        break  # outer handler sends the enriched stream_end with html
+                    await websocket.send_text(json.dumps(event))
+            finally:
+                state.is_running = False
+            return final_content
 
         try:
             while True:
                 data = await websocket.receive_text()
                 msg = json.loads(data)
+
+                # Handle control messages (cancel / set_model) at any time
+                msg_type = msg.get("type", "")
+                if msg_type == "cancel":
+                    copilot_manager.abort_session(ws_id)
+                    await websocket.send_text(json.dumps({"type": "cancelled"}))
+                    continue
+                if msg_type == "set_model":
+                    new_model = str(msg.get("model_id", "")).strip()
+                    state = copilot_manager._sessions.get(ws_id)
+                    if state and new_model:
+                        state.session.set_model(new_model)
+                        state.model_id = new_model
+                    continue
+
                 user_text = msg.get("message", "")
                 requested_model = str(msg.get("model", "")).strip()
 
                 if not user_text.strip():
                     continue
 
-                # Send typing indicator
                 await websocket.send_text(json.dumps({"type": "typing", "status": True}))
 
                 try:
-                    available_chat_models = _list_chat_compatible_models()
-                    available_model_names = [model["name"] for model in available_chat_models]
-                    selected_model = _select_default_chat_model(
-                        available_model_names,
-                        config.llm.model,
-                        requested_model or None,
-                    )
-                    if not selected_model:
-                        raise RuntimeError(
-                            "No compatible Ollama chat models are currently available. Pull one in the Models view first."
-                        )
-
-                    if selected_model != (requested_model or config.llm.model):
-                        missing_model = requested_model or config.llm.model
+                    # ── Copilot path ───────────────────────────────────────
+                    if config.copilot.enabled and copilot_manager.is_connected():
+                        final_content = await _run_copilot(user_text, requested_model)
                         await websocket.send_text(json.dumps({
-                            "type": "model_info",
-                            "selected_model": selected_model,
-                            "requested_model": missing_model,
-                            "fallback": True,
-                            "message": f"Model '{missing_model}' is unavailable. Using '{selected_model}' instead.",
+                            "type": "stream_end",
+                            "content": final_content,
+                            "html": markdown.markdown(
+                                final_content,
+                                extensions=["fenced_code", "tables", "codehilite"],
+                            ),
+                            "timestamp": datetime.now().isoformat(),
                         }))
 
-                    runtime_config = config.model_copy(
-                        update={
-                            "llm": config.llm.model_copy(update={"model": selected_model}),
-                        }
-                    )
+                    # ── LangGraph / Ollama path (existing, unchanged) ──────
+                    else:
+                        available_chat_models = _list_chat_compatible_models()
+                        available_model_names = [model["name"] for model in available_chat_models]
+                        selected_model = _select_default_chat_model(
+                            available_model_names,
+                            config.llm.model,
+                            requested_model or None,
+                        )
+                        if not selected_model:
+                            raise RuntimeError(
+                                "No compatible Ollama chat models are currently available. Pull one in the Models view first."
+                            )
 
-                    from cv_agent.agent import run_agent_stream
-
-                    # Signal stream start so client creates the message bubble
-                    await websocket.send_text(json.dumps({
-                        "type": "stream_start",
-                        "role": "assistant",
-                        "model": selected_model,
-                    }))
-
-                    final_content = ""
-                    async for event in run_agent_stream(user_text, runtime_config, history):
-                        etype = event["type"]
-
-                        if etype == "token":
+                        if selected_model != (requested_model or config.llm.model):
+                            missing_model = requested_model or config.llm.model
                             await websocket.send_text(json.dumps({
-                                "type": "stream_token",
-                                "content": event["content"],
+                                "type": "model_info",
+                                "selected_model": selected_model,
+                                "requested_model": missing_model,
+                                "fallback": True,
+                                "message": f"Model '{missing_model}' is unavailable. Using '{selected_model}' instead.",
                             }))
 
-                        elif etype == "tool_start":
-                            await websocket.send_text(json.dumps({
-                                "type": "tool_start",
-                                "name": event["name"],
-                                "input": event.get("input", ""),
-                            }))
+                        runtime_config = config.model_copy(
+                            update={
+                                "llm": config.llm.model_copy(update={"model": selected_model}),
+                            }
+                        )
 
-                        elif etype == "tool_end":
-                            await websocket.send_text(json.dumps({
-                                "type": "tool_end",
-                                "name": event["name"],
-                                "output": event.get("output", ""),
-                            }))
+                        from cv_agent.agent import run_agent_stream
 
-                        elif etype == "done":
-                            final_content = event["content"]
+                        await websocket.send_text(json.dumps({
+                            "type": "stream_start",
+                            "role": "assistant",
+                            "model": selected_model,
+                        }))
 
-                    # Send final rendered message
-                    await websocket.send_text(json.dumps({
-                        "type": "stream_end",
-                        "content": final_content,
-                        "html": markdown.markdown(
-                            final_content,
-                            extensions=["fenced_code", "tables", "codehilite"],
-                        ),
-                        "timestamp": datetime.now().isoformat(),
-                    }))
+                        final_content = ""
+                        async for event in run_agent_stream(user_text, runtime_config, history):
+                            etype = event["type"]
 
-                    from langchain_core.messages import HumanMessage
-                    history.append(HumanMessage(content=user_text))
-                    history.append({"role": "assistant", "content": final_content})
+                            if etype == "token":
+                                await websocket.send_text(json.dumps({
+                                    "type": "stream_token",
+                                    "content": event["content"],
+                                }))
+
+                            elif etype == "tool_start":
+                                await websocket.send_text(json.dumps({
+                                    "type": "tool_start",
+                                    "name": event["name"],
+                                    "input": event.get("input", ""),
+                                }))
+
+                            elif etype == "tool_end":
+                                await websocket.send_text(json.dumps({
+                                    "type": "tool_end",
+                                    "name": event["name"],
+                                    "output": event.get("output", ""),
+                                }))
+
+                            elif etype == "done":
+                                final_content = event["content"]
+
+                        await websocket.send_text(json.dumps({
+                            "type": "stream_end",
+                            "content": final_content,
+                            "html": markdown.markdown(
+                                final_content,
+                                extensions=["fenced_code", "tables", "codehilite"],
+                            ),
+                            "timestamp": datetime.now().isoformat(),
+                        }))
+
+                        from langchain_core.messages import HumanMessage
+                        history.append(HumanMessage(content=user_text))
+                        history.append({"role": "assistant", "content": final_content})
 
                 except Exception as e:
                     logger.exception("Agent error")
@@ -429,6 +480,8 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
         except WebSocketDisconnect:
             logger.info("Chat client disconnected")
+        finally:
+            await copilot_manager.close_session(ws_id)
 
     # ── REST API for content browsing ──────────────────────────────────────
 
@@ -573,6 +626,24 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "vision_model": config.vision.ollama.default_model,
             "vault_path": config.knowledge.vault_path,
         })
+
+    # ── Copilot SDK endpoints ──────────────────────────────────────────────
+
+    @app.get("/api/copilot/models")
+    async def copilot_models():
+        """List available Copilot models, enumerated at runtime (cached 5 min)."""
+        models: list[ModelOption] = await copilot_manager.list_models(config.copilot.default_model)
+        sdk_state = copilot_manager._client.get_state() if copilot_manager._client else "disconnected"
+        return JSONResponse({
+            "models": list(models),
+            "copilot_enabled": config.copilot.enabled,
+            "sdk_state": sdk_state,
+        })
+
+    @app.get("/api/copilot/status")
+    async def copilot_status():
+        """Copilot SDK auth and connection health check."""
+        return JSONResponse(await copilot_manager.get_status())
 
     @app.get("/api/chat/models")
     async def chat_models():
@@ -3664,6 +3735,15 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         register_label_studio(config.labelling)
         if config.labelling.auto_restart:
             await enable_auto_restart("label-studio")
+
+    @app.on_event("startup")
+    async def _startup_copilot() -> None:
+        await copilot_manager.start(config)
+        app.state.copilot_sessions = copilot_manager._sessions
+
+    @app.on_event("shutdown")
+    async def _shutdown_copilot() -> None:
+        await copilot_manager.stop()
 
     @app.post("/api/labelling/start")
     async def labelling_start():

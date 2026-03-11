@@ -8,7 +8,20 @@ An autonomous Computer Vision research assistant — monitors arXiv, processes p
 
 ## Architecture
 
-![CV Assistant architecture — Web/CLI → LangGraph ReAct agent → ZeroClaw tool layer → local AI backends](docs/images/architecture.png)
+![CV Assistant architecture — Web/CLI → LangGraph ReAct agent → ZeroClaw tool layer → local AI backends](docs/diagrams/architecture.svg)
+
+The system is layered into four tiers:
+
+| Tier | Components |
+|------|-----------|
+| **Web UI · :8420** | Chat (💬), Vault Viewer, Specs, Model Config — served by FastAPI/Uvicorn |
+| **Agent** | LangGraph ReAct orchestrator · llmfit hardware probe · `run_agent` entrypoint |
+| **ZeroClaw tool layer** | `create_react_agent` + LangChain · tool-call decoder · built-in tools · web_search |
+| **CV Tools** | `analyze_image`, `segment_with_text`, `knowledge_graph.py`, `spec_generator.py`, ArXiv, Ollama vision |
+| **Model Layer** | MLX (Apple Silicon) · qwen2.5-VL · OLLAMA_VIS · OLLAMA_LLM |
+| **Copilot SDK** *(005)* | `CopilotManager` → `CopilotStreamBridge` → auto-wrapped `@tool` skills → BYOK Ollama `:11434/v1` |
+
+When `copilot.enabled: true` in `config/agent_config.yaml`, the Web UI chat routes through the **Copilot SDK** path (dashed purple) instead of the LangGraph fallback. BYOK mode lets you use any OpenAI-compatible endpoint (Ollama) with no GitHub subscription required.
 
 ---
 
