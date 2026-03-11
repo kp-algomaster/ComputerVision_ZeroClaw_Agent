@@ -632,6 +632,33 @@ body {
     cursor: not-allowed;
 }
 
+/* Chat Live toggle button */
+.chat-live-btn {
+    padding: 8px 14px !important;
+    background: var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.chat-live-btn:hover {
+    border-color: var(--pg-running) !important;
+    color: var(--pg-running) !important;
+    background: rgba(88, 166, 255, 0.08) !important;
+}
+
+.chat-live-btn.pg-live-active {
+    background: rgba(88, 166, 255, 0.15) !important;
+    border-color: var(--pg-running) !important;
+    color: var(--pg-running) !important;
+    box-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
+}
+
 @media (max-width: 760px) {
     .chat-toolbar {
         padding: 12px 16px 10px;
@@ -5285,6 +5312,30 @@ body {
     border-color: var(--pg-running);
     color: var(--pg-running);
     box-shadow: 0 0 8px rgba(88, 166, 255, 0.25);
+}
+
+/* Sidebar Live badge — always visible next to Playground nav item */
+.pg-live-sidebar-badge {
+    display: inline-block;
+    margin-left: auto;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0.5;
+}
+
+.pg-live-sidebar-badge:hover {
+    opacity: 1;
+    background: rgba(88, 166, 255, 0.1);
+}
+
+.pg-live-sidebar-badge.pg-live-active {
+    opacity: 1;
+    background: rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 6px rgba(88, 166, 255, 0.3);
 }
 
 /* Live blocks — auto-placed by live mode */
