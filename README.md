@@ -8,20 +8,21 @@ An autonomous Computer Vision research assistant — monitors arXiv, processes p
 
 ## Architecture
 
-![CV Assistant architecture — Web/CLI → LangGraph ReAct agent → ZeroClaw tool layer → local AI backends](docs/diagrams/architecture.svg)
-
-The system is layered into four tiers:
+![CV Assistant architecture — Web UI → Agent → ZeroClaw → CV Tools → Paperbanana pipeline → local AI backends](docs/images/architecture.png)
 
 | Tier | Components |
 |------|-----------|
-| **Web UI · :8420** | Chat (💬), Vault Viewer, Specs, Model Config — served by FastAPI/Uvicorn |
-| **Agent** | LangGraph ReAct orchestrator · llmfit hardware probe · `run_agent` entrypoint |
-| **ZeroClaw tool layer** | `create_react_agent` + LangChain · tool-call decoder · built-in tools · web_search |
-| **CV Tools** | `analyze_image`, `segment_with_text`, `knowledge_graph.py`, `spec_generator.py`, ArXiv, Ollama vision |
-| **Model Layer** | MLX (Apple Silicon) · qwen2.5-VL · OLLAMA_VIS · OLLAMA_LLM |
+| **Web UI · :8420** | 💬 Chat · 📚 Vault Viewer · 📄 Specs · ⚡ Live Playground · 🏷️ Labelling · ⚙️ Config — FastAPI/Uvicorn |
+| **Agent** | LangGraph ReAct orchestrator · llmfit hardware probe · `run_agent` entrypoint · LangChain tool decoder |
+| **ZeroClaw tool layer** | `create_react_agent` · tool decoder · `web_search` · built-in tools |
+| **CV Tools** | `analyze_image` · `segment_with_text` · `knowledge_graph` · `spec_generator` · `search_arxiv` · `run_ocr` · `label_studio` · **`text_to_diagram`** · sub-agents |
+| **Paperbanana** | `text_to_diagram` → optimizer → planner (VLM) → visualizer (code gen) → critic (VLM review) × N → `output/diagrams/` |
+| **Model Layer** | Vision: Ollama qwen2.5-vl / llava · MLX (Apple Silicon) · SAM 3 — LLM: qwen2.5-coder / qwen3-coder — Diagram: matplotlib · Gemini Imagen · OpenAI gpt-image-1 |
 | **Copilot SDK** *(005)* | `CopilotManager` → `CopilotStreamBridge` → auto-wrapped `@tool` skills → BYOK Ollama `:11434/v1` |
 
-When `copilot.enabled: true` in `config/agent_config.yaml`, the Web UI chat routes through the **Copilot SDK** path (dashed purple) instead of the LangGraph fallback. BYOK mode lets you use any OpenAI-compatible endpoint (Ollama) with no GitHub subscription required.
+**Paperbanana** (`text_to_diagram` tool) is a four-phase agentic pipeline: an *optimizer* enriches the input text, a VLM *planner* designs layout and elements, a code-gen *visualizer* renders the diagram (matplotlib locally or Imagen/DALL·E via cloud), and a VLM *critic* scores the result — looping back for refinement until the threshold is met. Supports Ollama, Gemini, OpenAI, OpenRouter, and Stability providers.
+
+When `copilot.enabled: true` in `config/agent_config.yaml`, chat routes through the **Copilot SDK** path (dashed purple) instead of LangGraph. BYOK mode works with any OpenAI-compatible endpoint (Ollama) — no GitHub subscription required.
 
 ---
 
@@ -41,7 +42,7 @@ When `copilot.enabled: true` in `config/agent_config.yaml`, the Web UI chat rout
 
 Single-page app at `http://localhost:8420` with a collapsible sidebar containing 6 navigation groups and 17 views.
 
-![CV Assistant SPA — conversation left, live playground right](docs/diagrams/webui.svg)
+![CV Assistant SPA — conversation left, live playground right](docs/images/webui.png)
 
 ---
 

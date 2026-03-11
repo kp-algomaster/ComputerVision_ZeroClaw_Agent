@@ -1,245 +1,335 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 809.0740000000001 1682.2000000000003" width="809.0740000000001" height="1682.2000000000003" style="--bg:#FFFFFF;--fg:#27272A;background:var(--bg)">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
-  text { font-family: 'Inter', system-ui, sans-serif; }
-  svg {
-    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
-    --_text:          var(--fg);
-    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
-    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
-    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
-    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
-    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
-    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
-    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
-    --_group-fill:    var(--bg);
-    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
-    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
-    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
-  }
-</style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 980" width="1200" height="980" style="font-family:'Inter',system-ui,sans-serif">
 <defs>
-  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
-    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#374151"/>
   </marker>
-  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
-    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  <marker id="arr-b" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#3b82f6"/>
   </marker>
-  <marker id="arrowhead-copilot" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
-    <polygon points="0 0, 8 2.5, 0 5" fill="rgba(139,92,246,0.85)" stroke="rgba(139,92,246,0.85)" stroke-width="0.75" stroke-linejoin="round" />
+  <marker id="arr-g" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+  </marker>
+  <marker id="arr-v" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="rgba(139,92,246,0.85)"/>
   </marker>
 </defs>
-<g class="subgraph" data-id="UI" data-label="Web UI  •  :8420">
-  <rect x="40" y="40" width="235.19400000000002" height="210.70000000000002" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <rect x="40" y="40" width="235.19400000000002" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <text x="52" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Web UI  •  :8420</text>
-</g>
-<g class="subgraph" data-id="AGENT" data-label="CV Zero Claw Agent  (agent.py)">
-  <rect x="47.41000000000005" y="367" width="220.37399999999997" height="238.70000000000002" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <rect x="47.41000000000005" y="367" width="220.37399999999997" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <text x="59.41000000000005" y="381" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">CV Zero Claw Agent  (agent.py)</text>
-</g>
-<g class="subgraph" data-id="ZC" data-label="ZeroClaw  (src/zeroclaw_tools/)">
-  <rect x="157.59699999999998" y="722" width="365.158" height="267.6" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <rect x="157.59699999999998" y="722" width="365.158" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <text x="169.59699999999998" y="736" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">ZeroClaw  (src/zeroclaw_tools/)</text>
-</g>
-<g class="subgraph" data-id="TOOLS" data-label="CV Tools  (src/cv_agent/tools/)">
-  <rect x="157.59699999999998" y="1115.9" width="406.071" height="210.70000000000002" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <rect x="157.59699999999998" y="1115.9" width="406.071" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <text x="169.59699999999998" y="1129.9" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">CV Tools  (src/cv_agent/tools/)</text>
-</g>
-<g class="subgraph" data-id="MODELS" data-label="Model Layer">
-  <rect x="58.1545" y="1374.6000000000004" width="198.885" height="267.6" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <rect x="58.1545" y="1374.6000000000004" width="198.885" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
-  <text x="70.1545" y="1388.6000000000004" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Model Layer</text>
-</g>
-<polyline class="edge" data-from="UI" data-to="AGENT" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="WebSocket /ws/chat" points="157.597,250.70000000000002 157.59700000000004,367" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="AGENT" data-to="ZC" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="uses" points="157.59700000000004,605.7 157.59699999999998,722" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="ZC" data-to="TOOLS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="@tool decorated" points="157.59699999999998,989.6 157.59699999999998,1115.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="TOOLS" data-to="MODELS" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="157.59699999999998,1326.6000000000001 157.59699999999998,1374.6000000000004" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="ZC" data-to="BUILTIN" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="built-in" points="157.59699999999998,989.6 157.59699999999998,1035.6 147.59699999999998,1035.6 147.59699999999998,784.45 157.59699999999998,784.45 173.59699999999998,784.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="KG" data-to="VAULT_FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="547.668,1178.3500000000001 563.668,1178.3500000000001 713.272,1178.3500000000001 713.272,1203.5750000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="SPEC" data-to="SPECS_FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="529.884,1222.025 563.668,1222.025 573.668,1235.25 573.668,1374.6000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<polyline class="edge" data-from="ORCH" data-to="HW" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="102.16900000000005,504.8 102.16900000000005,552.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
-<polyline class="edge" data-from="CAGENT" data-to="TDEC" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="381.23699999999997,784.45 429.23699999999997,784.45" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
-<g class="edge-label" data-from="UI" data-to="AGENT" data-label="WebSocket /ws/chat">
-  <rect x="101.09700000000001" y="293.70000000000005" width="112.69000000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
-  <text x="157.442" y="308.85" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">WebSocket /ws/chat</text>
-</g>
-<g class="edge-label" data-from="AGENT" data-to="ZC" data-label="uses">
-  <rect x="136.59699999999998" y="648.7" width="41.41" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
-  <text x="157.30199999999996" y="663.85" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">uses</text>
-</g>
-<g class="edge-label" data-from="ZC" data-to="TOOLS" data-label="@tool decorated">
-  <rect x="111.59699999999998" y="1042.6" width="91.90000000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
-  <text x="157.547" y="1057.75" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">@tool decorated</text>
-</g>
-<g class="edge-label" data-from="ZC" data-to="BUILTIN" data-label="built-in">
-  <rect x="101.65299999999999" y="779.45" width="47.944" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
-  <text x="125.625" y="794.6" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">built-in</text>
-</g>
-<g class="node" data-id="VAULT_FS" data-label="VAULT_FS" data-shape="rectangle">
-  <rect x="657.47" y="1203.5750000000003" width="111.60399999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="713.272" y="1222.0250000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">VAULT_FS</text>
-</g>
-<g class="node" data-id="SPECS_FS" data-label="SPECS_FS" data-shape="rectangle">
-  <rect x="517.866" y="1374.6000000000001" width="111.60399999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="573.668" y="1393.0500000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">SPECS_FS</text>
-</g>
-<g class="node" data-id="CHAT" data-label="💬 Chat" data-shape="rectangle">
-  <rect x="56" y="84" width="85.66900000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="98.8345" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">💬 Chat</text>
-</g>
-<g class="node" data-id="VAULT" data-label="📚 Vault Viewer" data-shape="rectangle">
-  <rect x="56" y="140.9" width="132.352" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="122.176" y="159.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">📚 Vault Viewer</text>
-</g>
-<g class="node" data-id="SPECS" data-label="📄 Specs" data-shape="rectangle">
-  <rect x="161.669" y="84" width="97.525" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="210.43150000000003" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">📄 Specs</text>
-</g>
-<g class="node" data-id="CFG" data-label="⚙️ Model Config" data-shape="rectangle">
-  <rect x="56" y="197.8" width="141.985" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="126.9925" y="216.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">⚙️ Model Config</text>
-</g>
-<g class="node" data-id="ORCH" data-label="ORCH" data-shape="rectangle">
-  <rect x="63.41000000000005" y="467.9" width="77.518" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="102.16900000000005" y="486.34999999999997" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">ORCH</text>
-</g>
-<g class="node" data-id="run_agent" data-label="run_agent" data-shape="rectangle">
-  <rect x="149.07200000000006" y="411" width="102.71199999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="200.42800000000005" y="429.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">run_agent</text>
-</g>
-<g class="node" data-id="HW" data-label="HW" data-shape="rectangle">
-  <rect x="71.19050000000006" y="552.8" width="61.956999999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="102.16900000000005" y="571.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">HW</text>
-</g>
-<g class="node" data-id="llmfit" data-label="llmfit" data-shape="rectangle">
-  <rect x="63.41000000000005" y="411" width="65.66199999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="96.24100000000004" y="429.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">llmfit</text>
-</g>
-<g class="node" data-id="CAGENT" data-label="CAGENT" data-shape="rectangle">
-  <rect x="285.93499999999995" y="766" width="95.30199999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="333.58599999999996" y="784.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">CAGENT</text>
-</g>
-<g class="node" data-id="LangGraph" data-label="LangGraph" data-shape="rectangle">
-  <rect x="285.93499999999995" y="822.9" width="110.122" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="340.9959999999999" y="841.35" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">LangGraph</text>
-</g>
-<g class="node" data-id="TDEC" data-label="TDEC" data-shape="rectangle">
-  <rect x="429.23699999999997" y="766" width="77.518" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="467.996" y="784.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">TDEC</text>
-</g>
-<g class="node" data-id="LangChain" data-label="LangChain" data-shape="rectangle">
-  <rect x="285.93499999999995" y="879.8" width="107.158" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="339.51399999999995" y="898.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">LangChain</text>
-</g>
-<g class="node" data-id="BUILTIN" data-label="BUILTIN" data-shape="rectangle">
-  <rect x="173.59699999999998" y="766" width="92.338" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="219.76599999999996" y="784.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">BUILTIN</text>
-</g>
-<g class="node" data-id="web_search" data-label="web_search" data-shape="rectangle">
-  <rect x="285.93499999999995" y="936.7" width="116.05" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="343.9599999999999" y="955.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">web_search</text>
-</g>
-<g class="node" data-id="VIS" data-label="VIS" data-shape="rectangle">
-  <rect x="173.59699999999998" y="1159.9" width="62.69799999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="204.94599999999997" y="1178.3500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">VIS</text>
-</g>
-<g class="node" data-id="Ollama" data-label="Ollama" data-shape="rectangle">
-  <rect x="256.29499999999996" y="1159.9" width="80.482" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="296.53599999999994" y="1178.3500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Ollama</text>
-</g>
-<g class="node" data-id="PAPER" data-label="PAPER" data-shape="rectangle">
-  <rect x="173.59699999999998" y="1203.5750000000003" width="86.41" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="216.80199999999996" y="1222.0250000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PAPER</text>
-</g>
-<g class="node" data-id="ArXiv" data-label="ArXiv" data-shape="rectangle">
-  <rect x="173.59699999999998" y="1273.7" width="76.036" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="211.61499999999998" y="1292.15" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">ArXiv</text>
-</g>
-<g class="node" data-id="SPEC" data-label="📋 spec_generator.py" data-shape="rectangle">
-  <rect x="356.777" y="1203.5750000000003" width="173.107" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="443.3305" y="1222.0250000000003" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">📋 spec_generator.py</text>
-</g>
-<g class="node" data-id="KG" data-label="🕸️ knowledge_graph.py" data-shape="rectangle">
-  <rect x="356.777" y="1159.9" width="190.891" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="452.22249999999997" y="1178.3500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">🕸️ knowledge_graph.py</text>
-</g>
-<g class="node" data-id="OLLAMA_VIS" data-label="OLLAMA_VIS" data-shape="rectangle">
-  <rect x="74.1545" y="1532.4000000000003" width="125.68299999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="136.99599999999998" y="1550.8500000000004" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">OLLAMA_VIS</text>
-</g>
-<g class="node" data-id="qwen2" data-label="qwen2" data-shape="rectangle">
-  <rect x="74.1545" y="1475.5000000000005" width="80.482" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="114.3955" y="1493.9500000000005" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">qwen2</text>
-</g>
-<g class="node" data-id="OLLAMA_LLM" data-label="OLLAMA_LLM" data-shape="rectangle">
-  <rect x="74.1545" y="1589.3000000000004" width="133.834" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="141.07150000000001" y="1607.7500000000005" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">OLLAMA_LLM</text>
-</g>
-<g class="node" data-id="MLX" data-label="MLX" data-shape="rectangle">
-  <rect x="74.1545" y="1418.6000000000004" width="70.849" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="109.57900000000001" y="1437.0500000000004" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">MLX</text>
-</g>
-<g class="node" data-id="Apple" data-label="Apple" data-shape="rectangle">
-  <rect x="165.0035" y="1418.6000000000004" width="76.036" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
-  <text x="203.0215" y="1437.0500000000004" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Apple</text>
-</g>
 
-<!-- ── Copilot SDK subgraph ───────────────────────────────────────────────── -->
-<g class="subgraph" data-id="COPILOT" data-label="Copilot SDK  (005-copilot-sdk-chat)">
-  <rect x="455" y="258" width="334" height="260" rx="0" ry="0" fill="rgba(139,92,246,0.04)" stroke="rgba(139,92,246,0.5)" stroke-width="1" stroke-dasharray="5,3" />
-  <rect x="455" y="258" width="334" height="28" rx="0" ry="0" fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.5)" stroke-width="1" stroke-dasharray="5,3" />
-  <text x="467" y="272" font-size="12" font-weight="600" fill="rgba(139,92,246,0.9)" dy="4.2">Copilot SDK  (005-copilot-sdk-chat)</text>
-</g>
+<!-- ── Background ──────────────────────────────────────────────────────────── -->
+<rect width="1200" height="980" fill="#08080f"/>
 
-<!-- CopilotManager node -->
-<g class="node" data-id="COPILOT_MGR" data-label="CopilotManager" data-shape="rectangle">
-  <rect x="471" y="302" width="160" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
-  <text x="551" y="320.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">CopilotManager</text>
-</g>
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ROW 1 — Web UI  +  Copilot SDK
+     ══════════════════════════════════════════════════════════════════════════ -->
 
-<!-- CopilotStreamBridge node -->
-<g class="node" data-id="COPILOT_BRIDGE" data-label="CopilotStreamBridge" data-shape="rectangle">
-  <rect x="471" y="356" width="195" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
-  <text x="568.5" y="374.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">CopilotStreamBridge</text>
-</g>
+<!-- Web UI group -->
+<rect x="20" y="20" width="710" height="116" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20" y="20" width="710" height="28" rx="6" fill="#111128"/>
+<rect x="20" y="36" width="710" height="12" fill="#111128"/>
+<text x="36" y="37" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">WEB UI  ·  :8420  (FastAPI · Uvicorn)</text>
 
-<!-- copilot_skills node -->
-<g class="node" data-id="COPILOT_SKILLS" data-label="copilot_skills.py" data-shape="rectangle">
-  <rect x="471" y="410" width="165" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.08)" stroke="rgba(139,92,246,0.55)" stroke-width="0.75" />
-  <text x="553.5" y="428.45" text-anchor="middle" font-size="13" font-weight="500" fill="rgba(109,40,217,1)" dy="4.55">copilot_skills.py</text>
-</g>
+<rect x="36"  y="62" width="98" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="85"  y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">💬 Chat</text>
 
-<!-- BYOK / Ollama node -->
-<g class="node" data-id="COPILOT_BYOK" data-label="BYOK · Ollama :11434/v1" data-shape="rectangle">
-  <rect x="471" y="464" width="208" height="36.9" rx="0" ry="0" fill="rgba(139,92,246,0.05)" stroke="rgba(139,92,246,0.35)" stroke-width="0.75" stroke-dasharray="3,2" />
-  <text x="575" y="482.45" text-anchor="middle" font-size="12" font-weight="400" fill="rgba(109,40,217,0.85)" dy="4.55">BYOK · Ollama :11434/v1</text>
-</g>
+<rect x="146" y="62" width="116" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="204" y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">📚 Vault Viewer</text>
 
-<!-- Edge: Web UI → CopilotManager (dashed purple, "copilot.enabled") -->
-<polyline class="edge" data-from="UI" data-to="COPILOT_MGR" data-style="dashed"
-  points="275.194,145.45 365,145.45 365,320.95 471,320.95"
-  fill="none" stroke="rgba(139,92,246,0.75)" stroke-width="1.25" stroke-dasharray="6,3"
-  marker-end="url(#arrowhead-copilot)" />
-<g class="edge-label" data-from="UI" data-to="COPILOT_MGR" data-label="copilot.enabled">
-  <rect x="297" y="130.45" width="102" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="rgba(139,92,246,0.3)" stroke-width="1" />
-  <text x="348" y="145.6" text-anchor="middle" font-size="11" font-weight="400" fill="rgba(109,40,217,0.85)" dy="3.85">copilot.enabled</text>
-</g>
+<rect x="274" y="62" width="96" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="322" y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">📄 Specs</text>
 
-<!-- Internal edges within Copilot SDK subgraph -->
-<polyline class="edge" data-from="COPILOT_MGR" data-to="COPILOT_BRIDGE"
-  points="551,338.9 551,356"
-  fill="none" stroke="rgba(139,92,246,0.6)" stroke-width="1"
-  marker-end="url(#arrowhead-copilot)" />
-<polyline class="edge" data-from="COPILOT_BRIDGE" data-to="COPILOT_SKILLS"
-  points="551,392.9 551,410"
-  fill="none" stroke="rgba(139,92,246,0.6)" stroke-width="1"
-  marker-end="url(#arrowhead-copilot)" />
-<polyline class="edge" data-from="COPILOT_SKILLS" data-to="COPILOT_BYOK"
-  points="551,446.9 551,464"
-  fill="none" stroke="rgba(139,92,246,0.45)" stroke-width="1" stroke-dasharray="4,2"
-  marker-end="url(#arrowhead-copilot)" />
+<rect x="382" y="62" width="136" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="450" y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">⚡ Live Playground</text>
+
+<rect x="530" y="62" width="106" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="583" y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">🏷️ Labelling</text>
+
+<rect x="648" y="62" width="68" height="34" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="682" y="83" text-anchor="middle" font-size="11" font-weight="500" fill="#e2e8f0">⚙️ Cfg</text>
+
+<text x="375" y="114" text-anchor="middle" font-size="10" fill="#374151">WebSocket /ws/chat  ·  REST /api/*</text>
+
+<!-- Copilot SDK group -->
+<rect x="748" y="20" width="432" height="116" rx="6" fill="rgba(124,58,237,0.05)" stroke="rgba(124,58,237,0.4)" stroke-width="1" stroke-dasharray="5,3"/>
+<rect x="748" y="20" width="432" height="28" rx="6" fill="rgba(124,58,237,0.1)"/>
+<rect x="748" y="36" width="432" height="12" fill="rgba(124,58,237,0.1)"/>
+<text x="764" y="37" font-size="10" font-weight="700" fill="rgba(167,139,250,0.9)" letter-spacing="1">COPILOT SDK  ✦  (005-copilot-sdk-chat)</text>
+
+<rect x="764" y="58" width="138" height="34" rx="5" fill="rgba(124,58,237,0.1)" stroke="rgba(124,58,237,0.4)" stroke-width="1"/>
+<text x="833" y="79" text-anchor="middle" font-size="11" font-weight="500" fill="#a78bfa">CopilotManager</text>
+
+<rect x="914" y="58" width="155" height="34" rx="5" fill="rgba(124,58,237,0.1)" stroke="rgba(124,58,237,0.4)" stroke-width="1"/>
+<text x="991" y="79" text-anchor="middle" font-size="11" font-weight="500" fill="#a78bfa">CopilotStreamBridge</text>
+
+<rect x="764" y="100" width="112" height="28" rx="5" fill="rgba(124,58,237,0.06)" stroke="rgba(124,58,237,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="820" y="118" text-anchor="middle" font-size="10" fill="rgba(167,139,250,0.7)">copilot_skills.py</text>
+
+<rect x="890" y="100" width="174" height="28" rx="5" fill="rgba(124,58,237,0.06)" stroke="rgba(124,58,237,0.25)" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="977" y="118" text-anchor="middle" font-size="10" fill="rgba(167,139,250,0.7)">BYOK · Ollama :11434/v1</text>
+
+<!-- Copilot dashed route from Chat -->
+<line x1="85" y1="136" x2="85" y2="150" stroke="rgba(124,58,237,0.6)" stroke-width="1.2" stroke-dasharray="5,3"/>
+<line x1="85" y1="150" x2="833" y2="150" stroke="rgba(124,58,237,0.6)" stroke-width="1.2" stroke-dasharray="5,3"/>
+<line x1="833" y1="150" x2="833" y2="136" stroke="rgba(124,58,237,0.6)" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arr-v)"/>
+<text x="459" y="148" text-anchor="middle" font-size="9" fill="rgba(124,58,237,0.55)">copilot.enabled</text>
+
+<!-- Main flow down -->
+<line x1="375" y1="136" x2="375" y2="164" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ROW 2 — Agent Core
+     ══════════════════════════════════════════════════════════════════════════ -->
+<rect x="20" y="164" width="710" height="100" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20" y="164" width="710" height="28" rx="6" fill="#111128"/>
+<rect x="20" y="180" width="710" height="12" fill="#111128"/>
+<text x="36" y="181" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">CV ZERO CLAW AGENT  (agent.py)</text>
+
+<rect x="36"  y="206" width="148" height="42" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="110" y="223" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">LangGraph</text>
+<text x="110" y="238" text-anchor="middle" font-size="10" fill="#64748b">ReAct Orchestrator</text>
+
+<rect x="196" y="206" width="130" height="42" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="261" y="223" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">run_agent</text>
+<text x="261" y="238" text-anchor="middle" font-size="10" fill="#64748b">entrypoint</text>
+
+<rect x="338" y="206" width="148" height="42" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="412" y="223" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">llmfit</text>
+<text x="412" y="238" text-anchor="middle" font-size="10" fill="#64748b">HW probe · model select</text>
+
+<rect x="498" y="206" width="148" height="42" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="572" y="223" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">LangChain</text>
+<text x="572" y="238" text-anchor="middle" font-size="10" fill="#64748b">tool-call decoder</text>
+
+<line x1="375" y1="264" x2="375" y2="292" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ROW 3 — ZeroClaw
+     ══════════════════════════════════════════════════════════════════════════ -->
+<rect x="20" y="292" width="710" height="74" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20" y="292" width="710" height="28" rx="6" fill="#111128"/>
+<rect x="20" y="308" width="710" height="12" fill="#111128"/>
+<text x="36" y="309" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">ZEROCLAW TOOL LAYER  (src/zeroclaw_tools/)</text>
+
+<rect x="36"  y="334" width="168" height="22" rx="4" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="120" y="349" text-anchor="middle" font-size="10.5" fill="#94a3b8">create_react_agent</text>
+
+<rect x="216" y="334" width="118" height="22" rx="4" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="275" y="349" text-anchor="middle" font-size="10.5" fill="#94a3b8">tool decoder</text>
+
+<rect x="346" y="334" width="108" height="22" rx="4" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="400" y="349" text-anchor="middle" font-size="10.5" fill="#94a3b8">web_search</text>
+
+<rect x="466" y="334" width="138" height="22" rx="4" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="535" y="349" text-anchor="middle" font-size="10.5" fill="#94a3b8">built-in tools</text>
+
+<line x1="375" y1="366" x2="375" y2="394" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="390" y="383" font-size="9" fill="#374151">@tool</text>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ROW 4 — CV Tools (left)  +  Paperbanana Pipeline (right)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- CV Tools -->
+<rect x="20" y="394" width="560" height="222" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20" y="394" width="560" height="28" rx="6" fill="#111128"/>
+<rect x="20" y="410" width="560" height="12" fill="#111128"/>
+<text x="36" y="411" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">CV TOOLS  (src/cv_agent/tools/)</text>
+
+<!-- row 1 -->
+<rect x="36"  y="436" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="99"  y="449" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">analyze_image</text>
+<text x="99"  y="462" text-anchor="middle" font-size="9" fill="#64748b">vision · OCR · SAM</text>
+
+<rect x="174" y="436" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="237" y="449" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">segment_with_text</text>
+<text x="237" y="462" text-anchor="middle" font-size="9" fill="#64748b">grounding · masks</text>
+
+<rect x="312" y="436" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="375" y="449" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">knowledge_graph</text>
+<text x="375" y="462" text-anchor="middle" font-size="9" fill="#64748b">entities · vault</text>
+
+<rect x="450" y="436" width="116" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="508" y="449" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">search_arxiv</text>
+<text x="508" y="462" text-anchor="middle" font-size="9" fill="#64748b">papers · PDF fetch</text>
+
+<!-- row 2 -->
+<rect x="36"  y="484" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="99"  y="497" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">spec_generator</text>
+<text x="99"  y="510" text-anchor="middle" font-size="9" fill="#64748b">paper → spec.md</text>
+
+<rect x="174" y="484" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="237" y="497" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">draft_blog_post</text>
+<text x="237" y="510" text-anchor="middle" font-size="9" fill="#64748b">research → blog</text>
+
+<rect x="312" y="484" width="126" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="375" y="497" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">run_ocr</text>
+<text x="375" y="510" text-anchor="middle" font-size="9" fill="#64748b">tesseract · VLM</text>
+
+<rect x="450" y="484" width="116" height="36" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="508" y="497" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">label_studio</text>
+<text x="508" y="510" text-anchor="middle" font-size="9" fill="#64748b">annotation · export</text>
+
+<!-- row 3 — text_to_diagram highlighted (calls Paperbanana) -->
+<rect x="36" y="532" width="248" height="62" rx="5" fill="#0e1a0e" stroke="#16a34a" stroke-width="1.5"/>
+<rect x="36" y="532" width="248" height="22" rx="5" fill="#14532d"/>
+<rect x="36" y="546" width="248" height="8" fill="#14532d"/>
+<text x="160" y="547" text-anchor="middle" font-size="10.5" font-weight="700" fill="#4ade80">text_to_diagram</text>
+<text x="160" y="563" text-anchor="middle" font-size="9.5" fill="#86efac">→ Paperbanana pipeline</text>
+<text x="160" y="577" text-anchor="middle" font-size="9" fill="#64748b">ollama · gemini · openai · openrouter</text>
+
+<rect x="296" y="532" width="126" height="62" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="359" y="556" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">shell / file_read</text>
+<text x="359" y="572" text-anchor="middle" font-size="9" fill="#64748b">web_search</text>
+
+<rect x="434" y="532" width="132" height="62" rx="5" fill="#161630" stroke="#252550" stroke-width="1"/>
+<text x="500" y="556" text-anchor="middle" font-size="10" font-weight="500" fill="#e2e8f0">sub-agents</text>
+<text x="500" y="570" text-anchor="middle" font-size="9" fill="#64748b">blog · paper2code</text>
+<text x="500" y="584" text-anchor="middle" font-size="9" fill="#64748b">viz · training</text>
+
+<!-- Arrow: text_to_diagram → Paperbanana -->
+<line x1="590" y1="563" x2="626" y2="563" stroke="#16a34a" stroke-width="2" marker-end="url(#arr-g)"/>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     Paperbanana Pipeline — right column, spans rows 2–4
+     ══════════════════════════════════════════════════════════════════════════ -->
+<rect x="634" y="164" width="546" height="452" rx="6" fill="#080f08" stroke="#16a34a" stroke-width="1.5"/>
+<rect x="634" y="164" width="546" height="30" rx="6" fill="#0f2010"/>
+<rect x="634" y="182" width="546" height="12" fill="#0f2010"/>
+<text x="652" y="183" font-size="10" font-weight="700" fill="#4ade80" letter-spacing="1">PAPERBANANA  ·  text → publication-quality diagram</text>
+
+<!-- Input -->
+<rect x="744" y="208" width="228" height="38" rx="6" fill="#0d1f0d" stroke="#16a34a" stroke-width="1"/>
+<text x="858" y="225" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">GenerationInput</text>
+<text x="858" y="239" text-anchor="middle" font-size="9.5" fill="#86efac">source_text · caption · diagram_type</text>
+<line x1="858" y1="246" x2="858" y2="268" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr-g)"/>
+
+<!-- Optimizer -->
+<rect x="652" y="268" width="412" height="48" rx="5" fill="#0d1f0d" stroke="#16a34a" stroke-width="1"/>
+<text x="720" y="285" font-size="10.5" font-weight="600" fill="#4ade80">1 — Input Optimizer</text>
+<text x="720" y="300" font-size="9.5" fill="#6b7280">Enriches + restructures text for diagram fidelity</text>
+<text x="652" y="305" font-size="8" fill="#16a34a" dx="4">optimizer.py</text>
+<line x1="858" y1="316" x2="858" y2="338" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr-g)"/>
+
+<!-- Planner -->
+<rect x="652" y="338" width="412" height="48" rx="5" fill="#0d1f0d" stroke="#16a34a" stroke-width="1"/>
+<text x="720" y="355" font-size="10.5" font-weight="600" fill="#4ade80">2 — Planner  (VLM Agent)</text>
+<text x="720" y="370" font-size="9.5" fill="#6b7280">Decides layout · elements · colours · relationships</text>
+<text x="652" y="375" font-size="8" fill="#16a34a" dx="4">planner.py</text>
+<line x1="858" y1="386" x2="858" y2="408" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr-g)"/>
+
+<!-- Visualizer -->
+<rect x="652" y="408" width="412" height="48" rx="5" fill="#0d1f0d" stroke="#16a34a" stroke-width="1"/>
+<text x="720" y="425" font-size="10.5" font-weight="600" fill="#4ade80">3 — Visualizer  (Code Gen)</text>
+<text x="720" y="440" font-size="9.5" fill="#6b7280">Generates matplotlib / Imagen / DALL·E rendering code</text>
+<text x="652" y="445" font-size="8" fill="#16a34a" dx="4">visualizer.py</text>
+<line x1="858" y1="456" x2="858" y2="478" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr-g)"/>
+
+<!-- Critic -->
+<rect x="652" y="478" width="412" height="48" rx="5" fill="#0d1f0d" stroke="#16a34a" stroke-width="1"/>
+<text x="720" y="495" font-size="10.5" font-weight="600" fill="#4ade80">4 — Critic  (VLM Review)</text>
+<text x="720" y="510" font-size="9.5" fill="#6b7280">Scores result — triggers refinement loop if below threshold</text>
+<text x="652" y="515" font-size="8" fill="#16a34a" dx="4">critic.py</text>
+
+<!-- Refinement loop -->
+<path d="M1064,502 Q1110,502 1110,433 Q1110,364 1064,364" fill="none" stroke="#16a34a" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-g)"/>
+<text x="1118" y="428" font-size="8.5" fill="#4ade80" text-anchor="middle">refine</text>
+<text x="1118" y="440" font-size="8.5" fill="#4ade80" text-anchor="middle">loop</text>
+<text x="1118" y="452" font-size="8.5" fill="#4ade80" text-anchor="middle">× N</text>
+
+<line x1="858" y1="526" x2="858" y2="548" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr-g)"/>
+
+<!-- Output -->
+<rect x="692" y="548" width="332" height="54" rx="6" fill="#0f2010" stroke="#16a34a" stroke-width="1.5"/>
+<text x="858" y="567" text-anchor="middle" font-size="11" font-weight="700" fill="#4ade80">output/diagrams/  (PNG · SVG)</text>
+<text x="858" y="582" text-anchor="middle" font-size="9.5" fill="#6b7280">path · description · iteration count</text>
+<text x="858" y="594" text-anchor="middle" font-size="9" fill="#374151">Providers: Ollama · Gemini · OpenAI · OpenRouter · Stability</text>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ROW 5 — Model Layer (left)  +  Storage &amp; External (right)
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Model Layer -->
+<rect x="20" y="636" width="560" height="168" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20" y="636" width="560" height="28" rx="6" fill="#111128"/>
+<rect x="20" y="652" width="560" height="12" fill="#111128"/>
+<text x="36" y="653" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">MODEL LAYER  (local inference)</text>
+
+<rect x="36" y="678" width="162" height="110" rx="5" fill="#0f0f20" stroke="#252550" stroke-width="1"/>
+<text x="117" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">Vision (VLM)</text>
+<text x="50" y="712" font-size="9.5" fill="#64748b">Ollama  qwen2.5-vl:7b / :72b</text>
+<text x="50" y="727" font-size="9.5" fill="#64748b">Ollama  llava:13b · llava-next</text>
+<text x="50" y="742" font-size="9.5" fill="#64748b">MLX  qwen2.5-VL-4bit</text>
+<text x="50" y="757" font-size="9.5" fill="#64748b">SAM 3 (local)</text>
+<text x="50" y="772" font-size="9.5" fill="#64748b">Apple Neural Engine</text>
+
+<rect x="210" y="678" width="162" height="110" rx="5" fill="#0f0f20" stroke="#252550" stroke-width="1"/>
+<text x="291" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">LLM (text gen)</text>
+<text x="224" y="712" font-size="9.5" fill="#64748b">qwen2.5-coder:latest</text>
+<text x="224" y="727" font-size="9.5" fill="#64748b">qwen3-coder:30b (Copilot)</text>
+<text x="224" y="742" font-size="9.5" fill="#64748b">any Ollama model</text>
+
+<rect x="384" y="678" width="180" height="110" rx="5" fill="#0e1a0e" stroke="#166534" stroke-width="1"/>
+<text x="474" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#4ade80">Diagram Gen (PB)</text>
+<text x="398" y="712" font-size="9.5" fill="#64748b">Ollama + matplotlib  (local)</text>
+<text x="398" y="727" font-size="9.5" fill="#64748b">Gemini + Imagen</text>
+<text x="398" y="742" font-size="9.5" fill="#64748b">OpenAI + gpt-image-1</text>
+<text x="398" y="757" font-size="9.5" fill="#64748b">OpenRouter + Stability</text>
+
+<!-- Storage & External -->
+<rect x="634" y="636" width="546" height="168" rx="6" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="634" y="636" width="546" height="28" rx="6" fill="#111128"/>
+<rect x="634" y="652" width="546" height="12" fill="#111128"/>
+<text x="650" y="653" font-size="10" font-weight="700" fill="#64748b" letter-spacing="1">STORAGE  &amp;  EXTERNAL SOURCES</text>
+
+<rect x="650" y="678" width="150" height="110" rx="5" fill="#0f0f20" stroke="#252550" stroke-width="1"/>
+<text x="725" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">Filesystem</text>
+<text x="660" y="712" font-size="9.5" fill="#64748b">output/diagrams/  ← PB</text>
+<text x="660" y="727" font-size="9.5" fill="#64748b">output/specs/</text>
+<text x="660" y="742" font-size="9.5" fill="#64748b">output/.label-studio/</text>
+<text x="660" y="757" font-size="9.5" fill="#64748b">vault/  (Obsidian)</text>
+<text x="660" y="772" font-size="9.5" fill="#64748b">output/.workflows/</text>
+
+<rect x="812" y="678" width="150" height="110" rx="5" fill="#0f0f20" stroke="#252550" stroke-width="1"/>
+<text x="887" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">Research APIs</text>
+<text x="822" y="712" font-size="9.5" fill="#64748b">arXiv  (cs.CV · cs.AI)</text>
+<text x="822" y="727" font-size="9.5" fill="#64748b">Papers With Code</text>
+<text x="822" y="742" font-size="9.5" fill="#64748b">Semantic Scholar</text>
+<text x="822" y="757" font-size="9.5" fill="#64748b">HuggingFace Hub</text>
+<text x="822" y="772" font-size="9.5" fill="#64748b">Kaggle</text>
+
+<rect x="974" y="678" width="192" height="110" rx="5" fill="#0f0f20" stroke="#252550" stroke-width="1"/>
+<text x="1070" y="694" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">Integrations</text>
+<text x="984" y="712" font-size="9.5" fill="#64748b">Label Studio  :8080</text>
+<text x="984" y="727" font-size="9.5" fill="#64748b">Obsidian vault sync</text>
+<text x="984" y="742" font-size="9.5" fill="#64748b">GitHub Copilot ✦</text>
+<text x="984" y="757" font-size="9.5" fill="#64748b">Brave Search · SMTP</text>
+<text x="984" y="772" font-size="9.5" fill="#64748b">Semantic Scholar API</text>
+
+<!-- ── Connecting arrows ──────────────────────────────────────────────────── -->
+<!-- CV Tools → Model Layer -->
+<line x1="300" y1="616" x2="300" y2="636" stroke="#374151" stroke-width="1.2" marker-end="url(#arr)"/>
+<!-- PB output → Filesystem storage -->
+<line x1="858" y1="614" x2="858" y2="626" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,3"/>
+<line x1="858" y1="626" x2="725" y2="626" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,3"/>
+<line x1="725" y1="626" x2="725" y2="636" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-g)"/>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     Legend
+     ══════════════════════════════════════════════════════════════════════════ -->
+<rect x="20" y="824" width="1160" height="56" rx="5" fill="#0a0a18" stroke="#1a1a30" stroke-width="1"/>
+<text x="36" y="844" font-size="10" font-weight="700" fill="#374151" letter-spacing="1">LEGEND</text>
+<line x1="104" y1="841" x2="144" y2="841" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="150" y="845" font-size="9.5" fill="#4b5563">data / control flow</text>
+<line x1="300" y1="841" x2="340" y2="841" stroke="rgba(124,58,237,0.7)" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-v)"/>
+<text x="346" y="845" font-size="9.5" fill="#4b5563">Copilot SDK route (when enabled)</text>
+<line x1="590" y1="841" x2="630" y2="841" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr-g)"/>
+<text x="636" y="845" font-size="9.5" fill="#4b5563">Paperbanana pipeline</text>
+<rect x="800" y="832" width="12" height="12" rx="2" fill="#0e1a0e" stroke="#16a34a" stroke-width="1"/>
+<text x="818" y="843" font-size="9.5" fill="#4b5563">Paperbanana component</text>
+<rect x="1000" y="832" width="12" height="12" rx="2" fill="rgba(124,58,237,0.1)" stroke="rgba(124,58,237,0.4)" stroke-width="1"/>
+<text x="1018" y="843" font-size="9.5" fill="#4b5563">Copilot SDK (005)</text>
+
+<text x="36" y="864" font-size="9" fill="#374151">DATA FLOW  </text>
+<text x="96" y="864" font-size="9" fill="#4b5563">User → Web UI → Agent → ZeroClaw → text_to_diagram → Paperbanana [optimizer → planner → visualizer → critic × N] → output/diagrams/</text>
+
+<!-- Footer -->
+<text x="600" y="956" text-anchor="middle" font-size="9.5" fill="#1e1e35">CV Zero Claw Agent · Architecture  ·  branch: 005-copilot-sdk-chat  ·  2026-03-12</text>
 </svg>
