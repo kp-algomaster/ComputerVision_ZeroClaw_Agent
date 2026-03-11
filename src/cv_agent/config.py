@@ -182,6 +182,14 @@ class AgentsConfig(BaseModel):
     digest_writer: AgentInstanceConfig = Field(default_factory=AgentInstanceConfig)
 
 
+class LabellingConfig(BaseModel):
+    port: int = 8080
+    host: str = "0.0.0.0"
+    data_dir: str = "output/.label-studio"
+    auto_restart: bool = True
+    api_token: str = Field(default="")
+
+
 class AgentConfig(BaseModel):
     name: str = "CV Research Agent"
     description: str = "Autonomous computer vision research agent"
@@ -198,6 +206,7 @@ class AgentConfig(BaseModel):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
+    labelling: LabellingConfig = Field(default_factory=LabellingConfig)
 
 def _resolve_env_vars(data: dict | list | str) -> dict | list | str:
     """Recursively resolve ${VAR:-default} patterns in config values."""

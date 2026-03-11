@@ -36,6 +36,8 @@
 ## Active Technologies
 - Python 3.12 (backend DAG runner + REST endpoint); ES6 Vanilla JS (frontend canvas — no framework, matches existing `app.js` style) (002-cv-playground)
 - JSON files in `output/.workflows/` (existing `WorkflowManager` pattern, same directory as Eko templates) (002-cv-playground)
+- Python 3.12 + label-studio ≥ 1.10 (Apache 2.0), httpx (sync), FastAPI, Pydantic V2 (004-labelling-tool)
+- Label Studio's own SQLite DB at `output/.label-studio/`; exports to `output/labels/` (004-labelling-tool)
 
 ## Recent Changes
 - 002-cv-playground: Added Python 3.12 (backend DAG runner + REST endpoint); ES6 Vanilla JS (frontend canvas — no framework, matches existing `app.js` style)

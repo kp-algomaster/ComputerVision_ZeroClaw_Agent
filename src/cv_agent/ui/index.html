@@ -68,6 +68,7 @@
                     <li class="nav-item" data-view="vault"><span class="nav-icon">🗂️</span>Knowledge Vault</li>
                     <li class="nav-item" data-view="graph"><span class="nav-icon">🕸️</span>Knowledge Graph</li>
                     <li class="nav-item" data-view="workflows"><span class="nav-icon">🗺️</span>Workflows</li>
+                    <li class="nav-item" data-view="labelling"><span class="nav-icon">🏷️</span>Labelling</li>
                     <li class="nav-item" id="nav-playground" onclick="togglePlayground()"><span
                             class="nav-icon">⚡</span>Playground<span class="pg-live-sidebar-badge"
                             id="pgLiveSidebarToggle" onclick="event.stopPropagation(); pgToggleLive()"
@@ -864,6 +865,34 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- ═══ Labelling ═══ -->
+        <section id="view-labelling" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🏷️ Labelling</h2>
+                    <p class="view-hint">Label Studio annotation platform — start the server, create projects, import images, and export annotations.</p>
+                </div>
+                <div class="view-actions">
+                    <button class="btn-sm" id="lsInstallBtn" onclick="lsInstall()" style="display:none;">⬇ Install</button>
+                    <button class="btn-sm" id="lsStartBtn" onclick="lsStart()">▶ Start</button>
+                    <button class="btn-sm" id="lsStopBtn" onclick="lsStop()" disabled>■ Stop</button>
+                    <button class="btn-sm" onclick="lsRefreshStatus()">↻ Status</button>
+                </div>
+            </div>
+            <div id="lsStatusBar" style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:0.85rem;">
+                <span id="lsStatusDot" class="status-dot"></span>
+                <span id="lsStatusText">Checking…</span>
+                <a id="lsAccessUrl" href="#" target="_blank" rel="noopener"
+                   style="display:none;margin-left:12px;font-size:0.8rem;color:var(--accent)"></a>
+            </div>
+            <div id="lsInstallLog" style="display:none;font-size:0.78rem;font-family:monospace;background:var(--bg2);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;margin-bottom:8px;"></div>
+            <div id="lsPendingNodes" style="margin-bottom:12px;"></div>
+            <div id="lsIframeWrapper" style="display:none;margin-top:8px;">
+                <iframe id="lsIframe" src="" title="Label Studio"
+                        style="width:100%;height:80vh;border:1px solid var(--border);border-radius:6px;"></iframe>
             </div>
         </section>
 
