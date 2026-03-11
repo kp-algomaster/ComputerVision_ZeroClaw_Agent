@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" style="font-family:'Inter',system-ui,sans-serif">
+
+<!-- ── Background ── -->
+<rect width="1200" height="680" fill="#08080f"/>
+
+<!-- ── Title ── -->
+<text x="600" y="38" text-anchor="middle" font-size="17" font-weight="700" fill="#e2e8f0">CV Zero Claw Agent  —  Feature Domains</text>
+<line x1="100" y1="50" x2="1100" y2="50" stroke="#1e1e35" stroke-width="1"/>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 1 — Research Automation
+     ══════════════════════════════════════════════════════════ -->
+<rect x="20"  y="64" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20"  y="64" width="375" height="36"  rx="8" fill="#111128"/>
+<rect x="20"  y="86" width="375" height="14"  fill="#111128"/>
+<text x="38" y="86" font-size="13" font-weight="700" fill="#60a5fa">🔬  Research Automation</text>
+
+<text x="38" y="122" font-size="11" font-weight="600" fill="#94a3b8">Paper Discovery</text>
+<text x="38" y="138" font-size="10.5" fill="#64748b">· Continuous arXiv monitor (cs.CV · cs.AI · cs.LG · cs.RO)</text>
+<text x="38" y="153" font-size="10.5" fill="#64748b">· Papers With Code  ·  Semantic Scholar</text>
+<text x="38" y="168" font-size="10.5" fill="#64748b">· Configurable keyword queries  ·  PDF fetch &amp; cache</text>
+
+<text x="38" y="190" font-size="11" font-weight="600" fill="#94a3b8">Extraction Pipeline</text>
+<text x="38" y="206" font-size="10.5" fill="#64748b">· Multi-faceted: equations · architectures · datasets</text>
+<text x="38" y="221" font-size="10.5" fill="#64748b">· Loss functions · metrics · ablation results</text>
+<text x="38" y="236" font-size="10.5" fill="#64748b">· Spec generation (Markdown · LaTeX) → vault</text>
+
+<text x="38" y="258" font-size="11" font-weight="600" fill="#94a3b8">Digests</text>
+<text x="38" y="274" font-size="10.5" fill="#64748b">· Weekly digest (Monday) via digest_writer agent</text>
+<text x="38" y="289" font-size="10.5" fill="#64748b">· Auto-blog via blog_writer sub-agent</text>
+<text x="38" y="304" font-size="10.5" fill="#64748b">· Knowledge graph indexing (entities · links · Obsidian)</text>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 2 — Local AI Inference
+     ══════════════════════════════════════════════════════════ -->
+<rect x="413" y="64" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="413" y="64" width="375" height="36"  rx="8" fill="#111128"/>
+<rect x="413" y="86" width="375" height="14"  fill="#111128"/>
+<text x="431" y="86" font-size="13" font-weight="700" fill="#a78bfa">⚡  Local AI Inference</text>
+
+<text x="431" y="122" font-size="11" font-weight="600" fill="#94a3b8">Vision Models</text>
+<text x="431" y="138" font-size="10.5" fill="#64748b">· Ollama: qwen2.5-vl:7b / :72b  ·  llava:13b  ·  llava-next</text>
+<text x="431" y="153" font-size="10.5" fill="#64748b">· MLX (Apple Silicon): qwen2.5-VL-4bit  ·  llava-1.5-7b</text>
+<text x="431" y="168" font-size="10.5" fill="#64748b">· SAM 3 segmentation  ·  Apple Neural Engine</text>
+
+<text x="431" y="190" font-size="11" font-weight="600" fill="#94a3b8">LLM</text>
+<text x="431" y="206" font-size="10.5" fill="#64748b">· qwen2.5-coder:latest  ·  qwen3-coder:30b</text>
+<text x="431" y="221" font-size="10.5" fill="#64748b">· Any Ollama-compatible model  ·  BYOK via .env</text>
+<text x="431" y="236" font-size="10.5" fill="#64748b">· llmfit hardware probe → auto model selection</text>
+
+<text x="431" y="258" font-size="11" font-weight="600" fill="#94a3b8">Text → Diagram  (Paperbanana)</text>
+<text x="431" y="274" font-size="10.5" fill="#64748b">· 4-phase pipeline: optimizer → planner → visualizer → critic</text>
+<text x="431" y="289" font-size="10.5" fill="#64748b">· Iterative refinement loop  ·  output/diagrams/</text>
+<text x="431" y="304" font-size="10.5" fill="#64748b">· Providers: Ollama · Gemini · OpenAI · OpenRouter</text>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 3 — Knowledge Management
+     ══════════════════════════════════════════════════════════ -->
+<rect x="806" y="64" width="374" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="806" y="64" width="374" height="36"  rx="8" fill="#111128"/>
+<rect x="806" y="86" width="374" height="14"  fill="#111128"/>
+<text x="824" y="86" font-size="13" font-weight="700" fill="#34d399">🕸️  Knowledge Management</text>
+
+<text x="824" y="122" font-size="11" font-weight="600" fill="#94a3b8">Knowledge Graph</text>
+<text x="824" y="138" font-size="10.5" fill="#64748b">· Obsidian vault  ·  hierarchical markdown notes</text>
+<text x="824" y="153" font-size="10.5" fill="#64748b">· Entity types: paper · method · dataset · architecture</text>
+<text x="824" y="168" font-size="10.5" fill="#64748b">· Link types: proposes · uses · extends · cites · outperforms</text>
+
+<text x="824" y="190" font-size="11" font-weight="600" fill="#94a3b8">Vault Viewer</text>
+<text x="824" y="206" font-size="10.5" fill="#64748b">· Live Markdown render in browser  ·  graph topology</text>
+<text x="824" y="221" font-size="10.5" fill="#64748b">· Sync browser tab with Obsidian toggle</text>
+<text x="824" y="236" font-size="10.5" fill="#64748b">· Full-text search across all vault nodes</text>
+
+<text x="824" y="258" font-size="11" font-weight="600" fill="#94a3b8">Spec Generator</text>
+<text x="824" y="274" font-size="10.5" fill="#64748b">· Paper → structured spec.md (Pydantic schema)</text>
+<text x="824" y="289" font-size="10.5" fill="#64748b">· Extract: equations · architectures · training details</text>
+<text x="824" y="304" font-size="10.5" fill="#64748b">· Auto-index into knowledge graph on save</text>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 4 — ML Training Pipeline
+     ══════════════════════════════════════════════════════════ -->
+<rect x="20"  y="350" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="20"  y="350" width="375" height="36"  rx="8" fill="#111128"/>
+<rect x="20"  y="372" width="375" height="14"  fill="#111128"/>
+<text x="38" y="372" font-size="13" font-weight="700" fill="#fb923c">🏋️  ML Training Pipeline</text>
+
+<text x="38" y="408" font-size="11" font-weight="600" fill="#94a3b8">Datasets</text>
+<text x="38" y="424" font-size="10.5" fill="#64748b">· HuggingFace Hub + Kaggle search &amp; one-click download</text>
+<text x="38" y="439" font-size="10.5" fill="#64748b">· 11 pre-configured CV datasets (COCO · ImageNet · road-damage…)</text>
+<text x="38" y="454" font-size="10.5" fill="#64748b">· SSE progress bar  ·  annotation-aware image grid viewer</text>
+
+<text x="38" y="476" font-size="11" font-weight="600" fill="#94a3b8">Fine-Tuning</text>
+<text x="38" y="492" font-size="10.5" fill="#64748b">· HuggingFace Trainer  ·  LoRA / QLoRA support</text>
+<text x="38" y="507" font-size="10.5" fill="#64748b">· model_training sub-agent  ·  output/fine-tuned/</text>
+<text x="38" y="522" font-size="10.5" fill="#64748b">· paper_to_code agent: paper → training script</text>
+
+<text x="38" y="544" font-size="11" font-weight="600" fill="#94a3b8">Labelling  (Label Studio)</text>
+<text x="38" y="560" font-size="10.5" fill="#64748b">· Label Studio ≥ 1.10 embedded at :8080</text>
+<text x="38" y="575" font-size="10.5" fill="#64748b">· Auto-import downloaded datasets  ·  YOLO / COCO export</text>
+<text x="38" y="590" font-size="10.5" fill="#64748b">· output/.label-studio/  ·  output/labels/</text>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 5 — Agent Ecosystem
+     ══════════════════════════════════════════════════════════ -->
+<rect x="413" y="350" width="375" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="413" y="350" width="375" height="36"  rx="8" fill="#111128"/>
+<rect x="413" y="372" width="375" height="14"  fill="#111128"/>
+<text x="431" y="372" font-size="13" font-weight="700" fill="#f472b6">🤖  Agent Ecosystem</text>
+
+<text x="431" y="408" font-size="11" font-weight="600" fill="#94a3b8">Core Agent</text>
+<text x="431" y="424" font-size="10.5" fill="#64748b">· LangGraph ReAct orchestrator  ·  tool-call decoder</text>
+<text x="431" y="439" font-size="10.5" fill="#64748b">· llmfit hardware probe  ·  async streaming WebSocket</text>
+<text x="431" y="454" font-size="10.5" fill="#64748b">· ✦ Copilot SDK mode (BYOK Ollama / GitHub token)</text>
+
+<text x="431" y="476" font-size="11" font-weight="600" fill="#94a3b8">Sub-Agents</text>
+<text x="431" y="492" font-size="10.5" fill="#64748b">· blog_writer  ·  paper_to_code  ·  data_visualization</text>
+<text x="431" y="507" font-size="10.5" fill="#64748b">· model_training  ·  website_maintenance  ·  digest_writer</text>
+<text x="431" y="522" font-size="10.5" fill="#64748b">· Each overridable via MODEL_OVERRIDE env var</text>
+
+<text x="431" y="544" font-size="11" font-weight="600" fill="#94a3b8">⚡ Live Playground</text>
+<text x="431" y="560" font-size="10.5" fill="#64748b">· Drag-and-drop DAG canvas  ·  WebSocket real-time exec</text>
+<text x="431" y="575" font-size="10.5" fill="#64748b">· Sequential / Parallel modes  ·  save → output/.workflows/</text>
+<text x="431" y="590" font-size="10.5" fill="#64748b">· Per-node status: done · running · pending · error</text>
+
+<!-- ══════════════════════════════════════════════════════════
+     Card 6 — Integrations & Channels
+     ══════════════════════════════════════════════════════════ -->
+<rect x="806" y="350" width="374" height="268" rx="8" fill="#0d0d1f" stroke="#1e1e35" stroke-width="1"/>
+<rect x="806" y="350" width="374" height="36"  rx="8" fill="#111128"/>
+<rect x="806" y="372" width="374" height="14"  fill="#111128"/>
+<text x="824" y="372" font-size="13" font-weight="700" fill="#fbbf24">🔌  Integrations &amp; Channels</text>
+
+<text x="824" y="408" font-size="11" font-weight="600" fill="#94a3b8">Messaging</text>
+<text x="824" y="424" font-size="10.5" fill="#64748b">· Telegram  ·  Discord  ·  Slack  ·  Email (SMTP)</text>
+<text x="824" y="439" font-size="10.5" fill="#64748b">· GitHub Copilot ✦  ·  GitHub Issues &amp; PR comments</text>
+<text x="824" y="454" font-size="10.5" fill="#64748b">· Google Drive  ·  Brave Search  ·  AWS S3</text>
+
+<text x="824" y="476" font-size="11" font-weight="600" fill="#94a3b8">Powers (configure in UI)</text>
+<text x="824" y="492" font-size="10.5" fill="#64748b">· HuggingFace Hub  ·  Kaggle  ·  Semantic Scholar API</text>
+<text x="824" y="507" font-size="10.5" fill="#64748b">· OpenAI · Anthropic · Google Gemini (cloud LLM)</text>
+<text x="824" y="522" font-size="10.5" fill="#64748b">· Runpod · Lambda · Vast.ai (cloud GPU)</text>
+
+<text x="824" y="544" font-size="11" font-weight="600" fill="#94a3b8">Jobs &amp; Server</text>
+<text x="824" y="560" font-size="10.5" fill="#64748b">· Cron-style job scheduler  ·  job history &amp; re-run</text>
+<text x="824" y="575" font-size="10.5" fill="#64748b">· Server management: start · stop · restart · logs</text>
+<text x="824" y="590" font-size="10.5" fill="#64748b">· Model catalog: pull · delete · VRAM/RAM usage</text>
+
+<!-- ── Footer ── -->
+<line x1="100" y1="630" x2="1100" y2="630" stroke="#1e1e35" stroke-width="1"/>
+<text x="600" y="650" text-anchor="middle" font-size="9.5" fill="#252540">CV Zero Claw Agent  ·  http://localhost:8420  ·  Python 3.12  ·  LangGraph · LangChain · FastAPI · Paperbanana · Label Studio · GitHub Copilot SDK</text>
+<text x="600" y="666" text-anchor="middle" font-size="9.5" fill="#1e1e35">Dependency policy: MIT · Apache 2.0 · BSD only</text>
+</svg>
