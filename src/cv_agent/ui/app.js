@@ -26,6 +26,8 @@ let _chatModelState = {
     message: '',
 };
 let currentChatModel = '';
+let _chatHistory = [];  // {role, content, timestamp}
+let _currentSessionId = null;  // tracks saved session for re-save
 
 function _localDefaultT2DVlmModel(vlmProvider) {
     if (vlmProvider === 'gemini') return 'gemini-2.0-flash';
@@ -122,6 +124,7 @@ function switchView(view) {
         sam3: loadSam3View,
         ocr: loadOcrView,
         labelling: loadLabellingView,
+        'skill-creator': scLoadList,
     };
     if (loaders[view]) loaders[view]();
 }
@@ -296,6 +299,7 @@ function initChat() {
             return;
         }
         addMessage('user', text);
+        _chatHistory.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
         sendMessage(text);
         input.value = '';
         input.style.height = 'auto';
@@ -490,6 +494,9 @@ function _finalizeStream(content, html) {
         }
         _streamingBody.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
         renderMathInElement(_streamingBody);
+    }
+    if (content && content.trim()) {
+        _chatHistory.push({ role: 'assistant', content: content, timestamp: new Date().toISOString() });
     }
     _clearStream();
     scrollChat();
@@ -2493,17 +2500,20 @@ async function loadSessions() {
         const data = await resp.json();
         const sessions = data.sessions || [];
         if (sessions.length === 0) {
-            el.innerHTML = '<p class="placeholder">No chat sessions recorded yet. Start a conversation in the Chat view.</p>';
+            el.innerHTML = '<p class="placeholder">No saved sessions yet. Use the 💾 Save Session button in Chat to save a conversation.</p>';
             return;
         }
         let html = '<div class="sessions-list">';
         for (const s of sessions) {
-            html += `<div class="session-row">
+            html += `<div class="session-row" style="cursor:pointer" onclick="viewSession('${escapeHtml(s.id)}')">
                 <div class="session-info">
-                    <div class="session-id">${escapeHtml(s.id)}</div>
-                    <div class="session-meta">${s.messages} messages · Started ${formatDate(s.started)}</div>
+                    <div class="session-id" style="font-weight:600;">${escapeHtml(s.title || s.id)}</div>
+                    <div class="session-meta">${s.message_count} messages · ${escapeHtml(s.model || '')} · ${formatDate(s.saved_at)}</div>
+                    ${s.vault_note ? '<span style="font-size:0.75rem;opacity:0.6">📓 vault</span>' : ''}
                 </div>
-                <span class="status-badge ${s.active ? 'active' : 'inactive'}">${s.active ? 'active' : 'ended'}</span>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button class="btn-sm" onclick="event.stopPropagation();deleteSession('${escapeHtml(s.id)}')" title="Delete session">🗑</button>
+                </div>
             </div>`;
         }
         html += '</div>';
@@ -2511,6 +2521,90 @@ async function loadSessions() {
     } catch {
         el.innerHTML = '<p class="placeholder">Failed to load sessions.</p>';
     }
+}
+
+async function saveSession() {
+    if (_chatHistory.length === 0) {
+        _showToast('Nothing to save — start a conversation first.', 'warn');
+        return;
+    }
+    // Only prompt for title on first save
+    let title = '';
+    if (!_currentSessionId) {
+        title = prompt('Session title (optional):') || '';
+    }
+    const btn = document.getElementById('saveSessionBtn');
+    if (btn) btn.disabled = true;
+    try {
+        const payload = { messages: _chatHistory, model: currentChatModel };
+        if (title) payload.title = title;
+        if (_currentSessionId) payload.id = _currentSessionId;
+        const resp = await fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            _showToast(`Save failed: ${data.error}`, 'error');
+        } else {
+            _currentSessionId = data.id;
+            const verb = data.updated ? 'updated' : 'saved';
+            _showToast(`Session ${verb}${data.vault_note ? ' · added to vault' : ''}`, 'ok');
+            // Update button label to indicate this session is tracked
+            if (btn) btn.innerHTML = '💾 Update Session';
+        }
+    } catch (e) {
+        _showToast(`Save failed: ${e.message}`, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/** Lightweight toast notification that doesn't touch the chat stream. */
+function _showToast(msg, level = 'ok') {
+    const existing = document.getElementById('_toast');
+    if (existing) existing.remove();
+    const t = document.createElement('div');
+    t.id = '_toast';
+    const bg = level === 'error' ? '#f85149' : level === 'warn' ? '#d29922' : '#3fb950';
+    Object.assign(t.style, {
+        position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999,
+        padding: '10px 18px', borderRadius: '8px', fontSize: '0.85rem',
+        background: bg, color: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        opacity: '0', transition: 'opacity 0.25s',
+    });
+    t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => { t.style.opacity = '1'; });
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+async function viewSession(sessionId) {
+    try {
+        const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        const data = await resp.json();
+        if (data.error) return;
+        const messages = data.messages || [];
+        const el = document.getElementById('sessionsContent');
+        let html = `<div style="margin-bottom:12px;"><button class="btn-sm" onclick="loadSessions()">← Back to Sessions</button></div>`;
+        html += `<h3 style="margin:0 0 4px;">${escapeHtml(data.title || data.id)}</h3>`;
+        html += `<div style="font-size:0.8rem;opacity:0.6;margin-bottom:16px;">${data.message_count} messages · ${escapeHtml(data.model || '')} · ${formatDate(data.saved_at)}</div>`;
+        html += '<div class="session-transcript">';
+        for (const m of messages) {
+            const cls = m.role === 'user' ? 'user' : 'assistant';
+            const label = m.role === 'user' ? 'You' : 'CV Assistant';
+            html += `<div class="message ${cls}"><div class="message-label">${label}</div><div class="message-content">${escapeHtml(m.content)}</div></div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch { /* silent */ }
+}
+
+async function deleteSession(sessionId) {
+    if (!confirm('Delete this saved session?')) return;
+    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+    loadSessions();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2711,8 +2805,8 @@ async function runFineTuneJob() {
 // Skills
 // ═══════════════════════════════════════════════════════════════════════
 
-const _CAT_ORDER_SKILLS = ['vision', 'research', 'content', 'ml'];
-const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research', content: '✍️ Content', ml: '⚙️ ML / Training' };
+const _CAT_ORDER_SKILLS = ['vision', 'research', 'content', 'ml', 'custom'];
+const _CAT_LABELS_SKILLS = { vision: '👁️ Vision', research: '🔬 Research', content: '✍️ Content', ml: '⚙️ ML / Training', custom: '🧩 Custom' };
 
 async function loadSkills() {
     const grid = document.getElementById('skillsGrid');
@@ -3696,8 +3790,21 @@ async function loadVaultNote(path) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Knowledge Graph
+// Knowledge Graph — Obsidian-style Force-Directed
 // ═══════════════════════════════════════════════════════════════════════
+
+let _graphState = null;  // persistent graph simulation state
+let _graphAnimFrame = null;
+
+const _graphTypeColors = {
+    paper:   '#58a6ff',
+    method:  '#f0883e',
+    dataset: '#3fb950',
+    task:    '#f85149',
+    author:  '#d2a8ff',
+    session: '#bc8cff',
+    unknown: '#8b949e',
+};
 
 async function loadGraph() {
     try {
@@ -3705,80 +3812,363 @@ async function loadGraph() {
         const data = await resp.json();
         const stats = data.stats;
         document.getElementById('graphStats').textContent = `${stats.nodes} nodes · ${stats.edges} edges`;
-        drawGraph(data.graph);
+        _initForceGraph(data.graph);
     } catch (e) { console.error('Failed to load graph:', e); }
 }
 
-function drawGraph(graphData) {
+function filterGraph(query) {
+    if (!_graphState) return;
+    const q = query.toLowerCase();
+    for (const n of _graphState.nodes) {
+        n.hidden = q && !(n.id.toLowerCase().includes(q) || (n.title || '').toLowerCase().includes(q) || (n.type || '').toLowerCase().includes(q));
+    }
+}
+
+function _initForceGraph(graphData) {
+    if (_graphAnimFrame) { cancelAnimationFrame(_graphAnimFrame); _graphAnimFrame = null; }
+
     const canvas = document.getElementById('graphCanvas');
+    const container = canvas.parentElement;
     const ctx = canvas.getContext('2d');
-    const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width * devicePixelRatio;
-    canvas.height = rect.height * devicePixelRatio;
+    const rect = container.getBoundingClientRect();
+    const dpr = devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
     canvas.style.width = rect.width + 'px';
     canvas.style.height = rect.height + 'px';
-    ctx.scale(devicePixelRatio, devicePixelRatio);
 
     const W = rect.width, H = rect.height;
-    const nodes = graphData.nodes || [], edges = graphData.edges || [];
+    const rawNodes = graphData.nodes || [], rawEdges = graphData.edges || [];
 
-    if (nodes.length === 0) {
+    if (rawNodes.length === 0) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = '#8b949e';
         ctx.font = '14px -apple-system, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('No nodes yet. Process papers to build the graph.', W / 2, H / 2);
+        ctx.fillText('No nodes yet — save sessions or process papers to build the graph.', W / 2, H / 2);
+        // Render legend even when empty
+        _renderGraphLegend();
         return;
     }
 
-    const typeColors = { paper: '#58a6ff', method: '#f0883e', dataset: '#3fb950', task: '#f85149', author: '#d2a8ff', unknown: '#8b949e' };
-    const positions = {};
-    nodes.forEach((node, i) => {
-        const angle = (2 * Math.PI * i) / nodes.length;
-        const r = Math.min(W, H) * 0.35;
-        positions[node.id] = {
-            x: W / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 40,
-            y: H / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 40,
+    // Build adjacency for sizing nodes by connection count
+    const adj = {};
+    for (const n of rawNodes) adj[n.id] = 0;
+    for (const e of rawEdges) {
+        adj[e.source] = (adj[e.source] || 0) + 1;
+        adj[e.target] = (adj[e.target] || 0) + 1;
+    }
+
+    // Build node objects with physics
+    const nodeMap = {};
+    const nodes = rawNodes.map((n, i) => {
+        const angle = (2 * Math.PI * i) / rawNodes.length;
+        const r = Math.min(W, H) * 0.3;
+        const obj = {
+            id: n.id,
+            type: n.type || 'unknown',
+            title: n.title || n.id,
+            file: n.file || '',
+            abstract: (n.abstract || '').substring(0, 200),
+            connections: adj[n.id] || 0,
+            x: W / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 60,
+            y: H / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 60,
+            vx: 0, vy: 0,
+            hidden: false,
         };
+        nodeMap[n.id] = obj;
+        return obj;
     });
 
-    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
-    for (const edge of edges) {
-        const from = positions[edge.source], to = positions[edge.target];
-        if (from && to) {
-            ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
-            const dx = to.x - from.x, dy = to.y - from.y, len = Math.sqrt(dx * dx + dy * dy);
-            if (len > 0) {
-                const nx = dx / len, ny = dy / len, ax = to.x - nx * 14, ay = to.y - ny * 14;
-                ctx.beginPath();
-                ctx.moveTo(to.x - nx * 8, to.y - ny * 8);
-                ctx.lineTo(ax - ny * 4, ay + nx * 4);
-                ctx.lineTo(ax + ny * 4, ay - nx * 4);
-                ctx.fillStyle = '#30363d'; ctx.fill();
+    const edges = rawEdges.map(e => ({
+        source: nodeMap[e.source],
+        target: nodeMap[e.target],
+        relation: e.relation || '',
+    })).filter(e => e.source && e.target);
+
+    // Camera state — zoom and pan
+    const cam = { x: 0, y: 0, zoom: 1 };
+
+    const state = { nodes, edges, nodeMap, cam, W, H, dpr, canvas, ctx, container,
+        dragging: null, hovering: null, simulating: true, cooldown: 300 };
+    _graphState = state;
+
+    _renderGraphLegend();
+    _setupGraphInteractions(state);
+    _runForceSimulation(state);
+}
+
+function _renderGraphLegend() {
+    const legend = document.getElementById('graphLegend');
+    if (!legend) return;
+    legend.innerHTML = Object.entries(_graphTypeColors).map(([type, color]) =>
+        `<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>${type}</span>`
+    ).join('');
+}
+
+function _setupGraphInteractions(state) {
+    const { canvas, cam, container } = state;
+    let isPanning = false, panStart = { x: 0, y: 0 };
+
+    function screenToWorld(sx, sy) {
+        return { x: (sx - state.W / 2) / cam.zoom - cam.x + state.W / 2,
+                 y: (sy - state.H / 2) / cam.zoom - cam.y + state.H / 2 };
+    }
+
+    function nodeAt(wx, wy) {
+        for (let i = state.nodes.length - 1; i >= 0; i--) {
+            const n = state.nodes[i];
+            if (n.hidden) continue;
+            const r = _nodeRadius(n);
+            const dx = n.x - wx, dy = n.y - wy;
+            if (dx * dx + dy * dy < (r + 4) * (r + 4)) return n;
+        }
+        return null;
+    }
+
+    // Remove old listeners by replacing canvas (clean slate)
+    const newCanvas = canvas.cloneNode(false);
+    canvas.parentNode.replaceChild(newCanvas, canvas);
+    state.canvas = newCanvas;
+    state.ctx = newCanvas.getContext('2d');
+
+    newCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        cam.zoom = Math.max(0.1, Math.min(8, cam.zoom * factor));
+    }, { passive: false });
+
+    newCanvas.addEventListener('mousedown', (e) => {
+        const rect = newCanvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const w = screenToWorld(sx, sy);
+        const hit = nodeAt(w.x, w.y);
+        if (hit) {
+            state.dragging = hit;
+            hit.vx = 0; hit.vy = 0;
+        } else {
+            isPanning = true;
+            panStart = { x: e.clientX, y: e.clientY };
+        }
+    });
+
+    newCanvas.addEventListener('mousemove', (e) => {
+        const rect = newCanvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const w = screenToWorld(sx, sy);
+
+        if (state.dragging) {
+            state.dragging.x = w.x;
+            state.dragging.y = w.y;
+            state.cooldown = 120; // keep simulating while dragging
+            return;
+        }
+        if (isPanning) {
+            cam.x += (e.clientX - panStart.x) / cam.zoom;
+            cam.y += (e.clientY - panStart.y) / cam.zoom;
+            panStart = { x: e.clientX, y: e.clientY };
+            return;
+        }
+
+        // Hover detection
+        const hit = nodeAt(w.x, w.y);
+        if (hit !== state.hovering) {
+            state.hovering = hit;
+            newCanvas.style.cursor = hit ? 'pointer' : 'grab';
+            _showGraphTooltip(state, hit, e.clientX, e.clientY);
+        }
+    });
+
+    newCanvas.addEventListener('mouseup', () => {
+        state.dragging = null;
+        isPanning = false;
+    });
+
+    newCanvas.addEventListener('mouseleave', () => {
+        state.dragging = null;
+        isPanning = false;
+        state.hovering = null;
+        _showGraphTooltip(state, null, 0, 0);
+    });
+
+    // Double click to focus a node
+    newCanvas.addEventListener('dblclick', (e) => {
+        const rect = newCanvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+        const w = screenToWorld(sx, sy);
+        const hit = nodeAt(w.x, w.y);
+        if (hit) {
+            // Center camera on this node
+            cam.x = state.W / 2 - hit.x;
+            cam.y = state.H / 2 - hit.y;
+            cam.zoom = 1.5;
+        }
+    });
+}
+
+function _showGraphTooltip(state, node, cx, cy) {
+    const tip = document.getElementById('graphTooltip');
+    if (!tip) return;
+    if (!node) { tip.style.display = 'none'; return; }
+
+    const color = _graphTypeColors[node.type] || _graphTypeColors.unknown;
+    let html = `<div style="margin-bottom:4px;font-weight:600;color:${color};">${escapeHtml(node.title || node.id)}</div>`;
+    html += `<div style="opacity:0.6;font-size:0.75rem;margin-bottom:4px;">${node.type} · ${node.connections} connections</div>`;
+    if (node.abstract) html += `<div style="opacity:0.8;font-size:0.8rem;">${escapeHtml(node.abstract)}${node.abstract.length >= 200 ? '…' : ''}</div>`;
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+
+    const rect = state.container.getBoundingClientRect();
+    let tx = cx - rect.left + 12, ty = cy - rect.top - 10;
+    if (tx + 330 > rect.width) tx = cx - rect.left - 330;
+    if (ty + tip.offsetHeight > rect.height) ty = rect.height - tip.offsetHeight - 8;
+    tip.style.left = tx + 'px';
+    tip.style.top = ty + 'px';
+}
+
+function _nodeRadius(node) {
+    return Math.max(4, Math.min(16, 5 + node.connections * 2));
+}
+
+function _runForceSimulation(state) {
+    const { nodes, edges, cam, ctx, dpr } = state;
+    const alpha = 0.3;
+    const repulsion = 800;
+    const attraction = 0.005;
+    const idealLen = 120;
+    const damping = 0.85;
+    const centerGravity = 0.01;
+
+    function tick() {
+        const W = state.W, H = state.H;
+
+        // Force simulation step
+        if (state.cooldown > 0) {
+            state.cooldown--;
+            const t = Math.max(0.01, state.cooldown / 300) * alpha;
+
+            // Center gravity
+            for (const n of nodes) {
+                if (n === state.dragging || n.hidden) continue;
+                n.vx += (W / 2 - n.x) * centerGravity;
+                n.vy += (H / 2 - n.y) * centerGravity;
+            }
+
+            // Repulsion between all node pairs
+            for (let i = 0; i < nodes.length; i++) {
+                const a = nodes[i];
+                if (a.hidden) continue;
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const b = nodes[j];
+                    if (b.hidden) continue;
+                    let dx = a.x - b.x, dy = a.y - b.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const force = repulsion / (dist * dist);
+                    const fx = dx / dist * force * t;
+                    const fy = dy / dist * force * t;
+                    if (a !== state.dragging) { a.vx += fx; a.vy += fy; }
+                    if (b !== state.dragging) { b.vx -= fx; b.vy -= fy; }
+                }
+            }
+
+            // Edge attraction
+            for (const e of edges) {
+                if (e.source.hidden || e.target.hidden) continue;
+                const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const force = (dist - idealLen) * attraction * t;
+                const fx = dx / dist * force, fy = dy / dist * force;
+                if (e.source !== state.dragging) { e.source.vx += fx; e.source.vy += fy; }
+                if (e.target !== state.dragging) { e.target.vx -= fx; e.target.vy -= fy; }
+            }
+
+            // Apply velocity + damping
+            for (const n of nodes) {
+                if (n === state.dragging || n.hidden) continue;
+                n.vx *= damping; n.vy *= damping;
+                n.x += n.vx; n.y += n.vy;
             }
         }
+
+        // ── Render ──
+        const canvas = state.canvas;
+        const cRect = canvas.parentElement.getBoundingClientRect();
+        if (canvas.width !== cRect.width * dpr || canvas.height !== cRect.height * dpr) {
+            canvas.width = cRect.width * dpr;
+            canvas.height = cRect.height * dpr;
+            canvas.style.width = cRect.width + 'px';
+            canvas.style.height = cRect.height + 'px';
+            state.W = cRect.width; state.H = cRect.height;
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, state.W, state.H);
+
+        // Apply camera transform
+        ctx.save();
+        ctx.translate(state.W / 2, state.H / 2);
+        ctx.scale(cam.zoom, cam.zoom);
+        ctx.translate(cam.x - state.W / 2, cam.y - state.H / 2);
+
+        // Draw edges
+        for (const e of edges) {
+            if (e.source.hidden || e.target.hidden) continue;
+            const highlighted = state.hovering && (e.source === state.hovering || e.target === state.hovering);
+            ctx.strokeStyle = highlighted ? 'rgba(139,148,158,0.6)' : 'rgba(48,54,61,0.5)';
+            ctx.lineWidth = highlighted ? 1.5 : 0.8;
+            ctx.beginPath();
+            ctx.moveTo(e.source.x, e.source.y);
+            ctx.lineTo(e.target.x, e.target.y);
+            ctx.stroke();
+        }
+
+        // Draw nodes
+        for (const n of nodes) {
+            if (n.hidden) continue;
+            const color = _graphTypeColors[n.type] || _graphTypeColors.unknown;
+            const r = _nodeRadius(n);
+            const isHover = n === state.hovering;
+            const isConnected = state.hovering && edges.some(e =>
+                (e.source === state.hovering && e.target === n) ||
+                (e.target === state.hovering && e.source === n));
+
+            // Glow effect for hovered and connected nodes
+            if (isHover || isConnected) {
+                ctx.save();
+                ctx.shadowColor = color;
+                ctx.shadowBlur = isHover ? 20 : 12;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r + (isHover ? 3 : 1), 0, 2 * Math.PI);
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Node circle
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = (state.hovering && !isHover && !isConnected) ? 0.25 : 1;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Label — only show when zoomed in enough or when hovered/connected
+            if (cam.zoom > 0.6 || isHover || isConnected) {
+                const label = (n.title || n.id).substring(0, 40);
+                ctx.fillStyle = (state.hovering && !isHover && !isConnected) ? 'rgba(230,237,243,0.2)' : '#e6edf3';
+                ctx.font = `${isHover ? 'bold ' : ''}${11 / Math.max(cam.zoom, 0.5)}px -apple-system, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText(label, n.x, n.y + r + 14 / Math.max(cam.zoom, 0.5));
+            }
+        }
+
+        ctx.restore();
+
+        _graphAnimFrame = requestAnimationFrame(tick);
     }
 
-    for (const node of nodes) {
-        const pos = positions[node.id];
-        if (!pos) continue;
-        const color = typeColors[node.type] || typeColors.unknown;
-        const radius = node.type === 'paper' ? 8 : 6;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = color; ctx.fill();
-        ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 2; ctx.stroke();
-        const label = (node.title || node.id || '').substring(0, 30);
-        ctx.fillStyle = '#e6edf3'; ctx.font = '11px -apple-system, sans-serif';
-        ctx.textAlign = 'center'; ctx.fillText(label, pos.x, pos.y + radius + 14);
-    }
-
-    let ly = 20; ctx.textAlign = 'left';
-    for (const [type, color] of Object.entries(typeColors)) {
-        ctx.beginPath(); ctx.arc(20, ly, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = color; ctx.fill();
-        ctx.fillStyle = '#8b949e'; ctx.font = '11px -apple-system, sans-serif';
-        ctx.fillText(type, 32, ly + 4);
-        ly += 18;
-    }
+    tick();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -4044,9 +4434,9 @@ function loadSam3View() {
         const badge = document.getElementById('sam3ModelBadge');
         if (!badge) return;
         if (d.ready) {
-            badge.textContent = '🟢 SAM3 ready';
-            badge.style.borderColor = '#1a5a2a';
-            badge.style.color = '#6abf8a';
+            badge.textContent = d.dedicated_server ? '⚡ SAM3-MLX server active' : '🟢 SAM3 ready';
+            badge.style.borderColor = d.dedicated_server ? '#1a3a6a' : '#1a5a2a';
+            badge.style.color = d.dedicated_server ? '#6ab0ff' : '#6abf8a';
         } else {
             badge.textContent = `⚠️ ${d.message}`;
             badge.style.borderColor = '#5a4000';
@@ -5620,4 +6010,217 @@ async function lsLoadPendingNodes() {
 async function lsMarkComplete(nodeId) {
     await fetch(`/api/labelling/complete/${nodeId}`, { method: 'POST' });
     await lsLoadPendingNodes();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Skill Creator ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _scEditingId = null;
+
+async function scLoadList() {
+    const list = document.getElementById('scSkillList');
+    if (!list) return;
+    try {
+        const resp = await fetch('/api/skills/custom');
+        const skills = await resp.json();
+        if (!skills.length) {
+            list.innerHTML = '<p class="placeholder">No custom skills yet. Click <strong>+ New Skill</strong> to create one.</p>';
+            return;
+        }
+        list.innerHTML = skills.map(s => `
+            <div class="sc-card ${s.status}">
+                <div class="skill-head">
+                    <span class="skill-icon">${s.icon || '🧩'}</span>
+                    <span class="skill-title">${escapeHtml(s.name)}</span>
+                    <span class="status-badge ${s.status}">${s.status.replace(/-/g, ' ')}</span>
+                </div>
+                <div class="skill-desc">${escapeHtml(s.description || '')}</div>
+                <div class="sc-meta">v${s.version} · ${s.entry_point}() · ${s.power?.device || 'auto'}</div>
+                <div class="skill-actions">
+                    <button class="btn-sm" onclick="scRun('${s.id}')">▶ Run</button>
+                    <button class="btn-sm" onclick="scEdit('${s.id}')">✎ Edit</button>
+                    <button class="btn-sm btn-danger" onclick="scDelete('${s.id}')">✕ Delete</button>
+                </div>
+            </div>
+        `).join('');
+    } catch {
+        list.innerHTML = '<p class="placeholder">Failed to load custom skills.</p>';
+    }
+}
+
+function scResetForm() {
+    _scEditingId = null;
+    document.getElementById('scFormTitle').textContent = 'Create New Skill';
+    document.getElementById('scSaveBtn').textContent = 'Create Skill';
+    document.getElementById('scName').value = '';
+    document.getElementById('scDesc').value = '';
+    document.getElementById('scIcon').value = '🧩';
+    document.getElementById('scEntryPoint').value = 'run';
+    document.getElementById('scScript').value = '';
+    document.getElementById('scModelSource').value = '';
+    document.getElementById('scModelId').value = '';
+    document.getElementById('scModelLabel').value = '';
+    document.getElementById('scDevice').value = 'auto';
+    document.getElementById('scTimeout').value = '120';
+    document.getElementById('scEnvVars').innerHTML = '';
+    const v = document.getElementById('scValidation');
+    v.hidden = true; v.innerHTML = '';
+    document.getElementById('scForm').hidden = false;
+}
+
+function scCancel() {
+    document.getElementById('scForm').hidden = true;
+    _scEditingId = null;
+}
+
+async function scEdit(skillId) {
+    try {
+        const resp = await fetch(`/api/skills/custom/${skillId}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _scEditingId = skillId;
+        document.getElementById('scFormTitle').textContent = `Edit: ${data.name}`;
+        document.getElementById('scSaveBtn').textContent = 'Save Changes';
+        document.getElementById('scName').value = data.name;
+        document.getElementById('scDesc').value = data.description || '';
+        document.getElementById('scIcon').value = data.icon || '🧩';
+        document.getElementById('scEntryPoint').value = data.entry_point || 'run';
+        document.getElementById('scScript').value = data.script || '';
+        // Model
+        const m = data.model || {};
+        document.getElementById('scModelSource').value = m.source || '';
+        document.getElementById('scModelId').value = m.id || '';
+        document.getElementById('scModelLabel').value = m.label || '';
+        // Power
+        const p = data.power || {};
+        document.getElementById('scDevice').value = p.device || 'auto';
+        document.getElementById('scTimeout').value = p.timeout_s || 120;
+        // Env vars
+        const envDiv = document.getElementById('scEnvVars');
+        envDiv.innerHTML = '';
+        (p.env_vars || []).forEach(v => scAddEnvVar(v.name, v.description, v.required, v.default));
+        const v = document.getElementById('scValidation');
+        v.hidden = true; v.innerHTML = '';
+        document.getElementById('scForm').hidden = false;
+    } catch { showToast('Failed to load skill for editing', true); }
+}
+
+async function scValidate() {
+    const script = document.getElementById('scScript').value;
+    const vDiv = document.getElementById('scValidation');
+    try {
+        const resp = await fetch('/api/skills/custom/validate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ script }),
+        });
+        const data = await resp.json();
+        vDiv.hidden = false;
+        if (data.valid) {
+            vDiv.className = 'sc-validation sc-valid';
+            vDiv.innerHTML = `✓ Valid — entry points: <strong>${data.entry_points.join(', ') || 'none detected'}</strong>`;
+        } else {
+            vDiv.className = 'sc-validation sc-invalid';
+            vDiv.innerHTML = data.errors.map(e => `<div>Line ${e.line}: ${escapeHtml(e.message)}</div>`).join('');
+        }
+    } catch { vDiv.hidden = false; vDiv.className = 'sc-validation sc-invalid'; vDiv.textContent = 'Validation request failed'; }
+}
+
+function _scBuildBody() {
+    const body = {
+        name: document.getElementById('scName').value.trim(),
+        description: document.getElementById('scDesc').value.trim(),
+        icon: document.getElementById('scIcon').value.trim() || '🧩',
+        script: document.getElementById('scScript').value,
+        entry_point: document.getElementById('scEntryPoint').value.trim() || 'run',
+    };
+    const modelSource = document.getElementById('scModelSource').value;
+    if (modelSource) {
+        body.model = {
+            source: modelSource,
+            id: document.getElementById('scModelId').value.trim(),
+            label: document.getElementById('scModelLabel').value.trim(),
+        };
+    }
+    const envRows = document.querySelectorAll('.sc-env-row');
+    const envVars = [];
+    envRows.forEach(row => {
+        const name = row.querySelector('.sc-ev-name').value.trim();
+        if (name) envVars.push({
+            name,
+            description: row.querySelector('.sc-ev-desc').value.trim(),
+            required: row.querySelector('.sc-ev-req').checked,
+            default: row.querySelector('.sc-ev-def').value || null,
+        });
+    });
+    body.power = {
+        device: document.getElementById('scDevice').value,
+        timeout_s: parseInt(document.getElementById('scTimeout').value) || 120,
+        env_vars: envVars,
+    };
+    return body;
+}
+
+async function scSave() {
+    const body = _scBuildBody();
+    if (!body.name) { showToast('Name is required', true); return; }
+    if (!body.script.trim()) { showToast('Script is required', true); return; }
+
+    const url = _scEditingId ? `/api/skills/custom/${_scEditingId}` : '/api/skills/custom';
+    const method = _scEditingId ? 'PUT' : 'POST';
+    try {
+        const resp = await fetch(url, {
+            method, headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            const msg = data.error || 'Failed to save';
+            const details = (data.details || []).map(d => `Line ${d.line}: ${d.message}`).join('\n');
+            showToast(msg + (details ? '\n' + details : ''), true);
+            return;
+        }
+        showToast(_scEditingId ? 'Skill updated' : 'Skill created');
+        _scEditingId = null;
+        document.getElementById('scForm').hidden = true;
+        await scLoadList();
+        loadSkills(); // refresh main skills panel too
+    } catch { showToast('Save request failed', true); }
+}
+
+async function scDelete(skillId) {
+    if (!confirm(`Delete skill "${skillId}"?`)) return;
+    try {
+        await fetch(`/api/skills/custom/${skillId}`, { method: 'DELETE' });
+        showToast('Skill deleted');
+        await scLoadList();
+        loadSkills();
+    } catch { showToast('Delete failed', true); }
+}
+
+async function scRun(skillId) {
+    try {
+        const resp = await fetch(`/api/skills/custom/${skillId}/run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ params: {} }),
+        });
+        const data = await resp.json();
+        if (data.error) { showToast(`Error: ${data.error}`, true); return; }
+        const resultStr = typeof data.result === 'object' ? JSON.stringify(data.result, null, 2) : String(data.result);
+        showToast(`Result (${data.duration_s}s): ${resultStr.slice(0, 200)}`);
+    } catch { showToast('Run failed', true); }
+}
+
+function scAddEnvVar(name = '', desc = '', required = true, defVal = null) {
+    const div = document.getElementById('scEnvVars');
+    const row = document.createElement('div');
+    row.className = 'sc-env-row';
+    row.innerHTML = `
+        <input class="sc-ev-name" placeholder="VAR_NAME" value="${escapeHtml(name)}" />
+        <input class="sc-ev-desc" placeholder="Description" value="${escapeHtml(desc)}" />
+        <label><input type="checkbox" class="sc-ev-req" ${required ? 'checked' : ''}/> Req</label>
+        <input class="sc-ev-def" placeholder="Default" value="${escapeHtml(defVal || '')}" style="width:80px" />
+        <button class="btn-sm btn-danger" onclick="this.parentElement.remove()">✕</button>
+    `;
+    div.appendChild(row);
 }

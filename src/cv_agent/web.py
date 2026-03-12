@@ -141,6 +141,91 @@ def _persist_huggingface_token(token: str) -> bool:
         return False
 
 
+def _create_session_vault_note(
+    config: AgentConfig,
+    session_id: str,
+    title: str,
+    messages: list[dict],
+    model: str,
+    saved_at: str,
+) -> str:
+    """Create an Obsidian vault note for a chat session and add it to the knowledge graph.
+
+    Returns the relative vault path of the created note, or "" on failure.
+    """
+    from cv_agent.knowledge.graph import KnowledgeGraph
+
+    kg = KnowledgeGraph(config.knowledge)
+
+    # Create sessions subfolder in vault
+    sessions_dir = kg.vault_path / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_title = re.sub(r'[<>:"/\\|?*]', "", title)[:100].strip() or session_id
+    note_name = f"{saved_at[:10]}_{safe_title}"
+    note_path = sessions_dir / f"{note_name}.md"
+
+    # Build frontmatter
+    frontmatter = (
+        f"---\n"
+        f"type: session\n"
+        f"session_id: {session_id}\n"
+        f"model: {model}\n"
+        f"created: {saved_at[:10]}\n"
+        f"message_count: {len(messages)}\n"
+        f"tags: [cv/session]\n"
+        f"---\n\n"
+    )
+
+    # Build note body
+    body_parts = [frontmatter, f"# {title}\n\n"]
+    body_parts.append(f"**Model:** {model}  \n")
+    body_parts.append(f"**Saved:** {saved_at}  \n")
+    body_parts.append(f"**Messages:** {len(messages)}\n\n")
+    body_parts.append("## Transcript\n\n")
+
+    # Extract topics mentioned for knowledge graph linking
+    topics: set[str] = set()
+
+    for m in messages:
+        role = m.get("role", "unknown")
+        content = m.get("content", "")
+        if role == "user":
+            body_parts.append(f"**You:** {content}\n\n")
+        else:
+            body_parts.append(f"**CV Assistant:** {content}\n\n")
+
+        # Extract wiki-link candidates: look for key CV terms in content
+        # Link to existing graph nodes
+        for node in kg.graph.nodes:
+            if len(node) > 3 and node.lower() in content.lower():
+                topics.add(node)
+
+    if topics:
+        body_parts.append("## Related Topics\n\n")
+        for t in sorted(topics):
+            body_parts.append(f"- [[{t}]]\n")
+
+    note_path.write_text("".join(body_parts))
+
+    # Add session node to knowledge graph
+    kg.graph.add_node(
+        note_name,
+        type="session",
+        title=title,
+        session_id=session_id,
+        model=model,
+        file=f"sessions/{note_name}.md",
+        added=saved_at,
+    )
+
+    # Add edges to referenced topics
+    for t in topics:
+        kg.graph.add_edge(note_name, t, relation="discusses")
+
+    return f"sessions/{note_name}.md"
+
+
 def create_app(config: AgentConfig | None = None) -> FastAPI:
     """Create the FastAPI application."""
     if config is None:
@@ -2343,6 +2428,20 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             missing=[] if eko_ready else ["Eko Workflow Engine (start from Server Management)"],
         )
 
+        # Append custom user skills
+        try:
+            from cv_agent.skill_creator import list_skills as _list_custom
+            for cs in _list_custom():
+                skills[cs["id"]] = _skill(
+                    cs["name"], cs.get("icon", "🧩"), "custom",
+                    cs.get("description", "Custom user skill"),
+                    cs.get("status", "ready"),
+                    [cs.get("entry_point", "run")],
+                    view="skill-creator",
+                )
+        except Exception:
+            pass
+
         return JSONResponse(skills)
 
     @app.post("/api/skills/install-packages")
@@ -2406,6 +2505,99 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         return _SR(_stream(), media_type="text/event-stream",
                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    # ── Custom Skills (Skill Creator) ──────────────────────────────────────
+
+    @app.post("/api/skills/custom/validate")
+    async def validate_custom_skill(body: dict):
+        from cv_agent.skill_creator import validate_script
+        script = body.get("script", "")
+        if not script.strip():
+            return JSONResponse({"valid": False, "errors": [{"line": 1, "message": "Empty script"}]})
+        result = validate_script(script)
+        return JSONResponse(result.model_dump())
+
+    @app.post("/api/skills/custom")
+    async def create_custom_skill(body: dict):
+        from cv_agent.skill_creator import (
+            CreateSkillRequest, check_name_collision, save_skill, validate_script,
+        )
+        name = body.get("name", "").strip()
+        if not name:
+            return JSONResponse({"error": "Name is required"}, status_code=422)
+
+        collision = check_name_collision(name)
+        if collision:
+            return JSONResponse({"error": collision}, status_code=422)
+
+        script = body.get("script", "")
+        validation = validate_script(script)
+        if not validation.valid:
+            return JSONResponse({
+                "error": "Script validation failed",
+                "details": [e.model_dump() for e in validation.errors],
+            }, status_code=422)
+
+        req = CreateSkillRequest(**body)
+        manifest = await asyncio.to_thread(save_skill, req)
+        return JSONResponse(
+            {"id": manifest.id, "status": "ready", "message": "Skill created successfully"},
+            status_code=201,
+        )
+
+    @app.get("/api/skills/custom")
+    async def list_custom_skills():
+        from cv_agent.skill_creator import list_skills
+        skills = await asyncio.to_thread(list_skills)
+        return JSONResponse(skills)
+
+    @app.get("/api/skills/custom/{skill_id}")
+    async def get_custom_skill(skill_id: str):
+        from cv_agent.skill_creator import get_skill
+        result = await asyncio.to_thread(get_skill, skill_id)
+        if result is None:
+            return JSONResponse({"error": "Skill not found"}, status_code=404)
+        manifest, script_source = result
+        return JSONResponse({**manifest.model_dump(), "script": script_source})
+
+    @app.put("/api/skills/custom/{skill_id}")
+    async def update_custom_skill(skill_id: str, body: dict):
+        from cv_agent.skill_creator import (
+            CreateSkillRequest, get_skill, save_skill, validate_script,
+        )
+        existing = await asyncio.to_thread(get_skill, skill_id)
+        if existing is None:
+            return JSONResponse({"error": "Skill not found"}, status_code=404)
+
+        script = body.get("script", "")
+        if script:
+            validation = validate_script(script)
+            if not validation.valid:
+                return JSONResponse({
+                    "error": "Script validation failed",
+                    "details": [e.model_dump() for e in validation.errors],
+                }, status_code=422)
+
+        req = CreateSkillRequest(**body)
+        manifest = await asyncio.to_thread(save_skill, req, skill_id)
+        return JSONResponse({"id": manifest.id, "status": "updated", "version": manifest.version})
+
+    @app.delete("/api/skills/custom/{skill_id}")
+    async def delete_custom_skill(skill_id: str):
+        from cv_agent.skill_creator import delete_skill
+        deleted = await asyncio.to_thread(delete_skill, skill_id)
+        if not deleted:
+            return JSONResponse({"error": "Skill not found"}, status_code=404)
+        return JSONResponse({"ok": True, "message": f"Skill '{skill_id}' deleted"})
+
+    @app.post("/api/skills/custom/{skill_id}/run")
+    async def run_custom_skill(skill_id: str, body: dict = {}):
+        from cv_agent.skill_creator import run_skill
+        params = body.get("params", {})
+        result = await run_skill(skill_id, params)
+        if "error" in result:
+            return JSONResponse(result, status_code=400)
+        return JSONResponse(result)
+
     # ── SAM3 Playground ────────────────────────────────────────────────────
 
     @app.post("/api/upload-image")
@@ -2466,8 +2658,17 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         has_model = bool(sam3_runtime["has_any_model"])
         ready = bool(sam3_runtime["ready"])
 
+        # Check if dedicated SAM3-MLX server is running
+        _sam3_server_running = False
+        try:
+            from cv_agent.http_client import httpx as _hx
+            _h = _hx.get("http://localhost:7863/health", timeout=1.0)
+            _sam3_server_running = _h.status_code == 200 and _h.json().get("ready", False)
+        except Exception:
+            pass
+
         if ready:
-            message = "SAM3 ready"
+            message = "SAM3 ready" + (" · ⚡ dedicated server active" if _sam3_server_running else "")
         elif sam3_runtime["has_sam3_mlx_model"]:
             missing = []
             if not sam3_runtime["has_mlx_pkg"]:
@@ -2492,6 +2693,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "has_model": has_model,
             "message": message,
             "available_models": sam3_runtime["available_models"],
+            "dedicated_server": _sam3_server_running,
         })
 
     @app.post("/api/sam3/segment")
@@ -2516,45 +2718,61 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
         # Dispatch to correct loader based on model_id
         if model_id == "sam3-mlx":
-            def _run_mlx_sync() -> str:
-                from PIL import Image as _Img
-                loaded = _load_sam3_mlx_image()
-                if loaded is None:
-                    return _json.dumps({"error": "SAM3-MLX not available. Download the 'sam3-mlx' model and install mlx (pip install mlx)."})
-                _model, processor = loaded
-                try:
-                    image = _Img.open(image_path).convert("RGB")
-                    state = processor.set_image(image)
-                    if mode == "text":
-                        prompt = body.get("prompt", "").strip()
-                        if not prompt:
-                            return _json.dumps({"error": "prompt is required for text mode"})
-                        output = processor.set_text_prompt(prompt=prompt, state=state)
-                    elif mode == "box":
-                        box_raw = body.get("box")
-                        if not box_raw:
-                            return _json.dumps({"error": "box is required for box mode"})
-                        b = box_raw if isinstance(box_raw, dict) else _json.loads(box_raw)
-                        output = processor.add_geometric_prompt(
-                            box=[b["x1"], b["y1"], b["x2"], b["y2"]], label=True, state=state
-                        )
-                    else:
-                        return _json.dumps({"error": f"Unknown mode: {mode}"})
-                    masks, scores, boxes_out = _extract_masks_scores_boxes(output)
-                    _lbl = prompt if mode == "text" else ""
-                    overlay = _overlay_masks(image, masks, scores=scores, boxes=boxes_out, label=_lbl)
-                    out_file = _save_overlay(image_path, overlay)
-                    return _json.dumps({
-                        "output_path": out_file,
-                        "mask_count": len(masks),
-                        "scores": [round(s, 4) for s in scores],
-                        "boxes": [b.tolist() if hasattr(b, "tolist") else b for b in boxes_out],
-                        "model": "SAM3-MLX",
-                    })
-                except Exception as exc:
-                    return _json.dumps({"error": f"SAM3-MLX inference failed: {exc}"})
+            # Try dedicated SAM3-MLX server first (model stays loaded → instant)
+            _sam3_server_url = "http://localhost:7863"
+            try:
+                from cv_agent.http_client import httpx as _hx
+                _health = _hx.get(f"{_sam3_server_url}/health", timeout=1.0)
+                if _health.status_code == 200 and _health.json().get("ready"):
+                    _resp = _hx.post(
+                        f"{_sam3_server_url}/segment",
+                        json=body,
+                        timeout=120.0,
+                    )
+                    result_json = _resp.text
+                else:
+                    raise ConnectionError("not ready")
+            except Exception:
+                # Fallback: in-process model load
+                def _run_mlx_sync() -> str:
+                    from PIL import Image as _Img
+                    loaded = _load_sam3_mlx_image()
+                    if loaded is None:
+                        return _json.dumps({"error": "SAM3-MLX not available. Download the 'sam3-mlx' model and install mlx (pip install mlx)."})
+                    _model, processor = loaded
+                    try:
+                        image = _Img.open(image_path).convert("RGB")
+                        state = processor.set_image(image)
+                        if mode == "text":
+                            prompt = body.get("prompt", "").strip()
+                            if not prompt:
+                                return _json.dumps({"error": "prompt is required for text mode"})
+                            output = processor.set_text_prompt(prompt=prompt, state=state)
+                        elif mode == "box":
+                            box_raw = body.get("box")
+                            if not box_raw:
+                                return _json.dumps({"error": "box is required for box mode"})
+                            b = box_raw if isinstance(box_raw, dict) else _json.loads(box_raw)
+                            output = processor.add_geometric_prompt(
+                                box=[b["x1"], b["y1"], b["x2"], b["y2"]], label=True, state=state
+                            )
+                        else:
+                            return _json.dumps({"error": f"Unknown mode: {mode}"})
+                        masks, scores, boxes_out = _extract_masks_scores_boxes(output)
+                        _lbl = prompt if mode == "text" else ""
+                        overlay = _overlay_masks(image, masks, scores=scores, boxes=boxes_out, label=_lbl)
+                        out_file = _save_overlay(image_path, overlay)
+                        return _json.dumps({
+                            "output_path": out_file,
+                            "mask_count": len(masks),
+                            "scores": [round(s, 4) for s in scores],
+                            "boxes": [b.tolist() if hasattr(b, "tolist") else b for b in boxes_out],
+                            "model": "SAM3-MLX",
+                        })
+                    except Exception as exc:
+                        return _json.dumps({"error": f"SAM3-MLX inference failed: {exc}"})
 
-            result_json = await asyncio.to_thread(_run_mlx_sync)
+                result_json = await asyncio.to_thread(_run_mlx_sync)
         else:
             # Default: PyTorch SAM3
             if mode == "text":
@@ -2595,7 +2813,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
         import asyncio
         has_monkey = await asyncio.to_thread(is_model_downloaded, "monkey-ocr")
         has_pkg = has_paddle or (has_mlx and has_monkey)
-        return JSONResponse({"ready": has_pkg, "message": "OCR Engine ready" if has_pkg else "OCR engine not installed"})
+
+        if has_pkg:
+            engine = "MonkeyOCR (MLX)" if (has_mlx and has_monkey) else "PaddleOCR"
+            message = f"OCR Engine ready — {engine}"
+        elif has_monkey and not has_mlx:
+            message = "MonkeyOCR model found — install mlx-vlm: pip install mlx-vlm"
+        else:
+            message = "OCR engine not installed"
+
+        return JSONResponse({"ready": has_pkg, "message": message})
 
     @app.post("/api/ocr/run")
     async def ocr_run(body: dict):
@@ -2725,13 +2952,118 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
 
     # ── Sessions ───────────────────────────────────────────────────────────
 
+    _SESSIONS_DIR = _PROJECT_ROOT / "output" / ".sessions"
+
+    def _load_session_index() -> list[dict]:
+        """Load summary metadata for all saved sessions."""
+        if not _SESSIONS_DIR.exists():
+            return []
+        sessions = []
+        for f in sorted(_SESSIONS_DIR.glob("*.json"), reverse=True):
+            try:
+                meta = json.loads(f.read_text())
+                sessions.append({
+                    "id": meta.get("id", f.stem),
+                    "title": meta.get("title", ""),
+                    "message_count": meta.get("message_count", 0),
+                    "model": meta.get("model", ""),
+                    "saved_at": meta.get("saved_at", ""),
+                    "vault_note": meta.get("vault_note", ""),
+                })
+            except Exception:
+                continue
+        return sessions
+
     @app.get("/api/sessions")
     async def list_sessions():
-        """Return chat session info."""
-        sessions = []
-        if hasattr(app.state, "sessions"):
-            sessions = app.state.sessions
+        """Return saved chat sessions."""
+        sessions = await asyncio.to_thread(_load_session_index)
         return JSONResponse({"sessions": sessions})
+
+    @app.post("/api/sessions")
+    async def save_session(body: dict):
+        """Save or update a chat session. If 'id' is provided and exists, update it."""
+        messages = body.get("messages", [])
+        if not messages:
+            return JSONResponse({"error": "No messages to save"}, status_code=400)
+
+        title = body.get("title", "").strip()
+        model = body.get("model", "")
+        existing_id = body.get("id", "").strip()
+        saved_at = datetime.now().isoformat()
+
+        # Check if updating an existing session
+        _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        session_id = ""
+        is_update = False
+        if existing_id:
+            safe_existing = re.sub(r"[^a-zA-Z0-9_\-]", "", existing_id)
+            existing_file = _SESSIONS_DIR / f"{safe_existing}.json"
+            if existing_file.exists():
+                session_id = safe_existing
+                is_update = True
+                # Preserve title from existing session if none given
+                if not title:
+                    try:
+                        old = json.loads(existing_file.read_text())
+                        title = old.get("title", "")
+                    except Exception:
+                        pass
+
+        if not session_id:
+            session_id = f"session_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:6]}"
+
+        if not title:
+            first_user = next((m["content"] for m in messages if m.get("role") == "user"), "")
+            title = (first_user[:80] + "…") if len(first_user) > 80 else first_user or session_id
+
+        vault_note_path = ""
+        try:
+            vault_note_path = await asyncio.to_thread(
+                _create_session_vault_note, config, session_id, title, messages, model, saved_at
+            )
+        except Exception as exc:
+            logger.warning("Vault note creation failed for session %s: %s", session_id, exc)
+
+        session_data = {
+            "id": session_id,
+            "title": title,
+            "model": model,
+            "saved_at": saved_at,
+            "message_count": len(messages),
+            "messages": messages,
+            "vault_note": vault_note_path,
+        }
+
+        session_file = _SESSIONS_DIR / f"{session_id}.json"
+        await asyncio.to_thread(lambda: session_file.write_text(json.dumps(session_data, indent=2)))
+
+        return JSONResponse({
+            "id": session_id,
+            "title": title,
+            "saved_at": saved_at,
+            "vault_note": vault_note_path,
+            "updated": is_update,
+        })
+
+    @app.get("/api/sessions/{session_id}")
+    async def get_session(session_id: str):
+        """Load a specific saved session."""
+        safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", session_id)
+        session_file = _SESSIONS_DIR / f"{safe_id}.json"
+        if not session_file.exists():
+            return JSONResponse({"error": "Session not found"}, status_code=404)
+        data = json.loads(await asyncio.to_thread(session_file.read_text))
+        return JSONResponse(data)
+
+    @app.delete("/api/sessions/{session_id}")
+    async def delete_session(session_id: str):
+        """Delete a saved session."""
+        safe_id = re.sub(r"[^a-zA-Z0-9_\-]", "", session_id)
+        session_file = _SESSIONS_DIR / f"{safe_id}.json"
+        if session_file.exists():
+            session_file.unlink()
+        return JSONResponse({"ok": True})
 
     # ── Cron Jobs ──────────────────────────────────────────────────────────
 
@@ -3789,7 +4121,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             "pid": proc.pid if proc_running and proc else None,
         })
 
-    @app.post("/api/labelling/install")
+    @app.get("/api/labelling/install")
     async def labelling_install():
         """Install label-studio into the current venv and re-register the server."""
         from fastapi.responses import StreamingResponse as _SR

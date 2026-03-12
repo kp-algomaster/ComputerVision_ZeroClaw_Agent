@@ -238,12 +238,15 @@ def _load_sam3_mlx_image() -> tuple[Any, Any] | None:
         processor = Sam3Processor(model)
         _MODEL_CACHE["sam3_mlx_image"] = (model, processor)
         logger.info("SAM3-MLX image model loaded from %s", ckpt or "HF")
+        # Keep mlx sam3 modules alive so the cached objects stay functional.
+        # Only remove mlx_sam3/ from sys.path to prevent accidental future imports.
+        if mlx_src in sys.path:
+            sys.path.remove(mlx_src)
         return (model, processor)
     except Exception as exc:
-        logger.error("SAM3-MLX model load failed: %s", exc)
-        return None
-    finally:
+        logger.error("SAM3-MLX model load failed: %s", exc, exc_info=True)
         _swap_out()
+        return None
 
 
 # ── Model availability helpers ───────────────────────────────────────────────

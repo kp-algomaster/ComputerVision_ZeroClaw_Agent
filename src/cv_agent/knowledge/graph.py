@@ -72,7 +72,9 @@ class KnowledgeGraph:
             # Read frontmatter and content
             content = md_file.read_text(errors="replace")
             metadata = self._parse_frontmatter(content)
-            metadata["type"] = node_type
+            # Prefer frontmatter type over directory-based type
+            if "type" not in metadata:
+                metadata["type"] = node_type
             metadata["file"] = str(rel)
 
             self.graph.add_node(node_name, **metadata)
@@ -248,14 +250,22 @@ class KnowledgeGraph:
             "types": type_counts,
         }
 
+    @staticmethod
+    def _json_safe(val: Any) -> Any:
+        """Convert non-JSON-serializable values (date, datetime, etc.) to strings."""
+        from datetime import date, datetime
+        if isinstance(val, (date, datetime)):
+            return val.isoformat()
+        return val
+
     def to_dict(self) -> dict[str, Any]:
         """Export graph as a dictionary."""
         nodes = []
         for n, data in self.graph.nodes(data=True):
-            nodes.append({"id": n, **data})
+            nodes.append({"id": n, **{k: self._json_safe(v) for k, v in data.items()}})
         edges = []
         for u, v, data in self.graph.edges(data=True):
-            edges.append({"source": u, "target": v, **data})
+            edges.append({"source": u, "target": v, **{k: self._json_safe(val) for k, val in data.items()}})
         return {"nodes": nodes, "edges": edges}
 
     def to_mermaid(self) -> str:

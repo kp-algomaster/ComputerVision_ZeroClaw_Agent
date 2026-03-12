@@ -56,6 +56,7 @@
                 <div class="nav-group-title" data-toggle="grp-agent">Core <span class="toggle-icon">−</span></div>
                 <ul class="nav-list" id="grp-agent">
                     <li class="nav-item" data-view="skills"><span class="nav-icon">⚡</span>Skills</li>
+                    <li class="nav-item" data-view="skill-creator"><span class="nav-icon">🧩</span>Skill Creator</li>
                     <li class="nav-item" data-view="datasets"><span class="nav-icon">🗂️</span>Datasets</li>
                     <li class="nav-item" data-view="powers"><span class="nav-icon">🔌</span>Powers</li>
                 </ul>
@@ -110,6 +111,8 @@
                         </div>
                         <button type="button" class="btn-sm" id="refreshChatModelsBtn"
                             onclick="loadChatModels({ forceRefresh: true })">↻ Refresh Models</button>
+                        <button type="button" class="btn-sm" id="saveSessionBtn"
+                            onclick="saveSession()" title="Save this chat session to vault">💾 Save Session</button>
                     </div>
                     <div id="chatModelHint" class="chat-model-hint">Checking local Ollama chat models...</div>
                 </div>
@@ -347,6 +350,103 @@
             <div class="view-scroll">
                 <div id="cronContent">
                     <p class="placeholder">Loading…</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ Skill Creator ═══ -->
+        <section id="view-skill-creator" class="view">
+            <div class="view-header">
+                <div>
+                    <h2>🧩 Skill Creator</h2>
+                    <p class="view-hint">Create custom skills from Python scripts with optional model and power configuration.</p>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn-sm" id="scNewBtn" onclick="scResetForm()">+ New Skill</button>
+                    <button class="btn-sm" onclick="scLoadList()">↻ Refresh</button>
+                </div>
+            </div>
+            <div class="view-scroll">
+                <!-- Existing custom skills list -->
+                <div id="scSkillList" class="sc-skill-list"></div>
+
+                <!-- Create / Edit form -->
+                <div id="scForm" class="sc-form" hidden>
+                    <h3 id="scFormTitle">Create New Skill</h3>
+                    <div class="sc-field">
+                        <label>Name</label>
+                        <input type="text" id="scName" placeholder="e.g. Edge Detection" />
+                    </div>
+                    <div class="sc-field">
+                        <label>Description</label>
+                        <input type="text" id="scDesc" placeholder="What does this skill do?" />
+                    </div>
+                    <div class="sc-field">
+                        <label>Icon</label>
+                        <input type="text" id="scIcon" value="🧩" maxlength="4" style="width:60px" />
+                    </div>
+                    <div class="sc-field">
+                        <label>Entry Point</label>
+                        <input type="text" id="scEntryPoint" value="run" placeholder="Function name" />
+                    </div>
+
+                    <!-- Script editor -->
+                    <div class="sc-section">
+                        <h4>📝 Script</h4>
+                        <div id="scValidation" class="sc-validation" hidden></div>
+                        <textarea id="scScript" class="sc-script-editor" rows="16" spellcheck="false" placeholder="def run(**kwargs):\n    return 'hello world'"></textarea>
+                        <button class="btn-sm" onclick="scValidate()" style="margin-top:6px">✓ Validate</button>
+                    </div>
+
+                    <!-- Model section -->
+                    <details class="sc-section">
+                        <summary><h4 style="display:inline">🤖 Model (optional)</h4></summary>
+                        <div class="sc-field">
+                            <label>Source</label>
+                            <select id="scModelSource">
+                                <option value="">None</option>
+                                <option value="huggingface">HuggingFace</option>
+                                <option value="local">Local (Downloaded)</option>
+                                <option value="ollama">Ollama</option>
+                            </select>
+                        </div>
+                        <div class="sc-field">
+                            <label>Model ID</label>
+                            <input type="text" id="scModelId" placeholder="e.g. my-org/my-model" />
+                        </div>
+                        <div class="sc-field">
+                            <label>Label</label>
+                            <input type="text" id="scModelLabel" placeholder="Human-readable name" />
+                        </div>
+                    </details>
+
+                    <!-- Power section -->
+                    <details class="sc-section">
+                        <summary><h4 style="display:inline">⚡ Power (optional)</h4></summary>
+                        <div class="sc-field">
+                            <label>Device</label>
+                            <select id="scDevice">
+                                <option value="auto">Auto</option>
+                                <option value="cpu">CPU</option>
+                                <option value="mps">MPS (Apple Silicon)</option>
+                                <option value="cuda">CUDA</option>
+                            </select>
+                        </div>
+                        <div class="sc-field">
+                            <label>Timeout (seconds)</label>
+                            <input type="number" id="scTimeout" value="120" min="5" max="3600" />
+                        </div>
+                        <div class="sc-field">
+                            <label>Environment Variables</label>
+                            <div id="scEnvVars" class="sc-env-vars"></div>
+                            <button class="btn-sm" onclick="scAddEnvVar()" style="margin-top:4px">+ Add Variable</button>
+                        </div>
+                    </details>
+
+                    <div class="sc-actions">
+                        <button class="btn-primary" id="scSaveBtn" onclick="scSave()">Create Skill</button>
+                        <button class="btn-sm" onclick="scCancel()">Cancel</button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -759,13 +859,22 @@
         <section id="view-graph" class="view">
             <div class="panel-header">
                 <h2>Knowledge Graph</h2>
-                <div>
-                    <span id="graphStats"></span>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span id="graphStats" style="opacity:0.6;font-size:0.85rem;"></span>
+                    <input id="graphSearch" type="text" placeholder="Filter nodes…"
+                        style="width:180px;padding:4px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:0.85rem;"
+                        oninput="filterGraph(this.value)">
                     <button class="btn-sm" onclick="loadGraph()">↻ Refresh</button>
                 </div>
             </div>
             <div id="graphContainer" class="graph-container">
                 <canvas id="graphCanvas"></canvas>
+                <!-- Node detail tooltip -->
+                <div id="graphTooltip" style="display:none;position:absolute;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;pointer-events:none;z-index:10;max-width:320px;font-size:0.85rem;box-shadow:0 4px 24px rgba(0,0,0,0.5);">
+                </div>
+                <!-- Legend overlay -->
+                <div id="graphLegend" style="position:absolute;bottom:12px;left:12px;display:flex;gap:12px;font-size:0.75rem;opacity:0.7;">
+                </div>
             </div>
         </section>
 

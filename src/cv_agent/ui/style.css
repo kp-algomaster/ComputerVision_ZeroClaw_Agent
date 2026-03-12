@@ -5397,3 +5397,153 @@ body {
         box-shadow: 0 0 14px rgba(88, 166, 255, 0.4);
     }
 }
+
+/* ── Skill Creator ─────────────────────────────────────────────────────────── */
+
+.sc-skill-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.sc-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.sc-card .skill-head { margin-bottom: 6px; }
+.sc-card .skill-desc { font-size: 0.82rem; opacity: 0.7; margin-bottom: 6px; }
+.sc-card .sc-meta { font-size: 0.75rem; opacity: 0.5; margin-bottom: 8px; }
+
+.sc-form {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    max-width: 720px;
+}
+
+.sc-form h3 { margin: 0 0 14px; font-size: 1.05rem; }
+.sc-form h4 { margin: 0; font-size: 0.9rem; }
+
+.sc-field {
+    margin-bottom: 12px;
+}
+
+.sc-field label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    opacity: 0.7;
+    margin-bottom: 4px;
+}
+
+.sc-field input[type="text"],
+.sc-field input[type="number"],
+.sc-field select {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg1);
+    color: var(--fg);
+    font-size: 0.85rem;
+}
+
+.sc-section {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+}
+
+.sc-section summary {
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+}
+
+.sc-script-editor {
+    width: 100%;
+    min-height: 200px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg1);
+    color: var(--fg);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    resize: vertical;
+    tab-size: 4;
+}
+
+.sc-validation {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+}
+
+.sc-valid {
+    background: rgba(63, 185, 80, 0.12);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    color: var(--green);
+}
+
+.sc-invalid {
+    background: rgba(248, 81, 73, 0.12);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: var(--red);
+}
+
+.sc-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.sc-env-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.sc-env-row input {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg1);
+    color: var(--fg);
+    font-size: 0.8rem;
+    flex: 1;
+    min-width: 80px;
+}
+
+.sc-env-row label {
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.btn-danger {
+    color: var(--red) !important;
+    border-color: var(--red) !important;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.btn-primary:hover { opacity: 0.9; }

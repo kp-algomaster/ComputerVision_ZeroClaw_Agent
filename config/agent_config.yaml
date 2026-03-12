@@ -179,8 +179,15 @@ labelling:
 copilot:
   enabled: true
   default_model: "qwen3-coder:30b"
-  session_timeout_s: 120
+  session_timeout_s: 1200
   byok_provider:
     type: openai
     base_url: http://localhost:11434/v1
     api_key: ollama
+
+# Skill Creator (006-skill-creator)
+skill_creator:
+  enabled: true
+  skills_dir: "${OUTPUT_DIR:-./output}/.skills"
+  default_timeout_s: 120
+  max_timeout_s: 3600

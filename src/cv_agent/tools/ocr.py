@@ -128,8 +128,10 @@ def _run_monkeyocr(image_path: str) -> str:
     """Run locally downloaded Monkey OCR 1.5 Recognition model via mlx_vlm."""
     try:
         from mlx_vlm import load, generate
-    except ImportError:
-        return "Error: mlx_vlm not installed. Must install mlx_vlm to use MonkeyOCR."
+    except ImportError as exc:
+        return f"Error: mlx_vlm import failed: {exc}"
+    except Exception as exc:
+        return f"Error: mlx_vlm import failed unexpectedly: {exc}"
     
     model_path = "output/.models/monkey-ocr/Recognition"
     if not Path(model_path).exists():

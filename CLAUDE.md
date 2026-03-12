@@ -40,6 +40,8 @@
 - Label Studio's own SQLite DB at `output/.label-studio/`; exports to `output/labels/` (004-labelling-tool)
 - Python 3.12 + `github-copilot-sdk` (MIT, 0.1.0), FastAPI, Pydantic V2, LangChain `BaseTool` (005-copilot-sdk-chat)
 - No new persistence; `CopilotSessionState` is in-memory per WebSocket connection (005-copilot-sdk-chat)
+- Python 3.12 + FastAPI, Pydantic V2; JSON manifests at `output/.skills/<id>/manifest.json`; scripts at `output/.skills/<id>/skill.py` (006-skill-creator)
 
 ## Recent Changes
+- 006-skill-creator: Added Skill Creator — custom skills from Python script + model + power config, CRUD API, Skills panel integration
 - 002-cv-playground: Added Python 3.12 (backend DAG runner + REST endpoint); ES6 Vanilla JS (frontend canvas — no framework, matches existing `app.js` style)

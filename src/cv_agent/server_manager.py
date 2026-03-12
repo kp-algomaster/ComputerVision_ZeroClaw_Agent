@@ -65,6 +65,16 @@ SERVER_REGISTRY: list[ServerSpec] = [
         device="cpu",
         start_cmd=["sh", "-c", "cd eko_sidecar && npm install && npx playwright install chromium && node index.js"],
     ),
+    ServerSpec(
+        id="sam3-mlx",
+        name="SAM3-MLX Segmentation",
+        description="Dedicated SAM3-MLX server — keeps model loaded for instant segmentation on Apple Silicon",
+        url="http://localhost:7863",
+        health_path="/health",
+        managed=True,
+        device="mps",
+        start_cmd=[sys.executable, "-m", "cv_agent.servers.sam3_mlx_server"],
+    ),
 ]
 
 _BY_ID: dict[str, ServerSpec] = {s.id: s for s in SERVER_REGISTRY}
