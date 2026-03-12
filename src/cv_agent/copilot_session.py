@@ -125,19 +125,29 @@ class CopilotStreamBridge:
         send_task: asyncio.Task[Any] = asyncio.create_task(
             session.send_and_wait({"prompt": prompt}, timeout=float(timeout))
         )
+        _session_error_seen: list[bool] = [False]  # mutable cell — set when SESSION_ERROR fires
 
         try:
             while not send_task.done():
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.05)
                     yield event
+                    if event["type"] == "error":
+                        # SESSION_ERROR already yielded; cancel task to avoid duplicate error
+                        _session_error_seen[0] = True
+                        send_task.cancel()
+                        return
                 except asyncio.TimeoutError:
                     continue
 
             # Drain remaining queued events before final
             while not queue.empty():
                 try:
-                    yield queue.get_nowait()
+                    event = queue.get_nowait()
+                    yield event
+                    if event["type"] == "error":
+                        _session_error_seen[0] = True
+                        return
                 except asyncio.QueueEmpty:
                     break
 
@@ -153,17 +163,21 @@ class CopilotStreamBridge:
 
         except asyncio.TimeoutError:
             send_task.cancel()
-            yield {
-                "type": "error",
-                "message": (
-                    "The request timed out waiting for the model to finish. "
-                    "Agentic tasks with many tool calls can take a long time — "
-                    "increase `copilot.session_timeout_s` in agent_config.yaml (current default: 600s)."
-                ),
-            }
+            if not _session_error_seen[0]:
+                yield {
+                    "type": "error",
+                    "message": (
+                        "The request timed out waiting for the model to finish. "
+                        "Agentic tasks with many tool calls can take a long time — "
+                        "increase `copilot.session_timeout_s` in agent_config.yaml (current default: 600s)."
+                    ),
+                }
 
         except Exception as exc:
             send_task.cancel()
+            if _session_error_seen[0]:
+                # SESSION_ERROR event already sent — don't duplicate
+                return
             msg = str(exc)
             if "waiting for session.idle" in msg or "Timeout after" in msg:
                 yield {

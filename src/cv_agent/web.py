@@ -332,6 +332,7 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
             state = await copilot_manager.get_or_create_session(ws_id, requested_model)
             state.is_running = True
             final_content = ""
+            session_errored = False
             try:
                 await websocket.send_text(json.dumps({
                     "type": "stream_start",
@@ -343,10 +344,16 @@ def create_app(config: AgentConfig | None = None) -> FastAPI:
                 async for event in CopilotStreamBridge.stream(state.session, user_text, timeout):
                     if event["type"] == "stream_end":
                         final_content = event.get("content", "")
-                        break  # outer handler sends the enriched stream_end with html
+                        break
                     await websocket.send_text(json.dumps(event))
+                    if event["type"] == "error":
+                        # Session is now broken — drop it so the next turn starts fresh
+                        session_errored = True
+                        break
             finally:
                 state.is_running = False
+                if session_errored:
+                    await copilot_manager.close_session(ws_id)
             return final_content
 
         try:
